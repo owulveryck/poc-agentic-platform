@@ -1,0 +1,53 @@
+@startuml amplified-planning-sequence
+!include octo-theme.puml
+autonumber
+
+title Amplified planning — the Platform Planning Gateway (PPG)
+
+actor "AI Agent\n(Claude Code, Copilot,\ncustom agent...)" as Agent
+
+box "Platform Planning Gateway" #E8F0FE
+  participant "enrich()\n<size:10><i>amplifier / declarative</i></size>" as Enrich
+  participant "Plan Linter\n<size:10><i>amplifier / programmatic</i></size>" as Linter
+  participant "Ticket Service\n<size:10><i>least privilege</i></size>" as Ticket
+end box
+
+database "ADR store\n(architectural\ninvariants)" as ADR
+
+== Phase 1 — Context amplification (soft) ==
+Agent -> Enrich : intent + repository_context
+Enrich -> ADR : retrieve invariants\nmatching the intent
+ADR --> Enrich : semantic invariants\n<size:10>(no step-by-step recipes)</size>
+Enrich --> Agent : <b>amplifier_context</b>\n{architectural_invariants, source_adrs}
+
+note over Agent #E6F4EA
+  The agent <b>reasons</b> over the invariants.
+  The smarter the model, the better
+  it exploits them.
+end note
+
+== Phase 2 — Deterministic plan gating (hard) ==
+Agent -> Linter : lock_in_plan(structured plan)
+Linter -> Linter : evaluate invariants\n<size:10>(deterministic code — not an LLM)</size>
+
+alt <color:#EA4335>plan violates an invariant</color>
+  Linter --> Agent : <color:#EA4335><b>422 — semantic violations</b></color>\n{policy_id, message, nature}
+  note right of Agent #FFF0F0
+    Actionable feedback:
+    the agent self-corrects
+    in ≤ 2 iterations.
+  end note
+  Agent -> Linter : lock_in_plan(corrected plan)
+end
+
+== Phase 3 — Capability ticket (least privilege) ==
+Linter -> Ticket : plan approved
+Ticket --> Agent : <color:#34A853><b>execution_ticket</b></color> (ephemeral JWT)\n{plan_hash, scope, allowed tools, exp}
+
+note over Ticket #E6F4EA
+  Relevant even for a perfect model:
+  it bounds the blast radius of
+  <b>systemic</b> errors.
+end note
+
+@enduml

@@ -1,0 +1,56 @@
+@startuml smart-tool-sequence
+!include octo-theme.puml
+autonumber
+
+title Contextual execution — a Smart Platform Tool consumes the ticket
+
+actor "AI Agent" as Agent
+
+box "Smart Platform Tool" #E8F0FE
+  participant "Ticket Verifier\n<size:10><i>least-privilege guard</i></size>" as Verifier
+  participant "Sandbox\nExecutor" as Exec
+  participant "Semantic Analyzer\n<size:10><i>amplifier — the crown jewel</i></size>" as Analyzer
+end box
+
+database "Target\n(code, DB,\nsandbox)" as Target
+
+note over Agent #FFEDB8
+  The agent holds its
+  <b>execution_ticket</b> (JWT)
+end note
+
+== 1 — Scope verification (in-tool) ==
+Agent -> Verifier : call(tool, targets, payload) + ticket
+Verifier -> Verifier : decode JWT\ncheck plan_hash + scope
+
+alt <color:#EA4335>action outside the locked plan</color>
+  Verifier --> Agent : <color:#EA4335><b>OUT_OF_PLAN_SCOPE</b></color>\n{attempted, allowed}
+  note right of Agent #FFF0F0
+    Deterministic refusal —
+    no damage done.
+  end note
+else action within scope
+  Verifier -> Exec : authorize
+end
+
+== 2 — Sandboxed execution ==
+Exec -> Target : dry-run / isolated apply
+Target --> Exec : raw result\n<size:10>(exit code, stack trace, SQLSTATE)</size>
+
+== 3 — Semantic analysis ==
+Exec -> Analyzer : raw result + target context
+Analyzer -> Analyzer : fast linter / compiler\n+ business enrichment
+
+alt <color:#EA4335>application failure</color>
+  Analyzer --> Agent : <b>semantic feedback</b>\n{error_category,\n remediation_guidance,\n context_update}
+  note right of Agent #E6F4EA
+    Guided self-correction:
+    the agent knows <b>what</b> to fix,
+    not just that it failed.
+  end note
+else success
+  Analyzer --> Agent : <color:#34A853>{status: OK, new_hash}</color>
+  Exec -> Target : commit the dry-run
+end
+
+@enduml
