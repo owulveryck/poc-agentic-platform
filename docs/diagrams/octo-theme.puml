@@ -37,7 +37,7 @@ skinparam note {
   BackgroundColor #FFEDB8
   BorderColor #FFD966
   FontColor #0E2356
-  FontSize 11
+  FontSize 12
 }
 
 skinparam database {

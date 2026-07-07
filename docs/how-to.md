@@ -13,8 +13,8 @@
    - Useless → `nature: compensatory` + a **mandatory, measurable**
      `sunset_condition`.
 3. Fill `scope_selectors` with the keywords that make the invariant relevant.
-4. State the invariant **semantically** — never "modify file X at line Y".
-5. Verify: `curl -X POST /enrich` with an intent containing a selector — the
+4. State the invariant **semantically**: never "modify file X at line Y".
+5. Verify: `curl -X POST /enrich` with an intent containing a selector; the
    invariant must be returned.
 
 ## 2 — Add a deterministic validation policy
@@ -75,7 +75,7 @@
 
 3. From there, Copilot's black-box planning is steered by the same invariants
    the gateway serves to every other agent.
-4. ⚠ Limit: hard gating is **not** guaranteed with black boxes — no hook can
+4. ⚠ Limit: hard gating is **not** guaranteed with black boxes: no hook can
    intercept their edits. The locked-plan check must then happen at apply
    time (pre-push platform CLI) instead of in-loop.
 
@@ -84,7 +84,7 @@
 Full walkthrough in [adapters/claudecode/README.md](../adapters/claudecode/README.md).
 The short version:
 
-1. **Planning (pillar 1)** — register the MCP server in the target project:
+1. **Planning (pillar 1)**: register the MCP server in the target project:
 
    ```bash
    claude mcp add ppg -- go run /path/to/poc-agentic-platform/adapters/claudecode/mcpserver
@@ -94,7 +94,7 @@ The short version:
    `lock_in_plan` as native tools. A successful lock writes the capability
    ticket to `.ppg-ticket`.
 
-2. **Gating (pillar 2)** — build the guard and register it as a `PreToolUse`
+2. **Gating (pillar 2)**: build the guard and register it as a `PreToolUse`
    hook on `Edit|Write` in `.claude/settings.json`:
 
    ```bash
@@ -106,10 +106,10 @@ The short version:
        "hooks": [ { "type": "command", "command": "ppg-guard", "args": [] } ] } ] } }
    ```
 
-3. **Contract** — copy [adapters/claudecode/CLAUDE.example.md](../adapters/claudecode/CLAUDE.example.md)
+3. **Contract**: copy [adapters/claudecode/CLAUDE.example.md](../adapters/claudecode/CLAUDE.example.md)
    into the target project's `CLAUDE.md`.
 
-4. **Verify** — ask Claude to edit a file outside the locked plan: the hook
+4. **Verify**: ask Claude to edit a file outside the locked plan: the hook
    exits with code 2 *before* the edit executes, and the model receives the
    semantic refusal (`OUT_OF_PLAN_SCOPE: ... re-plan through lock_in_plan`),
    which steers it back to the paved road on its own.

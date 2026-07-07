@@ -2,13 +2,13 @@
 
 A proof of concept for the **amplified agentic loop**: instead of front-loading
 all the governance in the initial prompt and blocking the agent after the
-fact, the platform injects governance *inside* each step of the loop —
+fact, the platform injects governance *inside* each step of the loop:
 planning, execution, observation.
 
 Companion repository of the blog article
 [The Amplified Agentic Loop: Guardrails as Accelerators](https://blog.owulveryck.info/2026/07/07/amplified-agentic-loop.html).
 
-> **Status**: proof of concept — not production-ready by design
+> **Status**: proof of concept, not production-ready by design
 > (symmetric hard-coded JWT secret, keyword-based ADR retrieval, simulated
 > staging state).
 
@@ -16,7 +16,7 @@ Companion repository of the blog article
 
 | Component | Role | Durability nature |
 |---|---|---|
-| `POST /enrich` | Retrieves **architectural invariants** from the ADR store for an intent — no hard-coded business pattern | amplifier / declarative |
+| `POST /enrich` | Retrieves **architectural invariants** from the ADR store for an intent (no hard-coded business pattern) | amplifier / declarative |
 | `POST /lock_in_plan` | **Deterministic plan linter** (not an LLM): rejects with semantic violations, or issues a **capability ticket** (ephemeral JWT: plan hash + least-privilege scope) | amplifier / programmatic |
 | `POST /tools/{name}` | **Smart Platform Tools**: verify the ticket in-tool (`OUT_OF_PLAN_SCOPE` refusal), execute in a sandbox, return **semantic feedback** (`remediation_guidance`) | amplifier (+ one tagged compensatory translator) |
 | `GET /debt_report` | **Transition-debt governance**: every artifact is tagged `amplifier` or `compensatory`; compensatory ones carry a measurable sunset condition; the ratio must trend to 0 | governance |
@@ -28,8 +28,8 @@ go run ./cmd/ppg          # listens on :8000 (use -addr :8765 if busy)
 ```
 
 Then follow the [tutorial](docs/tutorial.md) (full cycle with `curl`), or wire
-a **stock Claude Code session** to the gateway — MCP tools for planning, a
-`PreToolUse` hook for deterministic in-tool gating — with
+a **stock Claude Code session** to the gateway (MCP tools for planning, a
+`PreToolUse` hook for deterministic in-tool gating) with
 [adapters/claudecode](adapters/claudecode/README.md).
 
 ## Documentation (Divio system)

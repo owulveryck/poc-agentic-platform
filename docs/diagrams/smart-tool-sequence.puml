@@ -7,9 +7,9 @@ title Contextual execution — a Smart Platform Tool consumes the ticket
 actor "AI Agent" as Agent
 
 box "Smart Platform Tool" #E8F0FE
-  participant "Ticket Verifier\n<size:10><i>least-privilege guard</i></size>" as Verifier
+  participant "Ticket Verifier\n<size:11><i>least-privilege guard</i></size>" as Verifier
   participant "Sandbox\nExecutor" as Exec
-  participant "Semantic Analyzer\n<size:10><i>amplifier — the crown jewel</i></size>" as Analyzer
+  participant "Semantic Analyzer\n<size:11><i>amplifier — the crown jewel</i></size>" as Analyzer
 end box
 
 database "Target\n(code, DB,\nsandbox)" as Target
@@ -35,7 +35,7 @@ end
 
 == 2 — Sandboxed execution ==
 Exec -> Target : dry-run / isolated apply
-Target --> Exec : raw result\n<size:10>(exit code, stack trace, SQLSTATE)</size>
+Target --> Exec : raw result\n<size:11>(exit code, stack trace, SQLSTATE)</size>
 
 == 3 — Semantic analysis ==
 Exec -> Analyzer : raw result + target context

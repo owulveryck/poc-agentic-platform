@@ -1,10 +1,28 @@
-// Package enrich builds the amplifier context returned to the agent before it
-// plans.
+// Package enrich answers the one question an agent should ask before it
+// plans: "here is what I am about to do (the intent) and where (the
+// repository): which of the organization's architectural decisions apply?"
 //
-// Amplifier / declarative: no business pattern is hard-coded here. The
-// function retrieves the semantic invariants declared by the architects in
-// the ADR store and lets the model reason over them — the smarter the model,
-// the better the exploitation.
+// Input:  the natural-language intent + the repository context.
+// Output: the "amplifier context": the invariants of every ADR whose scope
+// selectors match the intent, plus the list of compensatory scaffolding
+// mobilized (so the consumer sees which parts of its context are scheduled
+// to disappear).
+//
+// The caller injects the returned invariants into the agent's planning
+// context; the agent reasons over them and shapes its plan accordingly.
+// In short: a retrieval service over the architecture knowledge base,
+// scoped to the intent.
+//
+// Two deliberate non-goals:
+//   - enrich never enforces: it advises. Enforcement happens later and
+//     deterministically, in the plan linter at lock_in_plan time.
+//   - enrich never returns recipes ("edit file X at line Y"): only semantic
+//     invariants. No business pattern is hard-coded here — architects
+//     declare both the invariants and their scope selectors in the ADR
+//     store (see internal/adr), and the gateway only retrieves them.
+//
+// Durability: amplifier / declarative. The smarter the model, the better
+// it exploits the same invariants.
 package enrich
 
 import (

@@ -1,6 +1,6 @@
 # Reference — technical information
 
-> Factual and exhaustive. No pedagogy — see the [tutorial](tutorial.md) for
+> Factual and exhaustive. No pedagogy; see the [tutorial](tutorial.md) for
 > that.
 
 ## Endpoints
@@ -11,6 +11,31 @@
 | `POST` | `/lock_in_plan` | plan (see `schemas/plan.schema.json`) | `200` `{status: PLAN_LOCKED, plan_hash, execution_ticket}` | `400` `PLAN_MALFORMED` · `422` `PLAN_REJECTED` + `violations[]` |
 | `POST` | `/tools/{name}` | `{ticket, targets, payload}` | `200` tool result | `403` `REFUSED` (`TOOL_NOT_IN_PLAN` \| `OUT_OF_PLAN_SCOPE`) · `401` invalid/expired ticket |
 | `GET` | `/debt_report` | — | `200` debt report | — |
+
+## `/enrich` contract
+
+Request:
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `intent` | string | ✅ | Natural-language description of what the agent is about to do |
+| `repository_context.name` | string | ✅ | Repository being worked on |
+| `repository_context.tech_stack` | string[] | ✅ | Technologies of the repository |
+
+Response (`200`):
+
+| Field | Type | Description |
+|---|---|---|
+| `status` | string | `CONTEXT_ENRICHED` |
+| `amplifier_context.architectural_invariants[]` | object[] | The invariants to inject into the agent's planning context |
+| `amplifier_context.architectural_invariants[].adr_id` | string | Source ADR |
+| `amplifier_context.architectural_invariants[].invariant` | string | The semantic invariant text (never a recipe) |
+| `amplifier_context.source_adrs` | string[] | All matched ADR ids |
+| `compensatory_scaffolding[]` | object[] | Matched ADRs tagged `compensatory`, with their `sunset_condition` (the parts of the returned context scheduled to disappear) |
+
+Selection rule: an ADR is returned iff one of its `scope_selectors` appears
+(case-insensitive) in the intent. The result is advisory only; enforcement
+happens at `/lock_in_plan`.
 
 ## Plan contract (`schemas/plan.schema.json`)
 
@@ -71,13 +96,13 @@ sunset: model reads raw stack traces reliably >95%).
 | `PLAN_LOCKED` | Plan valid, ticket issued |
 | `TOOL_NOT_IN_PLAN` | Tool absent from the ticket scope (403) |
 | `OUT_OF_PLAN_SCOPE` | Target outside the allowed files (403) |
-| `EXECUTION_FAILED` | Application failure — see `error_category` |
+| `EXECUTION_FAILED` | Application failure; see `error_category` |
 | `GO_SYNTAX_ERROR` | Patched content does not parse; guidance provided |
 | `DATABASE_SCHEMA_CONFLICT` | Schema conflict; staging state provided |
 | `health: DEBT_ALERT` | Compensatory ratio ≥ 0.3 |
 
 ## Dependencies
 
-`github.com/golang-jwt/jwt/v5`, `gopkg.in/yaml.v3`. No OPA binary required —
+`github.com/golang-jwt/jwt/v5`, `gopkg.in/yaml.v3`. No OPA binary required;
 see [explanation.md](explanation.md#why-plain-go-policies) for the
 production path.

@@ -7,9 +7,9 @@ title Amplified planning — the Platform Planning Gateway (PPG)
 actor "AI Agent\n(Claude Code, Copilot,\ncustom agent...)" as Agent
 
 box "Platform Planning Gateway" #E8F0FE
-  participant "enrich()\n<size:10><i>amplifier / declarative</i></size>" as Enrich
-  participant "Plan Linter\n<size:10><i>amplifier / programmatic</i></size>" as Linter
-  participant "Ticket Service\n<size:10><i>least privilege</i></size>" as Ticket
+  participant "enrich()\n<size:11><i>amplifier / declarative</i></size>" as Enrich
+  participant "Plan Linter\n<size:11><i>amplifier / programmatic</i></size>" as Linter
+  participant "Ticket Service\n<size:11><i>least privilege</i></size>" as Ticket
 end box
 
 database "ADR store\n(architectural\ninvariants)" as ADR
@@ -17,7 +17,7 @@ database "ADR store\n(architectural\ninvariants)" as ADR
 == Phase 1 — Context amplification (soft) ==
 Agent -> Enrich : intent + repository_context
 Enrich -> ADR : retrieve invariants\nmatching the intent
-ADR --> Enrich : semantic invariants\n<size:10>(no step-by-step recipes)</size>
+ADR --> Enrich : semantic invariants\n<size:11>(no step-by-step recipes)</size>
 Enrich --> Agent : <b>amplifier_context</b>\n{architectural_invariants, source_adrs}
 
 note over Agent #E6F4EA
@@ -28,7 +28,7 @@ end note
 
 == Phase 2 — Deterministic plan gating (hard) ==
 Agent -> Linter : lock_in_plan(structured plan)
-Linter -> Linter : evaluate invariants\n<size:10>(deterministic code — not an LLM)</size>
+Linter -> Linter : evaluate invariants\n<size:11>(deterministic code — not an LLM)</size>
 
 alt <color:#EA4335>plan violates an invariant</color>
   Linter --> Agent : <color:#EA4335><b>422 — semantic violations</b></color>\n{policy_id, message, nature}
