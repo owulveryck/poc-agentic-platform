@@ -18,14 +18,23 @@ import (
 type Nature string
 
 const (
-	Amplifier    Nature = "amplifier"    // durable asset: gains value as models improve
-	Compensatory Nature = "compensatory" // scaffolding: must carry a sunset condition
+	// Amplifier marks an artifact as a durable asset: its value increases as
+	// model capabilities improve, so it is never scheduled for removal.
+	Amplifier Nature = "amplifier"
+	// Compensatory marks an artifact as temporary scaffolding: it compensates
+	// for a current model limitation and must carry a measurable sunset
+	// condition that determines when it can be removed.
+	Compensatory Nature = "compensatory"
 )
 
 // PolicyMeta is the governance record of one policy.
 type PolicyMeta struct {
-	Nature          Nature `json:"nature"`
-	Rationale       string `json:"rationale"`
+	// Nature positions the policy on the durability axis (Amplifier or Compensatory).
+	Nature Nature `json:"nature"`
+	// Rationale explains why this policy exists and what invariant it enforces.
+	Rationale string `json:"rationale"`
+	// SunsetCondition is the measurable condition under which a Compensatory
+	// policy can be removed. Empty for Amplifier policies.
 	SunsetCondition string `json:"sunset_condition,omitempty"`
 }
 
@@ -57,9 +66,14 @@ var frozenPaths = []string{"internal/old_payment.go", "internal/auth/"}
 
 // Violation is a semantic, actionable rejection reason returned to the agent.
 type Violation struct {
+	// PolicyID identifies which policy was violated (matches a key in Registry).
 	PolicyID string `json:"policy_id"`
-	Message  string `json:"message"`
-	Nature   Nature `json:"nature"`
+	// Message is a human-readable, agent-facing explanation of the violation
+	// and what must be changed for the plan to pass.
+	Message string `json:"message"`
+	// Nature mirrors the nature of the violated policy so consumers can
+	// distinguish durable invariants from compensatory scaffolding rejections.
+	Nature Nature `json:"nature"`
 }
 
 // Validate runs every deterministic policy over the plan and returns the

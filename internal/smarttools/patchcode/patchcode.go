@@ -22,6 +22,10 @@ func (Tool) ID() string { return "patch_code" }
 
 // Run applies the patch in the sandbox and analyzes the result.
 // payload: {"content": "<full patched Go file content>"}
+//
+// Returns {"status": "OK", "targets": targets} on success, or a
+// translate.SyntaxError payload when the patched content does not parse as
+// valid Go.
 func (Tool) Run(targets []string, payload map[string]any) map[string]any {
 	content, _ := payload["content"].(string)
 	if content == "" {

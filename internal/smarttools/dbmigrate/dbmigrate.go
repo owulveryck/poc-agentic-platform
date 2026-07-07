@@ -23,6 +23,9 @@ func (Tool) ID() string { return "apply_db_migration" }
 
 // Run applies the migration against the simulated staging state.
 // payload: {"statement": "CREATE TABLE payments (...)"}
+//
+// Returns {"status": "OK", "applied": targets} on success, or a
+// translate.DBConflict payload when the target table already exists in staging.
 func (Tool) Run(targets []string, payload map[string]any) map[string]any {
 	stmt, _ := payload["statement"].(string)
 	lower := strings.ToLower(stmt)

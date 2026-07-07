@@ -64,6 +64,33 @@ Two deliberate non-goals define its boundary:
 - **It returns invariants, never recipes.** "Every external call goes
   through the egress proxy" — yes. "Modify `router.go` line 42" — never.
 
+## How the agent knows what plan to submit
+
+The question "how does the agent know what to put in the plan?" has three
+separate answers, each at a different layer:
+
+- **When** to call `lock_in_plan`: the behavioral rule lives in `CLAUDE.md`
+  (or `CLAUDE.example.md` for this PoC). It tells the agent that no
+  modification is accepted without a locked plan.
+- **How** to format the plan: the MCP server exposes `plan.Plan` as a typed
+  Go struct; the SDK generates the JSON Schema automatically and delivers it
+  to the agent at session startup. The agent never needs to be told the
+  format in prose.
+- **What** to put in the plan: the invariants returned by
+  `get_platform_guidelines_for_intent` (i.e. `enrich()`) are injected into
+  the agent's planning context. The agent reasons over them and shapes the
+  content of each step accordingly.
+
+| Layer | Source | Controls |
+|---|---|---|
+| **When** to call `lock_in_plan` | `CLAUDE.md` | Behavioral rule |
+| **How** to format the plan | MCP tool schema (from `plan.Plan`) | JSON structure |
+| **What** the plan must contain | `enrich()` invariants | Semantic content |
+
+The schema validates structure deterministically; the linter validates ADR
+compliance deterministically; the model fills in the business content from
+the enriched context. None of the layers overlap.
+
 ## Why `enrich()` contains zero hard-coded pattern
 
 A first draft matched `if "payment" in intent` and appended recipes. Run

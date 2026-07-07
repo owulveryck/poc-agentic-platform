@@ -10,11 +10,14 @@
 // The day the generic translator sunsets, the enrichers stay untouched.
 package translate
 
-// GenericNature tags the raw→JSON translator on the durability axis.
-const (
-	GenericNature          = "compensatory"
-	GenericSunsetCondition = "Model reads raw stack traces reliably on >95% of an internal benchmark."
-)
+// GenericNature tags the raw→JSON translator as compensatory on the
+// durability axis. It is used in the transition-debt report.
+const GenericNature = "compensatory"
+
+// GenericSunsetCondition is the measurable condition under which the Generic
+// translator can be removed. It is referenced directly by the debt report so
+// that the sunset condition is defined in one place.
+const GenericSunsetCondition = "Model reads raw stack traces reliably on >95% of an internal benchmark."
 
 // Generic converts a raw execution outcome into a minimal structured payload.
 func Generic(exitCode int, raw string) map[string]any {

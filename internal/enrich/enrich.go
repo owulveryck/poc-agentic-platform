@@ -32,24 +32,38 @@ import (
 
 // InvariantRef is one invariant surfaced to the agent.
 type InvariantRef struct {
-	ADRID     string `json:"adr_id"`
+	// ADRID identifies the source Architecture Decision Record (e.g. "ADR-042").
+	ADRID string `json:"adr_id"`
+	// Invariant is the full body text of the ADR, injected into the agent's
+	// planning context so it can reason over the architectural constraint.
 	Invariant string `json:"invariant"`
 }
 
 // Scaffolding exposes the compensatory debt mobilized for this intent, so the
 // consumer sees which parts of its context are scheduled to disappear.
 type Scaffolding struct {
-	ADRID           string `json:"adr_id"`
+	// ADRID identifies the source Architecture Decision Record.
+	ADRID string `json:"adr_id"`
+	// SunsetCondition is the measurable condition under which this scaffolding
+	// will be removed from the platform.
 	SunsetCondition string `json:"sunset_condition"`
 }
 
 // Response is the payload of POST /enrich.
 type Response struct {
-	Status           string `json:"status"`
+	// Status is always "CONTEXT_ENRICHED" on success.
+	Status string `json:"status"`
+	// AmplifierContext holds the durable architectural knowledge retrieved for
+	// this intent.
 	AmplifierContext struct {
+		// ArchitecturalInvariants is the list of invariants whose scope
+		// selectors matched the intent.
 		ArchitecturalInvariants []InvariantRef `json:"architectural_invariants"`
-		SourceADRs              []string       `json:"source_adrs"`
+		// SourceADRs lists the ADR IDs of the matched invariants, for tracing.
+		SourceADRs []string `json:"source_adrs"`
 	} `json:"amplifier_context"`
+	// CompensatoryScaffolding lists the temporary scaffolding mobilized for
+	// this intent so the consumer knows which context will eventually disappear.
 	CompensatoryScaffolding []Scaffolding `json:"compensatory_scaffolding"`
 }
 

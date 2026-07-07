@@ -18,17 +18,25 @@ import (
 // OutOfScopeError is the deterministic refusal returned when the agent drifts
 // from its locked plan. Nothing has been executed when it is raised.
 type OutOfScopeError struct {
-	Code      string   `json:"code"` // TOOL_NOT_IN_PLAN | OUT_OF_PLAN_SCOPE
-	Attempted string   `json:"attempted"`
-	Allowed   []string `json:"allowed"`
+	// Code is the machine-readable refusal category:
+	// TOOL_NOT_IN_PLAN means the tool ID is absent from the ticket scope;
+	// OUT_OF_PLAN_SCOPE means one or more target paths are not allowed.
+	Code string `json:"code"`
+	// Attempted is the tool ID or file path that triggered the refusal.
+	Attempted string `json:"attempted"`
+	// Allowed is the set of tool IDs or file paths the ticket does permit.
+	Allowed []string `json:"allowed"`
 }
 
+// Error formats the refusal as "CODE: attempted "X", allowed [Y Z]".
 func (e *OutOfScopeError) Error() string {
 	return fmt.Sprintf("%s: attempted %q, allowed %v", e.Code, e.Attempted, e.Allowed)
 }
 
 // Tool is the contract every Smart Platform Tool implements.
 type Tool interface {
+	// ID returns the unique identifier used for catalog registration and
+	// ticket scope matching (e.g. "patch_code", "apply_db_migration").
 	ID() string
 	// Run assumes the scope has already been verified by Guard.
 	Run(targets []string, payload map[string]any) map[string]any
@@ -36,8 +44,12 @@ type Tool interface {
 
 // ToolMeta tags each tool on the durability axis for the debt report.
 type ToolMeta struct {
-	Tool            Tool
-	Nature          string
+	// Tool is the registered Smart Tool implementation.
+	Tool Tool
+	// Nature is the durability classification ("amplifier" or "compensatory").
+	Nature string
+	// SunsetCondition is the measurable condition under which a compensatory
+	// tool can be removed. Empty for amplifier tools.
 	SunsetCondition string
 }
 

@@ -24,15 +24,24 @@ const TTL = 15 * time.Minute
 
 // Scope is the least-privilege contract derived from the locked plan.
 type Scope struct {
+	// AllowModify is the set of file paths (or path prefixes ending in *)
+	// the ticket holder is permitted to modify. Derived from plan step targets.
 	AllowModify []string `json:"allow_modify"`
-	AllowTool   []string `json:"allow_tool"`
+	// AllowTool is the set of Smart Tool IDs the ticket holder may invoke.
+	// Derived from plan step tool fields.
+	AllowTool []string `json:"allow_tool"`
 }
 
 // Claims are the ticket claims carried by the JWT.
 type Claims struct {
+	// SessionID matches the plan's session_id, tying every downstream
+	// verification back to the originating planning session.
 	SessionID string `json:"session_id"`
-	PlanHash  string `json:"plan_hash"`
-	Scope     Scope  `json:"scope"`
+	// PlanHash is the SHA-256 fingerprint of the locked plan. Execution tools
+	// can compare it against the current plan to detect plan substitution.
+	PlanHash string `json:"plan_hash"`
+	// Scope is the least-privilege contract the agent must stay within.
+	Scope Scope `json:"scope"`
 	jwt.RegisteredClaims
 }
 

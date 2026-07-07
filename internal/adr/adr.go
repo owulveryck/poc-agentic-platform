@@ -16,24 +16,41 @@ import (
 
 // Enforcement describes how an invariant is enforced.
 type Enforcement struct {
-	Mode     string `yaml:"mode" json:"mode"`
+	// Mode is the enforcement mechanism (e.g. "linter-policy", "manual-review").
+	Mode string `yaml:"mode" json:"mode"`
+	// PolicyID is the linter policy that implements this invariant. Only set
+	// when Mode is "linter-policy"; matches a key in linter.Registry.
 	PolicyID string `yaml:"policy_id" json:"policy_id,omitempty"`
 }
 
 // Invariant is one architectural invariant, parsed from an ADR file.
 type Invariant struct {
-	ADRID           string      `yaml:"adr_id" json:"adr_id"`
-	Title           string      `yaml:"title" json:"title"`
-	Status          string      `yaml:"status" json:"status"`
-	Nature          string      `yaml:"nature" json:"nature"` // "amplifier" | "compensatory"
-	SunsetCondition string      `yaml:"sunset_condition" json:"sunset_condition,omitempty"`
-	ScopeSelectors  []string    `yaml:"scope_selectors" json:"scope_selectors"`
-	Enforcement     Enforcement `yaml:"enforcement" json:"enforcement"`
-	InvariantText   string      `yaml:"-" json:"invariant"`
+	// ADRID is the unique identifier of the source ADR (e.g. "ADR-042").
+	ADRID string `yaml:"adr_id" json:"adr_id"`
+	// Title is the human-readable name of the invariant.
+	Title string `yaml:"title" json:"title"`
+	// Status reflects the ADR lifecycle state (e.g. "accepted", "deprecated").
+	Status string `yaml:"status" json:"status"`
+	// Nature positions the invariant on the durability axis:
+	// "amplifier" for durable decisions, "compensatory" for temporary scaffolding.
+	Nature string `yaml:"nature" json:"nature"`
+	// SunsetCondition is the measurable condition under which a compensatory
+	// invariant can be removed. Empty for amplifier invariants.
+	SunsetCondition string `yaml:"sunset_condition" json:"sunset_condition,omitempty"`
+	// ScopeSelectors are the keywords used to match this invariant to an
+	// intent during retrieval (see Store.Retrieve).
+	ScopeSelectors []string `yaml:"scope_selectors" json:"scope_selectors"`
+	// Enforcement describes the mechanism that enforces this invariant.
+	Enforcement Enforcement `yaml:"enforcement" json:"enforcement"`
+	// InvariantText is the body of the ADR Markdown file (everything after
+	// the YAML front matter). Injected into the agent's planning context.
+	InvariantText string `yaml:"-" json:"invariant"`
 }
 
 // Store holds all invariants loaded from an ADR directory.
 type Store struct {
+	// Invariants is the complete set of architectural invariants available
+	// for retrieval. Populated by Load; never modified after construction.
 	Invariants []Invariant
 }
 

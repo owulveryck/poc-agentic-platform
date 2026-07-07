@@ -12,27 +12,52 @@ import (
 
 // RepoContext describes the repository the agent works on.
 type RepoContext struct {
-	Name          string   `json:"name"`
-	TechStack     []string `json:"tech_stack"`
-	CurrentBranch string   `json:"current_branch,omitempty"`
+	// Name is the canonical repository name (e.g. "payments-service").
+	Name string `json:"name"`
+	// TechStack lists the programming languages and frameworks in use
+	// (e.g. ["Go", "PostgreSQL"]). Used by linter policies to apply
+	// language-specific rules.
+	TechStack []string `json:"tech_stack"`
+	// CurrentBranch is the git branch the agent is working on. Optional;
+	// used for audit purposes.
+	CurrentBranch string `json:"current_branch,omitempty"`
 }
 
 // Step is one node of the agent's execution graph.
 type Step struct {
-	ID        string   `json:"id"`
-	Action    string   `json:"action"`
-	Tool      string   `json:"tool"`
-	Targets   []string `json:"targets"`
+	// ID is a unique identifier for this step within the plan (e.g. "step-1").
+	ID string `json:"id"`
+	// Action is a natural-language description of what this step does
+	// (e.g. "Add user authentication middleware").
+	Action string `json:"action"`
+	// Tool is the Smart Platform Tool to invoke for this step
+	// (e.g. "patch_code", "apply_db_migration", "go-test").
+	Tool string `json:"tool"`
+	// Targets is the list of file paths or database objects the tool will act
+	// on. These are extracted to form the least-privilege scope of the ticket.
+	Targets []string `json:"targets"`
+	// DependsOn lists IDs of steps that must complete before this one runs.
+	// Omit for steps with no prerequisites.
 	DependsOn []string `json:"depends_on,omitempty"`
 }
 
 // Plan is the structured plan the agent submits to lock_in_plan.
 type Plan struct {
-	SessionID         string      `json:"session_id"`
-	StreamAlignedTeam string      `json:"stream_aligned_team,omitempty"`
-	Intent            string      `json:"intent"`
+	// SessionID is a unique identifier for this planning session. Used as the
+	// JWT subject so every ticket can be traced back to the originating plan.
+	SessionID string `json:"session_id"`
+	// StreamAlignedTeam is the team that owns this work. Optional; used for
+	// audit and routing.
+	StreamAlignedTeam string `json:"stream_aligned_team,omitempty"`
+	// Intent is the natural-language description of what the agent is trying
+	// to achieve. Must be at least 5 characters. Used by the enrich endpoint
+	// to retrieve relevant architectural invariants.
+	Intent string `json:"intent"`
+	// RepositoryContext describes the target repository.
 	RepositoryContext RepoContext `json:"repository_context"`
-	Steps             []Step      `json:"steps"`
+	// Steps is the ordered, acyclic execution graph the agent will follow.
+	// Must contain at least one step.
+	Steps []Step `json:"steps"`
 }
 
 // ValidateStructure enforces the structural contract (the JSON-Schema part).
