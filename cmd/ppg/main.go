@@ -1,9 +1,10 @@
 // Command ppg runs the Platform Planning Gateway PoC:
 //
-//	POST /enrich        — amplifier context (ADR invariants) for an intent
-//	POST /lock_in_plan  — deterministic plan linter + capability ticket
-//	POST /tools/{name}  — Smart Platform Tools (ticket verified in-tool)
-//	GET  /debt_report   — transition-debt governance report
+//	POST /enrich           — amplifier context (ADR invariants) for an intent
+//	POST /lock_in_plan     — deterministic plan linter + capability ticket
+//	POST /tools/{name}     — Smart Platform Tools (ticket verified in-tool)
+//	GET  /debt_report      — transition-debt governance report
+//	POST /validate_skill   — enterprise skill governance linter (structure + security tier)
 package main
 
 import (
@@ -18,6 +19,7 @@ import (
 	"github.com/owulveryck/poc-agentic-platform/internal/enrich"
 	"github.com/owulveryck/poc-agentic-platform/internal/linter"
 	"github.com/owulveryck/poc-agentic-platform/internal/plan"
+	"github.com/owulveryck/poc-agentic-platform/internal/skill"
 	"github.com/owulveryck/poc-agentic-platform/internal/smarttools"
 	"github.com/owulveryck/poc-agentic-platform/internal/smarttools/dbmigrate"
 	"github.com/owulveryck/poc-agentic-platform/internal/smarttools/patchcode"
@@ -27,6 +29,7 @@ import (
 func main() {
 	addr := flag.String("addr", ":8000", "listen address")
 	adrDir := flag.String("adr", "adr", "path to the ADR store")
+	skillGovDir := flag.String("skill-governance", "skill-governance", "path to the skill governance Rego policy directory")
 	flag.Parse()
 
 	store, err := adr.Load(*adrDir)
@@ -41,6 +44,12 @@ func main() {
 	}
 	log.Printf("Plan linter ready: %d policies", len(lint.Registry))
 
+	skillLint, err := skill.NewLinter(*skillGovDir)
+	if err != nil {
+		log.Fatalf("loading skill governance linter: %v", err)
+	}
+	log.Printf("Skill governance linter ready")
+
 	smarttools.Register(patchcode.Tool{}, "amplifier", "")
 	smarttools.Register(dbmigrate.Tool{}, "amplifier", "")
 
@@ -49,6 +58,7 @@ func main() {
 	mux.HandleFunc("POST /lock_in_plan", handleLockInPlan(lint))
 	mux.HandleFunc("POST /tools/{name}", handleTool)
 	mux.HandleFunc("GET /debt_report", handleDebtReport(lint.Registry))
+	mux.HandleFunc("POST /validate_skill", handleValidateSkill(skillLint))
 
 	log.Printf("Platform Planning Gateway listening on %s", *addr)
 	log.Fatal(http.ListenAndServe(*addr, mux))
@@ -132,6 +142,28 @@ func handleTool(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, result)
+}
+
+func handleValidateSkill(lint *skill.Linter) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var s skill.Skill
+		if err := json.NewDecoder(r.Body).Decode(&s); err != nil {
+			httpError(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+			return
+		}
+		if violations := lint.Validate(&s); len(violations) > 0 {
+			httpError(w, http.StatusUnprocessableEntity, map[string]any{
+				"status":     "SKILL_REJECTED",
+				"violations": violations,
+				"guidance":   "Fix the violations above before publishing the skill to the registry.",
+			})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"status": "SKILL_VALID",
+			"tier":   lint.Tier(&s),
+		})
+	}
 }
 
 func handleDebtReport(registry map[string]linter.PolicyMeta) http.HandlerFunc {
