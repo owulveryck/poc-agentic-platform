@@ -5,35 +5,56 @@
 //
 // Usage:
 //
-//	go run ./adapters/preflight "add the Seka payment method to checkout"
+//	go run ./adapters/preflight [-repo <name>] [-stack Go,SQL] "add the Seka payment method to checkout"
+//
+// The gateway URL is read from the PPG_URL environment variable and defaults
+// to http://localhost:8000 (same convention as the Claude Code MCP server).
 package main
 
 import (
 	"bytes"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
-const gatewayURL = "http://localhost:8000"
+func gatewayURL() string {
+	if u := os.Getenv("PPG_URL"); u != "" {
+		return u
+	}
+	return "http://localhost:8000"
+}
 
 func main() {
-	if len(os.Args) < 2 {
-		log.Fatal(`usage: preflight "<intent>"`)
+	repo := flag.String("repo", "checkout-service", "repository name sent as repository_context.name")
+	stack := flag.String("stack", "Go", "comma-separated tech stack sent as repository_context.tech_stack")
+	flag.Parse()
+
+	if flag.NArg() < 1 {
+		log.Fatal(`usage: preflight [-repo <name>] [-stack Go,SQL] "<intent>"`)
 	}
-	intent := os.Args[1]
+	intent := flag.Arg(0)
+
+	var techStack []string
+	for _, t := range strings.Split(*stack, ",") {
+		if t = strings.TrimSpace(t); t != "" {
+			techStack = append(techStack, t)
+		}
+	}
 
 	body, _ := json.Marshal(map[string]any{
 		"intent": intent,
 		"repository_context": map[string]any{
-			"name":       "checkout-service",
-			"tech_stack": []string{"Go"},
+			"name":       *repo,
+			"tech_stack": techStack,
 		},
 	})
-	resp, err := http.Post(gatewayURL+"/enrich", "application/json", bytes.NewReader(body))
+	resp, err := http.Post(gatewayURL()+"/enrich", "application/json", bytes.NewReader(body))
 	if err != nil {
 		log.Fatalf("calling the gateway: %v", err)
 	}

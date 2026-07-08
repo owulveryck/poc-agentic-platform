@@ -31,6 +31,9 @@ func (Tool) Run(targets []string, payload map[string]any) map[string]any {
 	lower := strings.ToLower(stmt)
 	if strings.HasPrefix(lower, "create table ") && !strings.Contains(lower, "if not exists") {
 		fields := strings.Fields(lower)
+		if len(fields) < 3 {
+			return translate.Generic(1, "malformed CREATE TABLE statement: missing table name")
+		}
 		table := strings.Trim(fields[2], "(")
 		if stagingTables[table] {
 			base := translate.Generic(1, `SQLSTATE 42P07: table "`+table+`" already exists`)

@@ -31,6 +31,9 @@ func (Tool) Run(targets []string, payload map[string]any) map[string]any {
 	if content == "" {
 		return translate.Generic(1, "empty patch content")
 	}
+	if len(targets) == 0 {
+		return translate.Generic(1, "no target file provided")
+	}
 
 	// Sandbox execution: parse the patched content without touching disk.
 	fset := token.NewFileSet()

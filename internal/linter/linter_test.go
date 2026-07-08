@@ -128,6 +128,36 @@ func TestFrozenFileIsRejected(t *testing.T) {
 	}
 }
 
+func TestUndecodableViolationFailsClosed(t *testing.T) {
+	store := &adr.Store{
+		Invariants: []adr.Invariant{
+			{
+				ADRID:  "BAD-001",
+				Title:  "Malformed policy output",
+				Nature: "amplifier",
+				Enforcement: adr.Enforcement{
+					Mode:     "programmatic",
+					PolicyID: "malformed_shape",
+					RegoFile: "BAD-001.rego",
+				},
+			},
+		},
+	}
+	lint, err := New(store, "testdata")
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	violations := lint.Validate(basePlan([]plan.Step{
+		{ID: "s1", Action: "noop", Tool: "patch_code", Targets: []string{"x.txt"}},
+	}))
+	if len(violations) == 0 {
+		t.Fatal("expected a linter_eval_error violation when the OPA result cannot be decoded (fail closed), got none")
+	}
+	if violations[0].PolicyID != "linter_eval_error" {
+		t.Fatalf("expected linter_eval_error, got %v", violations)
+	}
+}
+
 func TestDBChangeRequiresMigration(t *testing.T) {
 	lint, err := New(testStore(), "testdata")
 	if err != nil {

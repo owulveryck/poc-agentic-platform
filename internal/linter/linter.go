@@ -126,13 +126,23 @@ func (l *Linter) Validate(p *plan.Plan) []Violation {
 		return nil
 	}
 
+	// Fail closed: a plan whose evaluation result cannot be decoded must be
+	// rejected, not silently locked.
 	raw, err := json.Marshal(rs[0].Expressions[0].Value)
 	if err != nil {
-		return nil
+		return []Violation{{
+			PolicyID: "linter_eval_error",
+			Message:  fmt.Sprintf("cannot encode OPA result: %v", err),
+			Nature:   Compensatory,
+		}}
 	}
 	var violations []Violation
 	if err := json.Unmarshal(raw, &violations); err != nil {
-		return nil
+		return []Violation{{
+			PolicyID: "linter_eval_error",
+			Message:  fmt.Sprintf("cannot decode OPA violations: %v", err),
+			Nature:   Compensatory,
+		}}
 	}
 	return violations
 }
