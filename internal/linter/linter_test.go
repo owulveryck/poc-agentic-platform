@@ -4,8 +4,49 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/owulveryck/poc-agentic-platform/internal/adr"
 	"github.com/owulveryck/poc-agentic-platform/internal/plan"
 )
+
+// testStore returns a minimal ADR store with the three programmatic policies,
+// pointing at .rego files in the testdata/ directory.
+func testStore() *adr.Store {
+	return &adr.Store{
+		Invariants: []adr.Invariant{
+			{
+				ADRID:  "ADR-060",
+				Title:  "Test suite required for Go stacks",
+				Nature: "amplifier",
+				Enforcement: adr.Enforcement{
+					Mode:     "programmatic",
+					PolicyID: "go_tests_present",
+					RegoFile: "ADR-060.rego",
+				},
+			},
+			{
+				ADRID:  "ADR-051",
+				Title:  "Schema migrations precede code changes",
+				Nature: "amplifier",
+				Enforcement: adr.Enforcement{
+					Mode:     "programmatic",
+					PolicyID: "db_migration_precedes_code",
+					RegoFile: "ADR-051.rego",
+				},
+			},
+			{
+				ADRID:           "ADR-070",
+				Title:           "Frozen legacy paths enumeration",
+				Nature:          "compensatory",
+				SunsetCondition: "Model honors '@deprecated' semantically on >95% of an internal benchmark.",
+				Enforcement: adr.Enforcement{
+					Mode:     "programmatic",
+					PolicyID: "explicit_frozen_files_enumeration",
+					RegoFile: "ADR-070.rego",
+				},
+			},
+		},
+	}
+}
 
 func basePlan(steps []plan.Step) *plan.Plan {
 	return &plan.Plan{
@@ -20,10 +61,14 @@ func basePlan(steps []plan.Step) *plan.Plan {
 }
 
 func TestGoPlanWithoutTestsIsRejected(t *testing.T) {
+	lint, err := New(testStore(), "testdata")
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
 	p := basePlan([]plan.Step{
 		{ID: "s1", Action: "edit router", Tool: "patch_code", Targets: []string{"internal/payment/router.go"}},
 	})
-	violations := Validate(p)
+	violations := lint.Validate(p)
 	if len(violations) == 0 {
 		t.Fatal("expected a violation for a Go plan without tests")
 	}
@@ -42,22 +87,30 @@ func TestGoPlanWithoutTestsIsRejected(t *testing.T) {
 }
 
 func TestConformingPlanPasses(t *testing.T) {
+	lint, err := New(testStore(), "testdata")
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
 	p := basePlan([]plan.Step{
 		{ID: "s1", Action: "generate migration", Tool: "db-migration-generator", Targets: []string{"migrations/001_seka.sql"}},
 		{ID: "s2", Action: "edit router", Tool: "patch_code", Targets: []string{"internal/payment/router.go"}},
 		{ID: "s3", Action: "go test ./...", Tool: "go-test", Targets: []string{"tests/integration_payment_test.go"}},
 	})
-	if violations := Validate(p); len(violations) != 0 {
+	if violations := lint.Validate(p); len(violations) != 0 {
 		t.Fatalf("expected no violations, got %v", violations)
 	}
 }
 
 func TestFrozenFileIsRejected(t *testing.T) {
+	lint, err := New(testStore(), "testdata")
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
 	p := basePlan([]plan.Step{
 		{ID: "s1", Action: "edit legacy", Tool: "patch_code", Targets: []string{"internal/old_payment.go"}},
 		{ID: "s2", Action: "go test ./...", Tool: "go-test", Targets: []string{"tests/x_test.go"}},
 	})
-	violations := Validate(p)
+	violations := lint.Validate(p)
 	found := false
 	for _, v := range violations {
 		if v.PolicyID == "explicit_frozen_files_enumeration" {
@@ -76,11 +129,15 @@ func TestFrozenFileIsRejected(t *testing.T) {
 }
 
 func TestDBChangeRequiresMigration(t *testing.T) {
+	lint, err := New(testStore(), "testdata")
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
 	p := basePlan([]plan.Step{
 		{ID: "s1", Action: "alter table", Tool: "patch_code", Targets: []string{"db/schema.sql"}},
 		{ID: "s2", Action: "go test ./...", Tool: "go-test", Targets: []string{"tests/x_test.go"}},
 	})
-	violations := Validate(p)
+	violations := lint.Validate(p)
 	found := false
 	for _, v := range violations {
 		if v.PolicyID == "db_migration_precedes_code" {

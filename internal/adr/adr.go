@@ -16,11 +16,16 @@ import (
 
 // Enforcement describes how an invariant is enforced.
 type Enforcement struct {
-	// Mode is the enforcement mechanism (e.g. "linter-policy", "manual-review").
+	// Mode is the enforcement mechanism (e.g. "programmatic", "declarative").
 	Mode string `yaml:"mode" json:"mode"`
 	// PolicyID is the linter policy that implements this invariant. Only set
-	// when Mode is "linter-policy"; matches a key in linter.Registry.
+	// when Mode is "programmatic"; matches a key in linter.Registry.
 	PolicyID string `yaml:"policy_id" json:"policy_id,omitempty"`
+	// RegoFile is the filename (relative to the ADR directory) of the Rego
+	// policy that deterministically enforces this invariant at lock_in_plan
+	// time. Only set when Mode is "programmatic". The semantic directive
+	// (InvariantText) serves at enrich() time; this file serves at lock time.
+	RegoFile string `yaml:"rego" json:"rego,omitempty"`
 }
 
 // Invariant is one architectural invariant, parsed from an ADR file.

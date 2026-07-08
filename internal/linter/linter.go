@@ -1,16 +1,26 @@
 // Package linter is the deterministic plan validator behind lock_in_plan.
 //
-// It is deliberately NOT an LLM: it runs plain code over the structured plan,
-// so a non-conforming plan is rejected 100% of the time, reproducibly. Each
-// policy is tagged with its nature on the durability axis (amplifier vs
-// compensatory) and, when compensatory, carries a measurable sunset condition.
-// Production note: these rules map one-to-one to Open Policy Agent / Rego
-// policies; plain Go keeps the PoC dependency-free.
+// It is deliberately NOT an LLM: it evaluates Open Policy Agent (OPA/Rego)
+// policies loaded from ADR-paired .rego files, so a non-conforming plan is
+// rejected 100% of the time, reproducibly. Each policy is tagged with its
+// nature on the durability axis (amplifier vs compensatory) and, when
+// compensatory, carries a measurable sunset condition.
+//
+// Each ADR is a dual-representation governance artifact: the semantic
+// directive (InvariantText) is injected at enrich() time to shape planning;
+// the paired .rego file is evaluated at lock_in_plan time for deterministic
+// enforcement. The two representations can have different lifetimes on the
+// durability axis.
 package linter
 
 import (
-	"strings"
+	"context"
+	"encoding/json"
+	"fmt"
+	"path/filepath"
 
+	"github.com/open-policy-agent/opa/v1/rego"
+	"github.com/owulveryck/poc-agentic-platform/internal/adr"
 	"github.com/owulveryck/poc-agentic-platform/internal/plan"
 )
 
@@ -38,32 +48,6 @@ type PolicyMeta struct {
 	SunsetCondition string `json:"sunset_condition,omitempty"`
 }
 
-// Registry is the tagged policy catalog. The transition-debt report is
-// computed from it: the compensatory ratio must trend toward zero over time.
-var Registry = map[string]PolicyMeta{
-	"go_tests_present": {
-		Nature:    Amplifier,
-		Rationale: "SDLC invariant: the tests must exist, whoever writes them.",
-	},
-	"db_migration_precedes_code": {
-		Nature:    Amplifier,
-		Rationale: "Ordering invariant, true whatever the model.",
-	},
-	"external_call_via_proxy": {
-		Nature:    Amplifier,
-		Rationale: "Organizational security constraint, enforced declaratively via ADR-042.",
-	},
-	"explicit_frozen_files_enumeration": {
-		Nature:          Compensatory,
-		Rationale:       "Exhaustive enumeration needed as long as the model cannot infer deprecated legacy code on its own.",
-		SunsetCondition: "Model honors '@deprecated' semantically on >95% of an internal benchmark.",
-	},
-}
-
-// frozenPaths is the compensatory enumeration governed by
-// explicit_frozen_files_enumeration (see its sunset condition).
-var frozenPaths = []string{"internal/old_payment.go", "internal/auth/"}
-
 // Violation is a semantic, actionable rejection reason returned to the agent.
 type Violation struct {
 	// PolicyID identifies which policy was violated (matches a key in Registry).
@@ -76,64 +60,79 @@ type Violation struct {
 	Nature Nature `json:"nature"`
 }
 
-// Validate runs every deterministic policy over the plan and returns the
+// Linter evaluates OPA/Rego policies derived from ADR .rego files.
+type Linter struct {
+	// Registry is the governance catalog of all tracked policies, keyed by
+	// policy_id. Used by the debt report to measure the compensatory ratio.
+	Registry map[string]PolicyMeta
+	prepared *rego.PreparedEvalQuery
+}
+
+// New builds a Linter from the ADR store. It populates the Registry from ADR
+// metadata and compiles a single OPA PreparedEvalQuery over all paired .rego
+// files found in adrDir. ADRs without a RegoFile (e.g. declarative-only ADRs)
+// still contribute to the Registry but not to the Rego evaluation.
+func New(store *adr.Store, adrDir string) (*Linter, error) {
+	l := &Linter{Registry: make(map[string]PolicyMeta)}
+
+	var regoPaths []string
+	for _, inv := range store.Invariants {
+		if inv.Enforcement.PolicyID == "" {
+			continue
+		}
+		l.Registry[inv.Enforcement.PolicyID] = PolicyMeta{
+			Nature:          Nature(inv.Nature),
+			Rationale:       inv.Title,
+			SunsetCondition: inv.SunsetCondition,
+		}
+		if inv.Enforcement.RegoFile != "" {
+			regoPaths = append(regoPaths, filepath.Join(adrDir, inv.Enforcement.RegoFile))
+		}
+	}
+
+	if len(regoPaths) == 0 {
+		return l, nil
+	}
+
+	ctx := context.Background()
+	pq, err := rego.New(
+		rego.Query("data.ppg.linter.violation"),
+		rego.Load(regoPaths, nil),
+	).PrepareForEval(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("preparing OPA query: %w", err)
+	}
+	l.prepared = &pq
+	return l, nil
+}
+
+// Validate evaluates all Rego policies against the plan and returns the
 // violations. An empty slice means the plan can be locked.
-func Validate(p *plan.Plan) []Violation {
+func (l *Linter) Validate(p *plan.Plan) []Violation {
+	if l.prepared == nil {
+		return nil
+	}
+
+	ctx := context.Background()
+	rs, err := l.prepared.Eval(ctx, rego.EvalInput(p))
+	if err != nil {
+		return []Violation{{
+			PolicyID: "linter_eval_error",
+			Message:  fmt.Sprintf("OPA evaluation error: %v", err),
+			Nature:   Compensatory,
+		}}
+	}
+	if len(rs) == 0 || rs[0].Expressions[0].Value == nil {
+		return nil
+	}
+
+	raw, err := json.Marshal(rs[0].Expressions[0].Value)
+	if err != nil {
+		return nil
+	}
 	var violations []Violation
-
-	if p.HasTech("Go") && !hasGoTest(p) {
-		violations = append(violations, violation("go_tests_present",
-			"SDLC invariant violated: the plan must contain a 'go test' step for a Go stack."))
+	if err := json.Unmarshal(raw, &violations); err != nil {
+		return nil
 	}
-
-	if modifiesDB(p) && !hasMigrationStep(p) {
-		violations = append(violations, violation("db_migration_precedes_code",
-			"Invalid ordering: a schema migration step (tool 'db-migration-generator') must accompany any database change."))
-	}
-
-	for _, s := range p.Steps {
-		for _, t := range s.Targets {
-			for _, fp := range frozenPaths {
-				if strings.HasPrefix(t, fp) {
-					violations = append(violations, violation("explicit_frozen_files_enumeration",
-						"Frozen zone: modifying '"+t+"' is forbidden (deprecated legacy code)."))
-				}
-			}
-		}
-	}
-
 	return violations
-}
-
-func violation(policyID, msg string) Violation {
-	return Violation{PolicyID: policyID, Message: msg, Nature: Registry[policyID].Nature}
-}
-
-func hasGoTest(p *plan.Plan) bool {
-	for _, s := range p.Steps {
-		if s.Tool == "go-test" || strings.Contains(strings.ToLower(s.Action), "go test") {
-			return true
-		}
-	}
-	return false
-}
-
-func modifiesDB(p *plan.Plan) bool {
-	for _, s := range p.Steps {
-		for _, t := range s.Targets {
-			if strings.Contains(strings.ToLower(t), "db/") || strings.HasSuffix(strings.ToLower(t), ".sql") {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-func hasMigrationStep(p *plan.Plan) bool {
-	for _, s := range p.Steps {
-		if s.Tool == "db-migration-generator" {
-			return true
-		}
-	}
-	return false
 }

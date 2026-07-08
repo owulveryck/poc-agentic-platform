@@ -60,7 +60,7 @@ edit against its scope.
 - Claude submits its structured plan through `lock_in_plan` → either reads
   the semantic violations and corrects, or the plan locks and the ticket
   lands in `.ppg-ticket`. (The plan format is taught by the MCP tool schema,
-  auto-generated from `plan.Plan`; the content is shaped by the invariants
+  auto-generated from [`plan.Plan`](https://pkg.go.dev/github.com/owulveryck/poc-agentic-platform@v0.0.1/internal/plan#Plan); the content is shaped by the invariants
   from `get_platform_guidelines_for_intent`; the behavioral rule lives in
   `CLAUDE.md`. See [How the agent knows what plan to submit](../../docs/explanation.md#how-the-agent-knows-what-plan-to-submit).)
 - Every `Edit`/`Write` first passes through `ppg-guard`. In scope: silent.

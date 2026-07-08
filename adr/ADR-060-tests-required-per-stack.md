@@ -8,6 +8,7 @@ scope_selectors: ["go", "golang", "test", "feature", "refactor"]
 enforcement:
   mode: programmatic
   policy_id: go_tests_present
+  rego: ADR-060.rego
 ---
 
 ## Invariant

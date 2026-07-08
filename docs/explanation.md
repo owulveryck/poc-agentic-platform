@@ -72,7 +72,7 @@ separate answers, each at a different layer:
 - **When** to call `lock_in_plan`: the behavioral rule lives in `CLAUDE.md`
   (or `CLAUDE.example.md` for this PoC). It tells the agent that no
   modification is accepted without a locked plan.
-- **How** to format the plan: the MCP server exposes `plan.Plan` as a typed
+- **How** to format the plan: the MCP server exposes [`plan.Plan`](https://pkg.go.dev/github.com/owulveryck/poc-agentic-platform@v0.0.1/internal/plan#Plan) as a typed
   Go struct; the SDK generates the JSON Schema automatically and delivers it
   to the agent at session startup. The agent never needs to be told the
   format in prose.
@@ -90,6 +90,36 @@ separate answers, each at a different layer:
 The schema validates structure deterministically; the linter validates ADR
 compliance deterministically; the model fills in the business content from
 the enriched context. None of the layers overlap.
+
+## The dual-representation ADR
+
+Each ADR with programmatic enforcement is a **dual-representation governance
+artifact**: it carries two complementary encodings of the same architectural
+decision, serving two distinct moments in the agentic loop.
+
+| Representation | Field | Consumed by | Moment |
+|---|---|---|---|
+| Semantic directive | `InvariantText` (Markdown body) | `enrich()` → agent planning context | Before the plan |
+| Rego policy | `Enforcement.RegoFile` (`.rego` file) | `lock_in_plan` linter (OPA evaluation) | At plan submission |
+
+The **semantic directive** is injected into the agent's planning context at
+`enrich()` time. It is prose the model reasons over: *"every external call
+must go through the egress proxy"*. The agent uses it to shape the *content*
+of each plan step.
+
+The **Rego policy** is evaluated deterministically at `lock_in_plan` time by
+the embedded [Open Policy Agent](https://www.openpolicyagent.org/) engine.
+It does not reason; it checks. A conforming plan passes silently; a
+non-conforming plan gets a structured `violation` object (with `policy_id`,
+`message`, and `nature`) returned to the agent for self-correction.
+
+The two representations are decoupled on the **durability axis**. A semantic
+directive may be a permanent amplifier (the invariant is always useful) while
+the paired Rego policy is compensatory scaffolding (it will be retired once
+the model reliably honors the invariant without explicit enforcement). ADR-042
+demonstrates the opposite case: a declarative-only ADR with no Rego file —
+the semantic directive alone is sufficient because the invariant has no
+deterministic check to express.
 
 ## Why `enrich()` contains zero hard-coded pattern
 
@@ -125,12 +155,20 @@ read raw stack traces natively, the first is deleted without touching the
 second. What remains durable is the context the model *cannot guess*: the
 staging schema version, the interface definition, the violated ADR.
 
-## Why plain Go policies
+## Why OPA/Rego for plan enforcement
 
-The conversation that designed this PoC used Open Policy Agent (OPA/Rego).
-The rules here map one-to-one to Rego policies; plain Go keeps the PoC free
-of external binaries so `go test ./...` runs anywhere. Production path:
-OPA server or embedded engine, same registry, same tags.
+The plan linter uses the embedded [Open Policy Agent](https://www.openpolicyagent.org/)
+Go library (`github.com/open-policy-agent/opa`). All `.rego` files in the
+ADR directory are loaded at startup into a single `PreparedEvalQuery` over
+`data.ppg.linter.violation`; their `violation contains v` rules union
+automatically across files.
+
+This choice keeps governance rules **outside the binary**: an architect edits
+a `.rego` file alongside the ADR Markdown, and the linter picks it up at
+next startup — no recompilation. The `violation` object schema (`policy_id`,
+`message`, `nature`) maps directly to the `Violation` struct returned to the
+agent, so the connection between the Rego rule and its agent-facing rejection
+message is explicit and auditable.
 
 ## Why tag every rule and measure the debt
 

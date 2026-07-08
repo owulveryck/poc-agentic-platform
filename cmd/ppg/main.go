@@ -35,14 +35,20 @@ func main() {
 	}
 	log.Printf("ADR store loaded: %d invariants", len(store.Invariants))
 
+	lint, err := linter.New(store, *adrDir)
+	if err != nil {
+		log.Fatalf("loading plan linter: %v", err)
+	}
+	log.Printf("Plan linter ready: %d policies", len(lint.Registry))
+
 	smarttools.Register(patchcode.Tool{}, "amplifier", "")
 	smarttools.Register(dbmigrate.Tool{}, "amplifier", "")
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /enrich", handleEnrich(store))
-	mux.HandleFunc("POST /lock_in_plan", handleLockInPlan)
+	mux.HandleFunc("POST /lock_in_plan", handleLockInPlan(lint))
 	mux.HandleFunc("POST /tools/{name}", handleTool)
-	mux.HandleFunc("GET /debt_report", handleDebtReport)
+	mux.HandleFunc("GET /debt_report", handleDebtReport(lint.Registry))
 
 	log.Printf("Platform Planning Gateway listening on %s", *addr)
 	log.Fatal(http.ListenAndServe(*addr, mux))
@@ -63,37 +69,39 @@ func handleEnrich(store *adr.Store) http.HandlerFunc {
 	}
 }
 
-func handleLockInPlan(w http.ResponseWriter, r *http.Request) {
-	var p plan.Plan
-	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
-		httpError(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
-		return
-	}
-	if err := p.ValidateStructure(); err != nil {
-		httpError(w, http.StatusBadRequest, map[string]any{
-			"status": "PLAN_MALFORMED",
-			"error":  err.Error(),
+func handleLockInPlan(lint *linter.Linter) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var p plan.Plan
+		if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
+			httpError(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+			return
+		}
+		if err := p.ValidateStructure(); err != nil {
+			httpError(w, http.StatusBadRequest, map[string]any{
+				"status": "PLAN_MALFORMED",
+				"error":  err.Error(),
+			})
+			return
+		}
+		if violations := lint.Validate(&p); len(violations) > 0 {
+			httpError(w, http.StatusUnprocessableEntity, map[string]any{
+				"status":     "PLAN_REJECTED",
+				"violations": violations,
+				"guidance":   "Fix the violations above and resubmit the plan.",
+			})
+			return
+		}
+		tok, err := ticket.Issue(&p)
+		if err != nil {
+			httpError(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"status":           "PLAN_LOCKED",
+			"plan_hash":        p.Hash(),
+			"execution_ticket": tok,
 		})
-		return
 	}
-	if violations := linter.Validate(&p); len(violations) > 0 {
-		httpError(w, http.StatusUnprocessableEntity, map[string]any{
-			"status":     "PLAN_REJECTED",
-			"violations": violations,
-			"guidance":   "Fix the violations above and resubmit the plan.",
-		})
-		return
-	}
-	tok, err := ticket.Issue(&p)
-	if err != nil {
-		httpError(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"status":           "PLAN_LOCKED",
-		"plan_hash":        p.Hash(),
-		"execution_ticket": tok,
-	})
 }
 
 func handleTool(w http.ResponseWriter, r *http.Request) {
@@ -126,8 +134,10 @@ func handleTool(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, result)
 }
 
-func handleDebtReport(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, debt.Compute())
+func handleDebtReport(registry map[string]linter.PolicyMeta) http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusOK, debt.Compute(registry))
+	}
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

@@ -40,10 +40,10 @@ type Report struct {
 // Compute aggregates the tagged policies and translators into a debt report.
 // It sets Health to "DEBT_ALERT" when the compensatory ratio reaches 30 % or
 // more, signalling that the platform is carrying too much temporary scaffolding.
-func Compute() Report {
+func Compute(registry map[string]linter.PolicyMeta) Report {
 	report := Report{PendingSunsets: []PendingSunset{}}
 
-	for id, meta := range linter.Registry {
+	for id, meta := range registry {
 		report.TotalArtifacts++
 		if meta.Nature == linter.Compensatory {
 			report.CompensatoryCount++

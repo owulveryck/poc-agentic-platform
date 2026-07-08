@@ -8,6 +8,7 @@ scope_selectors: ["database", "db", "schema", "migration", "sql", "table"]
 enforcement:
   mode: programmatic
   policy_id: db_migration_precedes_code
+  rego: ADR-051.rego
 ---
 
 ## Invariant

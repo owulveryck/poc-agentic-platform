@@ -8,6 +8,7 @@ scope_selectors: ["legacy", "payment", "refactor", "old"]
 enforcement:
   mode: programmatic
   policy_id: explicit_frozen_files_enumeration
+  rego: ADR-070.rego
 ---
 
 ## Invariant
