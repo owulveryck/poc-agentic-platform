@@ -20,7 +20,7 @@ curl -s -X POST localhost:8765/validate_skill \
   }' | python3 -m json.tool
 ```
 
-**What you should observe**: a `422 SKILL_REJECTED` with four violations:
+**What you should observe**: a `422 SKILL_REJECTED` with five violations:
 
 ```json
 {
@@ -29,6 +29,11 @@ curl -s -X POST localhost:8765/validate_skill \
         {
             "field": "description",
             "message": "description must be at least 50 characters to be discoverable",
+            "nature": "amplifier"
+        },
+        {
+            "field": "description",
+            "message": "description must start with a third-person verb (e.g. 'Adds', 'Runs', 'Applies')",
             "nature": "amplifier"
         },
         {
@@ -53,7 +58,7 @@ curl -s -X POST localhost:8765/validate_skill \
 
 👉 *Same register as the plan linter: not "no", but "here is what is
 missing". Each violation carries its `nature` on the durability axis — all
-four rules here are amplifiers, durable SDLC invariants.*
+five rules here are amplifiers, durable SDLC invariants.*
 
 ## Step 2 — Fix and resubmit
 

@@ -38,10 +38,10 @@ Statuses: ✅ conforms · 🟡 partial · ❌ not implemented · 📄 article-on
 | `POST /validate_skill`: `SKILL_VALID` + tier, or `SKILL_REJECTED` + violations with `nature` | `cmd/ppg`, `internal/skill` | ✅ verified live (4 violations on a bad skill; tier 0/1/2 probes) |
 | Governance Rego in `skill-governance/` (`structure.rego`, `security.rego`, package `ppg.skills.governance`) | `skill-governance/` | ✅ |
 | Structural rules: name kebab-case ≤32, description 50–500 chars, semver required, argument-hint with `$ARGUMENTS` | `structure.rego` | ✅ |
-| Structural rule: description **starts with a verb** | — | ❌ absent (worked example provided in `docs/how-to/add-a-skill-governance-rule.md`) |
-| Structural rule: body **≤ 500 lines** | — | ❌ absent |
-| Structural rule: **no hardcoded secrets** | — | ❌ absent |
-| Companion Rego required for tier ≥ 1 | `security.rego` (`modifies_files`) | 🟡 fires on `Edit`/`Write` only: a **Bash-only skill (tier 2) escapes the requirement** |
+| Structural rule: description **starts with a verb** | `structure.rego` | ✅ implemented 2026-07-10 (naive `^[A-Z][a-z]+s\s` pattern, assumed) |
+| Structural rule: body **≤ 500 lines** | `structure.rego` | ✅ implemented 2026-07-10 |
+| Structural rule: **no hardcoded secrets** | `structure.rego` | ✅ implemented 2026-07-10 (pattern scan: AWS keys, PEM, inline assignments) |
+| Companion Rego required for tier ≥ 1 | `security.rego` (`privileged`) | ✅ fixed 2026-07-10: fires on `Edit`/`Write`/`Bash`; a Bash-only skill no longer escapes |
 | Security tiers 0/1/2 from tool mentions, deliberately keyword-based | `skill.Linter.Tier` (Go substring match) | ✅ as described; the article itself flags paraphrase evasion (production: deny-by-default allowlist). Note: tier logic exists in Go while `modifies_files` re-implements it in Rego — two sources of truth |
 | Gate 1 (publish, CI) | `/validate_skill` | ✅ (recipe: `docs/how-to/gate-skill-publication-in-ci.md`) |
 | Gate 2 (install revalidation, content hashes) | — | ❌ described as registry-side production path |

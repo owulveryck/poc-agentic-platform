@@ -66,15 +66,19 @@ deny-by-default tool allowlist):
 | `description` | required | amplifier |
 | `description` | ≥ 50 characters | amplifier |
 | `description` | ≤ 500 characters | amplifier |
+| `description` | starts with a third-person verb (naive check: `^[A-Z][a-z]+s\s`) | amplifier |
 | `version` | required | amplifier |
 | `argument_hint` | required when the body uses `$ARGUMENTS` | amplifier |
+| `body` | ≤ 500 lines | amplifier |
+| `body` | no hardcoded secrets (pattern scan: AWS keys, PEM blocks, inline `key = "..."` assignments) | amplifier |
 
 ## Security rules (`skill-governance/security.rego`)
 
 | Rule | nature |
 |---|---|
-| A skill whose body mentions `Edit` or `Write` (tier ≥ 1) must ship a companion `rego_policy`, so the plan linter can enforce its requirements at `lock_in_plan` time | amplifier |
+| A skill whose body mentions `Edit`, `Write`, or `Bash` (tier ≥ 1) must ship a companion `rego_policy`, so the plan linter can enforce its requirements at `lock_in_plan` time | amplifier |
 
-Note: a Bash-only skill (tier 2) does not trigger this rule in the PoC — the
-`modifies_files` predicate only checks `Edit`/`Write`. See `AUDIT.md` for the
-gap analysis against the reference article.
+The verb and secret checks are deliberately naive pattern matches, same
+assumed posture as the tier keywords: deterministic and reproducible over
+clever ("This skill..." passes the verb check; an obfuscated secret escapes
+the scan).

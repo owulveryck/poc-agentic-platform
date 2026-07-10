@@ -1,6 +1,7 @@
 package skill
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -122,6 +123,64 @@ func TestTierClassification(t *testing.T) {
 		s.Body = tc.body
 		if got := lint.Tier(s); got != tc.want {
 			t.Errorf("Tier(%q) = %d, want %d", tc.body, got, tc.want)
+		}
+	}
+}
+
+func TestDescriptionWithoutLeadingVerbIsRejected(t *testing.T) {
+	lint, err := NewLinter("testdata")
+	if err != nil {
+		t.Fatalf("NewLinter: %v", err)
+	}
+	s := validSkill()
+	// A noun phrase, no leading verb. (Note the assumed naivety of the
+	// pattern: "This skill..." would pass, since "This" ends in s.)
+	s.Description = "Payment provider integration workflow for the checkout service, following platform ADRs."
+	assertViolation(t, lint, s, "description")
+}
+
+func TestBodyOverFiveHundredLinesIsRejected(t *testing.T) {
+	lint, err := NewLinter("testdata")
+	if err != nil {
+		t.Fatalf("NewLinter: %v", err)
+	}
+	s := validSkill()
+	s.Body = strings.Repeat("Inspect the code with Read.\n", 501)
+	assertViolation(t, lint, s, "body")
+}
+
+func TestHardcodedSecretIsRejected(t *testing.T) {
+	lint, err := NewLinter("testdata")
+	if err != nil {
+		t.Fatalf("NewLinter: %v", err)
+	}
+	s := validSkill()
+	s.Body = "Use Read to inspect files. Authenticate with api_key = \"sk-live-123456\"."
+	assertViolation(t, lint, s, "body")
+}
+
+func TestShellWithoutRegoIsRejected(t *testing.T) {
+	lint, err := NewLinter("testdata")
+	if err != nil {
+		t.Fatalf("NewLinter: %v", err)
+	}
+	s := validSkill()
+	s.Body = "Use Bash to run the integration test suite."
+	// tier 2 without a companion policy: the gate must refuse
+	assertViolation(t, lint, s, "rego_policy")
+}
+
+func TestShellWithRegoPasses(t *testing.T) {
+	lint, err := NewLinter("testdata")
+	if err != nil {
+		t.Fatalf("NewLinter: %v", err)
+	}
+	s := validSkill()
+	s.Body = "Use Bash to run the integration test suite."
+	s.RegoPolicy = "package ppg.skills.demo\nimport rego.v1\n"
+	for _, v := range lint.Validate(s) {
+		if v.Field == "rego_policy" {
+			t.Fatalf("unexpected rego_policy violation when companion is present: %v", v)
 		}
 	}
 }

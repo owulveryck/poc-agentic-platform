@@ -16,9 +16,8 @@
 2. Write a `violation contains v if {...}` rule over the skill input
    (fields: `name`, `description`, `version`, `argument_hint`, `body`,
    `rego_policy` — see the [reference](../reference/skill-governance.md)).
-   Worked example — require descriptions to start with a verb-like
-   capitalized word, a rule the reference article names and this PoC does
-   not ship yet:
+   Model to imitate — the "description starts with a verb" rule that ships
+   in `structure.rego`; add yours with the same shape:
 
    ```rego
    package ppg.skills.governance
@@ -30,7 +29,7 @@
        not regex.match(`^[A-Z][a-z]+s\s`, input.description)
        v := {
            "field":   "description",
-           "message": "description must start with a third-person verb (e.g. 'Applies', 'Generates')",
+           "message": "description must start with a third-person verb (e.g. 'Adds', 'Runs', 'Applies')",
            "nature":  "amplifier",
        }
    }

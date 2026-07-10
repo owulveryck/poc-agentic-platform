@@ -24,8 +24,9 @@ pre-flight adapter. X-as-a-Service applied to agentic governance.
 - Simulated sandbox (in-memory parse / staging state): no real workspace.
 - Hard gating is not guaranteed on black-box tools (Copilot/Cursor).
 - Skill governance covers Gate 1 only (publish): no install-time
-  revalidation, no runtime enforcement of companion policies, and the
-  security tier is a substring match open to paraphrase evasion — see
+  revalidation, no runtime enforcement of companion policies. The security
+  tier and the verb/secret checks are substring and pattern matches, open
+  to paraphrase evasion — see
   [capability-plane-governance.md](capability-plane-governance.md).
 - No persistence or telemetry yet: that is the third pillar (*observation*),
   intentionally out of scope here.
