@@ -2,6 +2,10 @@
 
 > Solves one problem: adding an enterprise validation rule that every skill
 > must pass at publish time (`POST /validate_skill`).
+>
+> New to Rego? Read the [Rego survival kit](rego-survival-kit.md) first;
+> the same idiom applies, with `field` instead of `policy_id` in the
+> violation object and package `ppg.skills.governance`.
 
 1. Pick the file: `skill-governance/structure.rego` for structural rules,
    `skill-governance/security.rego` for security rules, or a new `.rego`

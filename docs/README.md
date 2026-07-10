@@ -21,6 +21,7 @@ one directory each.
 ## How-to guides — task-oriented
 
 - [Add an ADR invariant](how-to/add-an-adr-invariant.md)
+- [Rego survival kit](how-to/rego-survival-kit.md) (no prior Rego knowledge required)
 - [Write a Rego plan policy](how-to/write-a-rego-plan-policy.md)
 - [Retire compensatory scaffolding](how-to/retire-compensatory-scaffolding.md)
 - [Add a Smart Tool](how-to/add-a-smart-tool.md)

@@ -3,6 +3,9 @@
 > Solves one problem: turning an ADR into a rule the plan linter enforces at
 > `lock_in_plan` time, 100% reproducibly. Policies are OPA/Rego files paired
 > with ADRs — nothing is compiled into the binary.
+>
+> New to Rego? Read the [Rego survival kit](rego-survival-kit.md) first
+> (5 minutes, covers everything this platform uses).
 
 1. Create `adr/ADR-0XX.rego` next to the ADR Markdown, in package
    `ppg.linter`, using the `violation contains v if {...}` idiom:
