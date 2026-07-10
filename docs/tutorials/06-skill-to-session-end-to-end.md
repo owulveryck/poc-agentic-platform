@@ -44,7 +44,11 @@ through the Platform Planning Gateway. Follow the three moves in order.
 ```
 
 Notice what the body is: not a list of rules to remember, but a **workflow
-that puts the gateway inside the loop**. Then write the companion policy,
+that puts the gateway inside the loop**. The two tool names are the ones
+the `ppg` MCP server registered in
+[tutorial 2](02-claude-code-end-to-end.md): `get_platform_guidelines_for_intent`
+bridges to `POST /enrich`, `lock_in_plan` to `POST /lock_in_plan`. Then
+write the companion policy,
 `.claude/skills/add-payment-method/SKILL.rego`:
 
 ```rego
@@ -125,9 +129,11 @@ Start `claude` in `~/ppg-demo` and type the same command a developer would:
 triggered by the skill's own body:
 
 1. The skill executes: its first instruction makes Claude call
-   `get_platform_guidelines_for_intent`. The intent contains "payment", so
-   ADR-042 (egress proxy) and ADR-070 (frozen paths) come back as
-   invariants.
+   `get_platform_guidelines_for_intent`, the MCP bridge to the enrichment
+   gateway. The intent contains "payment", so ADR-042 (every external
+   provider call goes through the egress proxy) and ADR-070 (frozen legacy
+   paths) come back as invariants: the same payload you saw in
+   [tutorial 1, step 2](01-first-planning-cycle.md).
 2. Claude drafts the plan **already honoring them** (migration first,
    proxied client, test step) and submits it through `lock_in_plan`. If a
    violation comes back, it reads the criterion and resubmits: one
@@ -158,4 +164,6 @@ endpoints.**
 soft half still applies: see the
 [GitHub Copilot tutorial](03-github-copilot-preflight.md). The *why* of the
 capability plane is in
-[capability-plane-governance.md](../explanation/capability-plane-governance.md).
+[capability-plane-governance.md](../explanation/capability-plane-governance.md);
+how an intent maps to ADRs (scope selectors, semantic retrieval) is in
+[enrichment-and-planning.md](../explanation/enrichment-and-planning.md).
