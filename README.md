@@ -39,6 +39,9 @@ Copilot** through the pre-flight adapter
 skill against the governance gate
 ([tutorial 4](docs/tutorials/04-validate-your-first-skill.md)).
 
+> Want the 30-second overview first? Watch the 90-second animated tour of the
+> whole chain: [docs/diagrams/ppg-tutorials-tour.svg](docs/diagrams/ppg-tutorials-tour.svg).
+
 ## Documentation (Divio / Diátaxis system)
 
 Index: [docs/README.md](docs/README.md)

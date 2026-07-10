@@ -1,5 +1,8 @@
 # Tutorial — from a governed skill to a governed session, end to end
 
+> 👉 Prefer to *watch* it first? Open the 90-second animated tour of the whole
+> chain (tutorials 01→06): [ppg-tutorials-tour.svg](../diagrams/ppg-tutorials-tour.svg).
+
 > **Goal**: live the full lifecycle in one sitting. You play the stream
 > team: write a skill and its companion policy, pass them through the
 > platform's publication gate, then watch the skill drive a real Claude
