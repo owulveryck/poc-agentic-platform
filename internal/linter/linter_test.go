@@ -128,6 +128,43 @@ func TestFrozenFileIsRejected(t *testing.T) {
 	}
 }
 
+func TestGoTestEncodedWithAgentToolNamesPasses(t *testing.T) {
+	lint, err := New(testStore(), "testdata")
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	// A stock coding agent expresses steps with its own tool names: the test
+	// step arrives as tool "Bash" with a "go test" action, not as tool "go-test".
+	p := basePlan([]plan.Step{
+		{ID: "s1", Action: "Create SekaClient", Tool: "Write", Targets: []string{"internal/payment/seka.go"}},
+		{ID: "s2", Action: "go test ./internal/payment/...", Tool: "Bash", Targets: []string{"internal/payment/"}},
+	})
+	for _, v := range lint.Validate(p) {
+		if v.PolicyID == "go_tests_present" {
+			t.Fatalf("go test encoded as a Bash action should satisfy go_tests_present, got %v", v)
+		}
+	}
+}
+
+func TestMigrationEncodedAsTargetPasses(t *testing.T) {
+	lint, err := New(testStore(), "testdata")
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	// The migration arrives as a file creation under migrations/, not as the
+	// canonical db-migration-generator tool.
+	p := basePlan([]plan.Step{
+		{ID: "s1", Action: "Write the payment_methods migration", Tool: "Write", Targets: []string{"migrations/001_stripe.sql"}},
+		{ID: "s2", Action: "alter schema usage", Tool: "patch_code", Targets: []string{"db/schema.sql"}},
+		{ID: "s3", Action: "go test ./...", Tool: "go-test", Targets: []string{"tests/x_test.go"}},
+	})
+	for _, v := range lint.Validate(p) {
+		if v.PolicyID == "db_migration_precedes_code" {
+			t.Fatalf("migration encoded as a migrations/ target should satisfy the policy, got %v", v)
+		}
+	}
+}
+
 func TestUndecodableViolationFailsClosed(t *testing.T) {
 	store := &adr.Store{
 		Invariants: []adr.Invariant{

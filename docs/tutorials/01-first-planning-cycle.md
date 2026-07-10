@@ -70,7 +70,7 @@ curl -s -X POST localhost:8765/lock_in_plan \
     "violations": [
         {
             "policy_id": "go_tests_present",
-            "message": "SDLC invariant violated: the plan must contain a 'go test' step for a Go stack.",
+            "message": "SDLC invariant violated: the plan has no test step. Add a step whose tool is \"go-test\", or whose action runs 'go test'.",
             "nature": "amplifier"
         }
     ],

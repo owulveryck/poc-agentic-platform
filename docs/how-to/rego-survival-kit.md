@@ -50,7 +50,7 @@ violation contains v if {
     not plan_has_go_test                             # and no test step exists
     v := {
         "policy_id": "go_tests_present",
-        "message":   "SDLC invariant violated: the plan must contain a 'go test' step for a Go stack.",
+        "message":   "SDLC invariant violated: the plan has no test step. Add a step whose tool is \"go-test\", or whose action runs 'go test'.",
         "nature":    "amplifier",
     }
 }
@@ -58,11 +58,21 @@ violation contains v if {
 plan_has_go_test if {
     input.steps[_].tool == "go-test"
 }
+
+# Agents encode steps with their own tool names ("Bash" + a "go test"
+# action): accept that too. Two rules with the same head = OR (recipe 4).
+plan_has_go_test if {
+    some step in input.steps
+    contains(lower(step.action), "go test")
+}
 ```
 
-The shape to remember: **"X must exist" is written as `not helper` plus a
-helper rule that finds X.** Do not try to negate an iteration inline; see
-trap 1.
+Two shapes to remember here. **"X must exist" is written as `not helper`
+plus a helper rule that finds X** (do not try to negate an iteration inline;
+see trap 1). And **write the message so it contains the machine-checkable
+criterion**: an agent that reads "add a step whose tool is go-test" fixes
+its plan in one iteration; an agent that reads "a test step must exist"
+guesses.
 
 ## Recipe 2 — Forbid targets (deny-list)
 

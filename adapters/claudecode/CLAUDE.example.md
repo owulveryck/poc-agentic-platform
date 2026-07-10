@@ -10,3 +10,6 @@
 - If a tool refuses with `OUT_OF_PLAN_SCOPE`, do not retry the same call:
   either stay within the locked plan, or re-plan through `lock_in_plan` if
   the extra change is genuinely needed.
+- In the plan you lock, make platform-relevant steps explicit: a test step
+  whose action runs `go test`, a migration step targeting `migrations/`.
+  Violation messages name the exact criterion; fix precisely that.

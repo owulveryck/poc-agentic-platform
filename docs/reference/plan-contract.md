@@ -21,3 +21,8 @@ from which the MCP tool schema is auto-generated.
 Structural validation (`ValidateStructure`) rejects with `400 PLAN_MALFORMED`;
 policy validation (the OPA linter) rejects with `422 PLAN_REJECTED`. See
 [http-api.md](http-api.md).
+
+`steps[].tool` is free-form. The linter policies recognize both the platform
+vocabulary (`go-test`, `db-migration-generator`, `patch_code`) and the
+natural encodings coding agents produce (a `Bash` step whose action runs
+`go test`; a migration expressed as a step targeting `migrations/`).

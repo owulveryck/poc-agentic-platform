@@ -8,7 +8,7 @@ violation contains v if {
 	not plan_has_migration
 	v := {
 		"policy_id": "db_migration_precedes_code",
-		"message":   "Invalid ordering: a schema migration step (tool 'db-migration-generator') must accompany any database change.",
+		"message":   "Invalid ordering: a schema migration must accompany any database change. Add a step whose tool is \"db-migration-generator\", or a step targeting a file under migrations/.",
 		"nature":    "amplifier",
 	}
 }
@@ -23,4 +23,11 @@ target_is_db(step) if {
 
 plan_has_migration if {
 	input.steps[_].tool == "db-migration-generator"
+}
+
+# Robustness: agents often encode the migration as a file creation under
+# migrations/ with their own tool names. Accept that encoding too.
+plan_has_migration if {
+	some step in input.steps
+	startswith(step.targets[_], "migrations/")
 }

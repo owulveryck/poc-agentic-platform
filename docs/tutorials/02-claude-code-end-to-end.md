@@ -95,6 +95,12 @@ Start `claude` in `~/ppg-demo` and prompt:
    `go test` step, the gateway answers `PLAN_REJECTED` with the
    `go_tests_present` violation, and Claude corrects its plan on its own —
    this self-correction in one or two iterations is the expected behavior.
+
+   *Troubleshooting*: if a plan is rejected repeatedly with the same
+   violation, the violation message names the exact criterion the policy
+   checks (a step whose tool is `go-test` or whose action runs `go test`).
+   A rejection loop means the plan does not satisfy that criterion, however
+   plausible its steps look; do not guess along other dimensions.
 3. On success the response is `PLAN_LOCKED` and the ticket lands in
    `.ppg-ticket`. Inspect its claims:
 
