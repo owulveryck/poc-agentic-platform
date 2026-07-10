@@ -1,0 +1,13 @@
+name: ppg-demo
+version: 1.0.0
+description: Demo skill package for the Platform Planning Gateway - run the amplified planning loop tutorial from Claude Code or GitHub Copilot
+author: Olivier Wulveryck
+targets:
+  - copilot
+  - claude
+
+dependencies:
+  apm: []
+  mcp: []
+includes: auto
+scripts: {}

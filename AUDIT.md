@@ -57,6 +57,7 @@ Statuses: ✅ conforms · 🟡 partial · ❌ not implemented · 📄 article-on
 | Panic on empty `targets` (`targets[0]`), reachable from the raw `/tools/{name}` request body | `internal/smarttools/patchcode/patchcode.go` | Guard + `EXECUTION_FAILED`; test |
 | Panic on truncated `CREATE TABLE ` statement (`fields[2]`) | `internal/smarttools/dbmigrate/dbmigrate.go` | Length guard + `EXECUTION_FAILED`; test |
 | Pre-flight hardcoded `http://localhost:8000` (no `PPG_URL`, unlike the MCP server) and hardcoded repo context `checkout-service`/`["Go"]` | `adapters/preflight/main.go` | `PPG_URL` env + `-repo`/`-stack` flags; tests |
+| Ticket was a pure bearer capability: a new session within the 15-min TTL inherited `.ppg-ticket`, and the `session_id` claim was agent-chosen and never checked (post-audit finding, 2026-07-10) | `adapters/claudecode/{guard,mcpserver}` | Session binding: `SessionStart` hook records the real session id (`.ppg-session`) and purges leftover tickets; the MCP server stamps it into the plan at lock; the guard blocks `SESSION_MISMATCH`; tests |
 
 ## Known limits kept as-is (assumed PoC posture, documented)
 

@@ -109,3 +109,6 @@ the *why* is in
 
 **✅ Done.** To add your own governance rule, see
 [add-a-skill-governance-rule.md](../how-to/add-a-skill-governance-rule.md).
+To see a validated skill drive a full Claude Code session through every
+gateway, continue with
+[tutorial 6](06-skill-to-session-end-to-end.md).

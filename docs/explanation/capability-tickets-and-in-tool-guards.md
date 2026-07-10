@@ -9,6 +9,18 @@ practice at scale, the damage is proportional to its power. Least privilege
 against a perfect model**: it protects the organization, not the model.
 That is why it is classified as an *amplifying* guardrail.
 
+## Why the ticket is bound to the session
+
+A signed ticket with a TTL is still a **bearer capability**: whoever holds
+the file holds the right, and a new session opened within the 15-minute
+window would inherit it. The binding closes that window with the only
+identifier both sides can observe: the `SessionStart` hook materializes the
+real session id on disk, the MCP server stamps it into the plan at lock
+time, and the guard compares it to the session id of every subsequent hook
+invocation. The least-privilege scope was always the main containment (a
+leaked ticket only ever opened the planned files); the binding turns the
+remaining window into a non-event.
+
 ## Why verify the ticket inside the tool, not only upstream
 
 Agentic drift happens **during** execution: the agent may call an unplanned

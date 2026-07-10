@@ -54,7 +54,7 @@ claude mcp add ppg --env PPG_URL=http://localhost:8765 \
 inside a session the tools `get_platform_guidelines_for_intent` and
 `lock_in_plan` are available.
 
-## Step 5 — Register the hook
+## Step 5 — Register the hooks
 
 Create `.claude/settings.json` in `~/ppg-demo` (content of
 [`settings.example.json`](../../adapters/claudecode/settings.example.json)):
@@ -62,6 +62,13 @@ Create `.claude/settings.json` in `~/ppg-demo` (content of
 ```json
 {
   "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          { "type": "command", "command": "ppg-guard", "args": [] }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "Edit|Write",
@@ -73,6 +80,11 @@ Create `.claude/settings.json` in `~/ppg-demo` (content of
   }
 }
 ```
+
+The `SessionStart` entry binds tickets to sessions: it records the session
+id in `.ppg-session` (which the MCP server stamps into the plan at lock
+time) and purges any ticket left by a previous session. Add `.ppg-session`
+to `.gitignore` alongside `.ppg-ticket`.
 
 ## Step 6 — Add the behavioral contract
 
@@ -147,6 +159,12 @@ locked at all, the guard blocks with
 `No capability ticket found (.ppg-ticket)` and points to `lock_in_plan` —
 the paved road is also the only road.
 
+One more property to observe: quit and start a **new session** in the same
+directory. The `SessionStart` hook purges the previous ticket, and even a
+copy of it would be refused (`SESSION_MISMATCH`: the ticket's `session_id`
+claim no longer matches the session). A capability dies with the session
+that locked it, not only with its 15-minute TTL.
+
 ## Step 9 — Clean up
 
 ```bash
@@ -158,3 +176,6 @@ rm -rf ~/ppg-demo
 (deterministic in-tool gating via the hook) run inside an off-the-shelf
 agent. The *why* is in
 [capability-tickets-and-in-tool-guards.md](../explanation/capability-tickets-and-in-tool-guards.md).
+Next step: package this workflow as a governed skill and watch it drive the
+session by itself, in
+[tutorial 6](06-skill-to-session-end-to-end.md).

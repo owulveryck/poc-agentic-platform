@@ -67,5 +67,6 @@ skill-governance/        skill governance policies (structure.rego, security.reg
 schemas/                 language-neutral JSON Schema of the plan contract
 adapters/preflight/      black-box adapter (writes .cursorrules / copilot-instructions.md)
 adapters/claudecode/     Claude Code adapter: MCP server (planning) + PreToolUse hook (gating)
+demo/                    APM package: the ppg-tutorial skill (apm install .../demo --target claude|copilot)
 docs/                    Diátaxis documentation + PlantUML diagrams
 ```

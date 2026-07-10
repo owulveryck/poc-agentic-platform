@@ -35,12 +35,19 @@ A fully worked, tested session is in the
    claude mcp add ppg -- go run /path/to/poc-agentic-platform/adapters/claudecode/mcpserver
    ```
 
-4. **Register the hook** — merge [`settings.example.json`](settings.example.json)
+4. **Register the hooks** — merge [`settings.example.json`](settings.example.json)
    into the target project's `.claude/settings.json`:
 
    ```json
    {
      "hooks": {
+       "SessionStart": [
+         {
+           "hooks": [
+             { "type": "command", "command": "ppg-guard", "args": [] }
+           ]
+         }
+       ],
        "PreToolUse": [
          {
            "matcher": "Edit|Write",
@@ -52,6 +59,10 @@ A fully worked, tested session is in the
      }
    }
    ```
+
+   The same binary serves both events: at `SessionStart` it records the
+   session id into `.ppg-session` (and purges any ticket left by a previous
+   session); at `PreToolUse` it verifies each edit against the ticket.
 
 5. **Instruct the agent** — add the contract to the target project's
    `CLAUDE.md` (see [`CLAUDE.example.md`](CLAUDE.example.md)).
@@ -83,6 +94,10 @@ A fully worked, tested session is in the
 ## Notes
 
 - The guard reads `.ppg-ticket` from the hook's `cwd` (the project root).
-  Add `.ppg-ticket` to the target project's `.gitignore`.
+  Add `.ppg-ticket` and `.ppg-session` to the target project's `.gitignore`.
+- The ticket is bound to the session that locked the plan: the MCP server
+  stamps the `.ppg-session` id into the plan at lock time, and the guard
+  blocks any use of the ticket from another session (`SESSION_MISMATCH`).
+  See [capability-ticket.md](../../docs/reference/capability-ticket.md).
 - `PPG_URL` overrides the gateway address for the MCP server
   (default `http://localhost:8000`).

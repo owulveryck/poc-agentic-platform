@@ -2,7 +2,10 @@
 
 > Solves one problem: making a new architectural decision visible to every
 > agent at planning time. Assumes you have completed the
-> [tutorial](../tutorials/01-first-planning-cycle.md).
+> [tutorial](../tutorials/01-first-planning-cycle.md). First time authoring
+> an ADR? Do the guided
+> [write-your-first-ADR tutorial](../tutorials/05-write-your-first-adr.md)
+> once, then come back here for the checklist.
 
 1. Create `adr/ADR-0XX-my-invariant.md` with the YAML front matter described
    in [adr-front-matter.md](../reference/adr-front-matter.md).

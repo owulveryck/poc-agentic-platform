@@ -11,6 +11,11 @@
 // closing the loop between pillar 1 (amplified planning) and pillar 2
 // (in-tool gating) inside a stock Claude Code session.
 //
+// Session binding: if a .ppg-session file exists (written by the ppg-guard
+// SessionStart hook), its session id overrides the plan's session_id before
+// the lock, so the issued ticket is bound to the real Claude Code session —
+// the guard rejects it from any other session.
+//
 // Register it with: claude mcp add ppg -- go run ./adapters/claudecode/mcpserver
 package main
 
@@ -22,12 +27,18 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/owulveryck/poc-agentic-platform/internal/plan"
 )
 
 const ticketFile = ".ppg-ticket"
+
+// sessionFile is written by the ppg-guard SessionStart hook with the real
+// Claude Code session id.
+const sessionFile = ".ppg-session"
 
 func gatewayURL() string {
 	if u := os.Getenv("PPG_URL"); u != "" {
@@ -67,6 +78,9 @@ func main() {
 			"Returns semantic violations to fix, or locks the plan and stores the capability " +
 			"ticket that the platform tools (and the ppg-guard hook) will verify.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, p plan.Plan) (*mcp.CallToolResult, any, error) {
+		if sid := sessionIDFromFile("."); sid != "" {
+			p.SessionID = sid
+		}
 		body, _ := json.Marshal(p)
 		return forward(ctx, "/lock_in_plan", body, saveTicket)
 	})
@@ -103,6 +117,17 @@ func forward(ctx context.Context, route string, body []byte, onSuccess func([]by
 		Content: []mcp.Content{&mcp.TextContent{Text: string(raw)}},
 		IsError: resp.StatusCode >= 500,
 	}, nil, nil
+}
+
+// sessionIDFromFile returns the session id recorded by the SessionStart
+// hook, or "" when no session file exists (the agent-provided session_id is
+// then kept as-is).
+func sessionIDFromFile(dir string) string {
+	raw, err := os.ReadFile(filepath.Join(dir, sessionFile))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(raw))
 }
 
 // saveTicket persists the execution ticket where the ppg-guard hook reads it.
