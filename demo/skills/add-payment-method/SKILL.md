@@ -1,6 +1,6 @@
 ---
 name: add-payment-method
-description: Adds a payment provider (Stripe, Adyen, Seka, …) to the checkout service. Use whenever the user asks to add, integrate, or wire a new payment method into checkout. Runs the governed loop of the Platform Planning Gateway: enrich the plan with the platform ADRs, lock it for a capability ticket, and implement strictly within the ticket scope.
+description: Adds a payment provider (Stripe, Adyen, Seka, …) to the checkout service. Use whenever the user asks to add, integrate, or wire a new payment method into checkout. Runs the governed loop of the Platform Planning Gateway — enrich the plan with the platform ADRs, lock it for a capability ticket, and implement strictly within the ticket scope.
 version: 2.0.0
 argument-hint: "<provider name, e.g. Stripe>"
 ---
