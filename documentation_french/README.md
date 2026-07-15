@@ -10,12 +10,33 @@
 
 ## Table des matières
 
+- [Vocabulaire minimal](#vocabulaire-minimal) — lisez-le en diagonale avant de commencer
 1. [Vue d'ensemble](#1-vue-densemble)
 2. [Comment l'agent est-il *guidé* vers le MCP ?](#2-comment-lagent-est-il-guidé-vers-le-mcp-)
 3. [Le plan et son verrou (`lock_in_plan`)](#3-le-plan-et-son-verrou-lock_in_plan)
 4. [Le ticket JWT — la phase d'implémentation](#4-le-ticket-jwt--la-phase-dimplémentation)
 5. [Anatomie d'un skill compatible](#5-anatomie-dun-skill-compatible)
 6. [L'histoire complète, de bout en bout](#6-lhistoire-complète-de-bout-en-bout)
+
+---
+
+## Vocabulaire minimal
+
+Neuf termes suffisent pour lire le reste. Ils reviendront tous, avec plus
+de contexte, dans les sections. Cette liste est un filet de sécurité :
+consultez-la à la volée sans essayer de tout mémoriser.
+
+| Terme | Définition tenue en une phrase |
+|---|---|
+| **Agent** | Un modèle d'IA (Claude, Copilot…) qui tourne en boucle : il lit, décide, appelle des *tools* (édition de fichier, exécution de commande…), observe le résultat, recommence. |
+| **MCP** *(Model Context Protocol)* | Standard qui permet à un agent d'appeler des *tools* fournis par un serveur externe local via un simple canal `stdio` — l'équivalent d'un « USB des agents IA ». |
+| **Hook** | Un script/binaire déclenché automatiquement par le runtime de l'agent à un moment précis (avant un tool, à la fin d'une session…). Il lit un JSON sur son entrée standard, écrit un JSON de décision sur sa sortie standard, exit 0. |
+| **PreToolUse** | Le *hook* déclenché juste **avant** qu'un tool ne s'exécute. Il peut retourner `allow`, `ask` ou `deny` — c'est le point d'interception qui permet le refus déterministe. |
+| **ADR** *(Architectural Decision Record)* | Un document qui capture une décision architecturale durable (« tous les appels externes passent par le proxy egress »). Dans ce projet, chaque ADR a une moitié prose (pour l'humain et le modèle) et une moitié exécutable en Rego (pour le linter). |
+| **Rego** | Un langage de règles déclaratif (Open Policy Agent, OPA). On y écrit des prédicats qui, appliqués à des données JSON, retournent une liste de violations. C'est du SQL pour la conformité. |
+| **Linter** | Un programme qui analyse une entrée (ici un *plan*, ou un *skill*) sans l'exécuter et retourne les problèmes détectés. Rapide, déterministe, actionnable. |
+| **JWT** *(JSON Web Token)* | Une chaîne de caractères qui embarque des *claims* (données) signées cryptographiquement. Impossible à forger sans le secret. Ici : quelques centaines de caractères qui disent « ce plan a été validé, voici son scope, il expire à telle heure ». |
+| **Amplifier vs Compensatory** | Deux natures d'invariants. **Amplifier** = règle durable, valide même contre un modèle parfait (ex : contraintes de sécurité). **Compensatory** = contournement d'une limitation actuelle du modèle, appelée à disparaître (ex : liste explicite des chemins gelés). La plateforme mesure le ratio pour suivre sa dette technique. |
 
 ---
 
@@ -64,6 +85,15 @@ Trois *piliers* portent l'ensemble :
    binaire Go ou script shell) refuse toute édition qui sort du scope du
    ticket, avant que le tool ne soit exécuté.
 
+> 💡 **Pourquoi trois couches et pas une seule ?** Chacune agit à un
+> moment différent et sert un but différent : l'amplification *informe*
+> le modèle (soft, peut être ignorée), le verrouillage *contraint* la
+> proposition (hard, mais côté planification), la garde *empêche
+> physiquement* la mauvaise action (hard, au moment où elle se produit).
+> Un modèle qui se comporte parfaitement passe les trois sans les
+> sentir ; un modèle qui dérive est arrêté au premier point de contrôle
+> qu'il touche.
+
 ---
 
 ## 2. Comment l'agent est-il *guidé* vers le MCP ?
@@ -96,6 +126,13 @@ rien de technique ne l'y contraint à ce stade**. Le fichier est
 consultatif.
 
 ### 2.2 La couche hard — le garde
+
+> 📖 **Hook** — un mécanisme prévu par le runtime de l'agent pour
+> déclencher un script externe à des moments-clés (avant un tool, à la
+> fin d'une session, etc.). Le script reçoit une description JSON de ce
+> qui va se passer, et peut *refuser* en renvoyant une décision. C'est
+> l'équivalent des *webhooks* HTTP, mais côté client, sur un événement
+> interne à l'agent.
 
 Le hook `PreToolUse` (`ppg-copilot-guard` ou `ppg-guard`) est enregistré
 dans `.github/hooks/ppg.json` (Copilot) ou `.claude/settings.json`
@@ -178,6 +215,19 @@ exprimée comme cible sous `migrations/`).
 
 ### 3.2 Le linter Rego
 
+> 📖 **Linter** — un programme qui *lit* une entrée et signale les
+> problèmes, sans jamais l'exécuter. `gofmt` ou `eslint` sont des
+> linters de code source ; le linter de plan ici lit du JSON et signale
+> les violations d'invariants. Un linter est *rapide* (pas
+> d'interprétation) et *déterministe* (même entrée → même sortie).
+
+> 📖 **Rego** — le langage de règles associé à **OPA** (Open Policy
+> Agent), un moteur d'évaluation open source. On écrit des prédicats
+> déclaratifs qui, appliqués à un document JSON, retournent une liste
+> de violations. Le fait qu'il ne s'agisse **pas d'un LLM** est
+> crucial : la décision est reproductible, auditable, et gratuite en
+> ressources.
+
 À chaque `lock_in_plan`, la gateway exécute *toutes* les policies Rego
 présentes dans le corpus ADR contre le plan. Chaque policy est un
 prédicat qui accumule des violations. Exemples actuels :
@@ -212,7 +262,32 @@ Le champ `nature` permet à la plateforme de tagger la policy comme
 *compensatory* (contournement d'une limitation actuelle du modèle,
 appelé à disparaître).
 
+> 💡 **Le test des 2× de puissance** — un outil pratique pour classer
+> un invariant : « cette règle serait-elle *plus utile* ou *inutile*
+> si le modèle était deux fois plus intelligent ? » Si elle reste
+> utile (contraintes organisationnelles, contrats de sécurité), c'est
+> un *amplifier*. Si elle devient inutile (la règle compensait une
+> limitation du modèle qui a disparu), c'est un *compensatory*, et il
+> faut lui donner une `sunset_condition`. Le `/debt_report` de la
+> gateway mesure le ratio des deux : c'est un indicateur de dette de
+> transition à faire tendre vers zéro.
+
 ### 3.3 Le succès et le ticket
+
+> 📖 **JWT** *(JSON Web Token)* — une chaîne de caractères composée de
+> trois parties séparées par des points : `header.payload.signature`.
+> Le `payload` est un objet JSON (les *claims*) encodé en base64. La
+> `signature` prouve que le contenu n'a pas été modifié depuis
+> l'émission. N'importe qui peut *lire* les claims (ce n'est pas
+> chiffré) ; seul quelqu'un possédant le secret peut *forger* un JWT
+> valide.
+>
+> 📖 **HS256** — l'algorithme de signature utilisé ici : HMAC avec
+> SHA-256. **Symétrique** : le même secret sert à signer et à
+> vérifier. Le PoC embarque ce secret en dur, ce qui suffit pour la
+> démonstration ; en production, on passerait à un algorithme
+> asymétrique (RS256 ou ES256), qui permet à un serveur de signer sans
+> que les vérificateurs aient besoin du secret d'émission.
 
 Quand toutes les policies passent, la gateway :
 
@@ -269,7 +344,18 @@ qui décode le JWT, vérifie les claims et compare `targets` à
 | `scope.allow_tool` | string[] | Tools autorisés à l'appel (les `tool` de chaque `step`). |
 
 Le ticket est un **bearer capability** : celui qui possède le fichier
-possède le droit. Deux mécanismes en réduisent la surface :
+possède le droit.
+
+> 📖 **Bearer capability** — la traduction française « capacité au
+> porteur » n'aide pas ; l'analogie qui parle est celle d'un ticket
+> de train : quel que soit celui qui le présente, il donne accès. Il
+> n'y a pas de vérification d'identité au-delà de la possession du
+> ticket. C'est pratique (pas d'authentification lourde) mais fragile
+> (un ticket qui fuit est utilisable par quiconque). Les deux
+> mécanismes ci-dessous compensent cette fragilité en réduisant la
+> fenêtre d'usage.
+
+Deux mécanismes en réduisent la surface :
 
 - **TTL 15 minutes** : au-delà, le hook refuse (`TICKET_EXPIRED`).
   Aucune API de renouvellement — il faut re-verrouiller un plan.
@@ -386,6 +472,14 @@ sera durcie en production par une allowlist deny-by-default.
 
 ### 5.4 Distribution via APM
 
+> 📖 **APM** *(Agent Package Manager)* — un outil ligne de commande
+> qui synchronise un dépôt git contenant des skills vers un répertoire
+> local du projet. Analogue de `npm install` ou `pip install`, mais
+> pour les skills d'agents. Sa contribution technique est minimale
+> (une copie de fichiers) ; sa contribution *organisationnelle* est
+> majeure : il crée la notion de **registry d'entreprise** pour les
+> capacités qu'on distribue à ses agents.
+
 ```bash
 apm install owulveryck/poc-agentic-platform/demo --target copilot
 # → dépose les skills sous .agents/skills/
@@ -393,10 +487,10 @@ apm install owulveryck/poc-agentic-platform/demo --target claude
 # → dépose les skills sous .claude/skills/
 ```
 
-APM (Agent Package Manager) est un simple outil de sync git-tag →
-répertoire local. `includes: auto` dans `apm.yml` fait que tout skill
-placé dans `demo/skills/` est automatiquement embarqué dans le paquet.
-Aucune configuration à modifier pour ajouter un nouveau skill.
+APM lit le fichier `apm.yml` à la racine du paquet ; l'entrée
+`includes: auto` fait que tout skill placé dans `demo/skills/` est
+automatiquement embarqué. Aucune configuration à modifier pour ajouter
+un nouveau skill.
 
 ### 5.5 Invocation
 
