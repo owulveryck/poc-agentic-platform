@@ -63,12 +63,38 @@ every project on this machine.
 
 ### Copilot desktop app or `gh copilot` CLI
 
-Writes `~/.copilot/mcp-config.json`:
+Both surfaces read `~/.copilot/mcp-config.json`. Two equivalent ways
+to write it:
+
+**A. With the `copilot` CLI** (shortest, if it is installed):
 
 ```bash
 copilot mcp add ppg --env PPG_URL=http://localhost:8765 -- ppg-mcp-server
 copilot mcp list       # → ppg  connected
 ```
+
+**B. Without the CLI** — hand-edit the file (the desktop app reads it
+directly, no CLI required):
+
+```bash
+mkdir -p ~/.copilot
+cat > ~/.copilot/mcp-config.json <<'EOF'
+{
+  "mcpServers": {
+    "ppg": {
+      "type": "stdio",
+      "command": "ppg-mcp-server",
+      "env": { "PPG_URL": "http://localhost:8765" },
+      "tools": ["*"]
+    }
+  }
+}
+EOF
+cat ~/.copilot/mcp-config.json    # verify
+```
+
+If the file already exists with other `mcpServers`, add the `ppg`
+block into the existing object instead of replacing the whole file.
 
 ### Claude Code
 

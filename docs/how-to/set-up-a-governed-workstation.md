@@ -158,17 +158,40 @@ Same four steps, different filesystem locations under `~/.copilot/`.
 
 ### 1. MCP — already user-scope from tutorial 0
 
-Verify:
+Verify (either form works):
 
 ```bash
-copilot mcp list          # → ppg   connected
+copilot mcp list                       # if the copilot CLI is installed
+cat ~/.copilot/mcp-config.json         # otherwise — check for the ppg entry
 ```
 
-Re-run if missing:
+Re-add if missing. **A.** With the CLI:
 
 ```bash
 copilot mcp add ppg --env PPG_URL=http://localhost:8765 -- ppg-mcp-server
 ```
+
+**B.** Without the CLI — hand-edit the file (the desktop app reads it
+directly):
+
+```bash
+mkdir -p ~/.copilot
+cat > ~/.copilot/mcp-config.json <<'EOF'
+{
+  "mcpServers": {
+    "ppg": {
+      "type": "stdio",
+      "command": "ppg-mcp-server",
+      "env": { "PPG_URL": "http://localhost:8765" },
+      "tools": ["*"]
+    }
+  }
+}
+EOF
+```
+
+If the file already has other `mcpServers` entries, add `ppg` into
+the existing object rather than replacing the whole file.
 
 ### 2. Contract — write `~/.copilot/copilot-instructions.md`
 
@@ -312,7 +335,13 @@ rm -rf ~/.claude/skills
 ### Copilot desktop / CLI
 
 ```bash
-copilot mcp remove ppg
+# Remove the ppg MCP entry — either form works:
+copilot mcp remove ppg     # with the CLI
+# OR, without the CLI, hand-edit ~/.copilot/mcp-config.json to delete
+# the "ppg" key from the mcpServers object:
+jq 'del(.mcpServers.ppg)' ~/.copilot/mcp-config.json \
+  > /tmp/mcp-config.json && mv /tmp/mcp-config.json ~/.copilot/mcp-config.json
+
 rm ~/.copilot/copilot-instructions.md
 rm -rf ~/.copilot/hooks
 rm -rf ~/.copilot/skills
