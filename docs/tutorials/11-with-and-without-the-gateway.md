@@ -68,23 +68,36 @@ apm install owulveryck/poc-agentic-platform/demo --target copilot
 Open `~/demo/without-platform` in the Copilot desktop app. **Select
 the small model** in the model dropdown.
 
-In the chat:
+Two prompts to try, in order. Both invoke the same skill; the first
+lets Copilot's own semantic matcher find it, the second tells Copilot
+exactly where to look if the matcher didn't fire.
 
-> Read `.agents/skills/design-system/SKILL.md` and follow its
-> instructions to build me a landing page with a big "START" CTA
-> button.
+**A. Intent-first (recommended)** — no mention of the skill by name:
 
-> **Why we point at the file explicitly rather than typing
-> `/design-system`**: the Copilot desktop app does **not**
-> auto-discover `.agents/skills/*/SKILL.md` as slash-commands. Its
-> `/skill` dispatcher only knows its own built-in skills
-> (`create-canvas`, `rename_session`, etc.). Ask it to invoke
-> `/design-system` and it will honestly answer *"the design-system
-> skill isn't available"* — and often improvise with something
-> unrelated. Naming the `SKILL.md` path in the prompt is what
-> reliably loads the workflow. Claude Code, by contrast, does
-> auto-discover `.claude/skills/` — the asymmetry is a Copilot
-> quirk, not a bug in APM's install (the files landed just fine).
+> Build me a landing page with a big "START" CTA button.
+
+Per the [agent-skills spec](https://agent-skills.io/) and the
+[APM targets matrix](https://microsoft.github.io/apm/reference/targets-matrix/),
+skills installed under `.agents/skills/` are meant to be model-invoked
+via semantic matching on the SKILL.md's `description` field — no
+slash-command needed. If Copilot's matcher fires, it reads
+`.agents/skills/design-system/SKILL.md` and follows the workflow.
+
+**B. Explicit reference (reliable fallback)** — if the matcher didn't
+seem to fire (visible from the answer: no mention of `tokens.css`,
+of the platform, or an improvised route like Copilot's built-in
+`create-canvas`), give a second prompt that names the file:
+
+> Follow the workflow in `.agents/skills/design-system/SKILL.md` to
+> build me a landing page with a big "START" CTA button.
+
+The Copilot desktop app's automatic discovery of `.agents/skills/` is
+evolving — in some sessions the matcher fires, in others it doesn't
+(a name-based prompt like *"invoke the 'design-system' skill"* tends
+to short-circuit into Copilot's built-in skill catalog and miss the
+user-installed skills entirely). The explicit-reference form always
+works because it converts discovery into a plain "read this file"
+instruction.
 
 **What you should observe**: Copilot reads `SKILL.md`. But without
 the `ppg` MCP server registered, it cannot call
@@ -147,15 +160,19 @@ apm install owulveryck/poc-agentic-platform/demo --target copilot
 Open `~/demo/with-platform` in the Copilot desktop app. **Select the
 same small model** as before.
 
-Prompt 1 (identical file reference as Act 1):
+Prompt 1 — same intent as Act 1 (start intent-first, fall back to
+explicit reference if needed):
 
-> Read `.agents/skills/design-system/SKILL.md` and follow its
-> instructions to build me a landing page with a big "START" CTA
-> button.
+> Build me a landing page with a big "START" CTA button.
 
-**What you should observe**: Copilot reads `SKILL.md`, and this
-time `get_platform_guidelines_for_intent` and `lock_in_plan` are
-visible as MCP tools (registered user-scope in `~/.copilot/mcp-config.json`
+If the matcher doesn't fire on the first prompt, add:
+
+> Follow the workflow in `.agents/skills/design-system/SKILL.md`.
+
+**What you should observe**: Copilot picks up the skill (via
+semantic match OR explicit reference), and this time
+`get_platform_guidelines_for_intent` and `lock_in_plan` are visible
+as MCP tools (registered user-scope in `~/.copilot/mcp-config.json`
 by the how-to). The workflow runs full: enrich → read tokens →
 plan → lock → apply. Every edit passes through `ppg-copilot-guard`
 (path scope) and `design-guard.sh` (content scope). The result

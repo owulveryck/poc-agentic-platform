@@ -25,17 +25,27 @@ apm install ~/src/poc-agentic-platform/demo --target copilot
 # open ~/deep-umbra-landing in the Copilot app
 ```
 
-Then, in Copilot Chat:
+Then, in Copilot Chat, an intent-first prompt (no mention of the
+skill by name):
 
-> Read `.agents/skills/design-system/SKILL.md` and follow its
-> instructions to build me a landing page with a hero and a big
-> "START PAYMENT" CTA button.
+> Build me a landing page with a hero and a big "START PAYMENT" CTA
+> button.
 
-> **Note**: the Copilot desktop app does not auto-discover
-> `.agents/skills/*/SKILL.md` as slash-commands (`/design-system`
-> returns *"skill isn't available"*). Point at the file explicitly
-> as above. Claude Code, by contrast, does auto-discover
-> `.claude/skills/` and accepts `/design-system` directly.
+Per the [agent-skills spec](https://agent-skills.io/) and the
+[APM targets matrix](https://microsoft.github.io/apm/reference/targets-matrix/),
+skills installed under `.agents/skills/` are model-invoked via
+semantic matching on their SKILL.md `description`. If Copilot's
+matcher fires, it reads `.agents/skills/design-system/SKILL.md` and
+follows the workflow.
+
+If the matcher doesn't fire (auto-discovery in the Copilot desktop
+app is still evolving), add a second prompt pointing at the file
+explicitly:
+
+> Follow the workflow in `.agents/skills/design-system/SKILL.md`.
+
+Claude Code, by contrast, auto-discovers `.claude/skills/` and also
+exposes user skills as slash-commands (`/design-system Build me ...`).
 
 ## What just happened, step by step
 

@@ -1,6 +1,6 @@
 ---
 name: ppg-tutorial
-description: Runs the amplified planning loop tutorial against a local Platform Planning Gateway, showing enrich, a deterministic plan rejection, the capability ticket, an out-of-scope refusal, and the debt report, with the real transcript reported at every step.
+description: Runs the full amplified planning loop of the Platform Planning Gateway end-to-end against a local instance. Use to demonstrate, explore, or test the PPG live. Shows enrich, a deterministic plan rejection with semantic guidance, the capability ticket, an out-of-scope refusal, and the debt report — with the real transcript at every step.
 version: 1.0.0
 argument-hint: "[intent, e.g. Add Stripe as a payment method to the checkout service]"
 ---

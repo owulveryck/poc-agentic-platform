@@ -24,11 +24,10 @@ apm install owulveryck/poc-agentic-platform/demo --target copilot
 A local checkout works the same way:
 `apm install /path/to/poc-agentic-platform/demo --target claude`.
 
-Then invoke them from a session. **Invocation differs by agent
-surface**:
+Then invoke them from a session. Invocation differs by agent surface.
 
-**Claude Code** — auto-discovers `.claude/skills/*/SKILL.md`
-as slash-commands:
+**Claude Code** — auto-discovers `.claude/skills/*/SKILL.md` and
+exposes each as a slash-command:
 
 ```
 /ppg-tutorial Add Stripe as a payment method to the checkout service
@@ -36,21 +35,30 @@ as slash-commands:
 /design-system Build a landing page with a big START PAYMENT CTA button
 ```
 
-**Copilot desktop app** — does NOT auto-discover
-`.agents/skills/*/SKILL.md`. Its `/skill` dispatcher only knows
-Copilot's built-in skills. Reference the SKILL.md file explicitly
-in the prompt instead:
+**Copilot desktop app / CLI / VS Code** — per the [agent-skills
+spec](https://agent-skills.io/) and the [APM targets matrix](https://microsoft.github.io/apm/reference/targets-matrix/),
+skills installed under `.agents/skills/` are model-invoked via
+semantic matching on the SKILL.md's `description` field. Give an
+intent-first prompt and let Copilot pick up the skill on its own:
 
 ```
-Read .agents/skills/ppg-tutorial/SKILL.md and follow it. Argument:
-"Add Stripe as a payment method to the checkout service".
-
-Read .agents/skills/add-payment-method/SKILL.md and follow it.
-Provider: Stripe.
-
-Read .agents/skills/design-system/SKILL.md and follow it to build
-a landing page with a big START PAYMENT CTA button.
+Add Stripe as a payment method to the checkout service.
+Build a landing page with a big START PAYMENT CTA button.
+Walk me through the Platform Planning Gateway end-to-end.
 ```
+
+If Copilot's matcher doesn't fire — the desktop app's automatic
+discovery of `.agents/skills/` is still evolving — reference the
+SKILL.md file explicitly as a reliable fallback:
+
+```
+Follow the workflow in .agents/skills/design-system/SKILL.md to
+build a landing page with a big START PAYMENT CTA button.
+```
+
+Avoid name-based prompts like *"invoke the design-system skill"* —
+those tend to be routed into Copilot's built-in skill catalog and
+miss the user-installed skills entirely.
 
 `ppg-tutorial` needs Go 1.25+ and network access to `localhost:8765` (it
 starts the gateway itself if none is running); `add-payment-method` expects

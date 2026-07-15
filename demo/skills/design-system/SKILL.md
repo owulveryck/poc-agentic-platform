@@ -1,6 +1,6 @@
 ---
 name: design-system
-description: Applies the Deep Umbra design system to a project through the governed loop of the Platform Planning Gateway, materializing the canonical palette and button rule in design/tokens.css and enforcing every subsequent UI edit against them via a PreToolUse content-scope hook.
+description: Applies the Deep Umbra design system to any UI work in the project. Use whenever the user asks to build a landing page, a web component, a page prototype, or any piece of styling in HTML/CSS/TSX. Materializes the canonical palette in design/tokens.css and enforces every subsequent edit against it via a PreToolUse content-scope hook.
 version: 1.0.0
 argument-hint: "<what to build, e.g. a landing page with a START PAYMENT CTA button>"
 ---
