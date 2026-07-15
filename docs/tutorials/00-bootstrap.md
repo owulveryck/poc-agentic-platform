@@ -167,15 +167,30 @@ One tool call from each agent surface confirms binaries + registration
 
 ### From Copilot
 
-Open any folder in the Copilot app (or start `gh copilot`) and chat:
+Open any folder in the Copilot app (or start `gh copilot`).
+
+**Switch to Agent mode first.** Per the [GitHub Copilot MCP docs](https://docs.github.com/en/copilot/how-tos/context/model-context-protocol/extending-copilot-chat-with-mcp),
+MCP tools are only invokable when the chat is in **Agent mode**
+(not "Ask" or "Chat" mode). Find the mode selector near the chat
+input (usually a dropdown or popup) and pick **Agent**. Without
+this, `ppg` will appear in the tool list but the model will
+answer *"the `get_platform_guidelines_for_intent` method doesn't
+appear to be available as an installed MCP server"* — because in
+non-Agent modes the tool is visible but not invokable. The
+symptom is confusing on purpose (there is no error, just an
+apologetic refusal).
+
+Then chat:
 
 > Call the ppg MCP tool `get_platform_guidelines_for_intent` with intent
 > "test bootstrap" and repository_context `{"name":"bootstrap-check",
 > "tech_stack":["Go"]}`. Show me the JSON result.
 
 Expected: a JSON blob containing `architectural_invariants` with at
-least ADR-042 and ADR-070. If you get "tool not found", the MCP
-registration didn't take — recheck step 3.
+least ADR-042 and ADR-070. If you get "tool not found" or "not
+available":
+- **Are you in Agent mode?** — most likely cause (see above).
+- Otherwise, recheck step 3 (absolute path in the MCP config).
 
 ### From Claude Code
 
@@ -220,6 +235,18 @@ Common failure modes we've hit while shipping the tutorials:
   Those surfaces read `~/.copilot/mcp-config.json`. VS Code reads
   `.vscode/mcp.json`. If your Copilot session can't find the `ppg`
   tools, check the right file for your surface.
+
+- **Copilot lists `ppg` in the tool drawer but the model says the
+  tool "isn't available" / "doesn't appear to be an installed MCP
+  server".** You are almost certainly in **Ask / Chat mode**, not
+  Agent mode. MCP tools are only invokable in Agent mode
+  ([docs](https://docs.github.com/en/copilot/how-tos/context/model-context-protocol/extending-copilot-chat-with-mcp)).
+  The mode selector is near the chat input — pick **Agent** and
+  re-run the prompt. Symptom is easy to mis-diagnose: the tool
+  shows up, the model even mentions it by name, but its "call"
+  quietly turns into a *search* through Copilot's own built-in
+  skill catalog (`agentfinder` etc.), which of course finds
+  nothing PPG-related.
 
 - **Copilot shows the `ppg` server but loops on "connecting…"**
   Almost always a **PATH problem**: the Copilot desktop app is a GUI
