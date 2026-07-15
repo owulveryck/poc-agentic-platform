@@ -22,6 +22,8 @@ one directory each.
 6. [From a governed skill to a governed session](tutorials/06-skill-to-session-end-to-end.md) — write a skill and its policy, pass the publication gate, watch it drive a session through every gateway
 7. [Govern a live GitHub Copilot session](tutorials/07-copilot-end-to-end.md) — the Copilot sibling of tutorial 2: MCP planning + `PreToolUse` gating in the official Copilot app
 8. [Govern a design system through a skill](tutorials/08-design-system-end-to-end.md) — extend the loop from path-scope to content-scope: enforce the Deep Umbra palette on buttons with a shell-script PreToolUse hook shipped inside the skill
+9. [Copilot on a governed workstation](tutorials/09-copilot-on-governed-workstation.md) — with the workstation configured user-wide (see how-to below), a fresh project is governed with three commands and one prompt
+10. [Claude Code on a governed workstation](tutorials/10-claude-on-governed-workstation.md) — the same demo for Claude Code
 
 ## How-to guides — task-oriented
 
@@ -33,6 +35,7 @@ one directory each.
 - [Enforce a content invariant with a PreToolUse hook](how-to/enforce-a-content-invariant.md) — the pattern behind tutorial 8, generalized for any content-scope policy
 - [Connect a black-box agent (Copilot / Cursor)](how-to/connect-a-black-box-agent.md)
 - [Connect Claude Code](how-to/connect-claude-code.md)
+- [Set up a governed workstation](how-to/set-up-a-governed-workstation.md) — install the platform user-wide so every project on this machine is governed by default; tutorials 9 and 10 demonstrate the result
 - [Add a skill governance rule](how-to/add-a-skill-governance-rule.md)
 - [Gate skill publication in CI](how-to/gate-skill-publication-in-ci.md)
 
