@@ -134,6 +134,20 @@ against its scope.
   Deterministic refusal, semantic guidance, zero damage — pillar 2,
   running inside Copilot.
 
+## Composability with other PreToolUse hooks
+
+Multiple hooks per `PreToolUse` event compose: the runtime fires them in
+parallel and applies the most-restrictive decision (`deny` > `ask` >
+`allow`). `ppg-copilot-guard` enforces **path scope** (ticket-driven).
+It composes with any other content-scope policy — for example, the
+`design-system` skill in
+[`demo/skills/design-system/`](../../demo/skills/design-system/) ships
+a shell-script hook (`hooks/design-guard.sh`) that denies raw color
+literals and button re-styling outside `design/tokens.css`. Both hooks
+fire together; neither knows about the other. The pattern for building
+your own content-scope hook is documented in
+[docs/how-to/enforce-a-content-invariant.md](../../docs/how-to/enforce-a-content-invariant.md).
+
 ## Notes and known limits
 
 - **Payload shape**. The Copilot desktop app names the file field
