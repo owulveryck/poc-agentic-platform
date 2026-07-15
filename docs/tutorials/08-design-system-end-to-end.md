@@ -15,15 +15,23 @@
 > Prerequisites: [tutorial 0](00-bootstrap.md) completed. Gateway
 > running on `:8765`. `apm` installed.
 
-## The three commands
+## The four commands
 
 Everything else happens inside the skill invocation.
 
 ```bash
 mkdir ~/deep-umbra-landing && cd ~/deep-umbra-landing && git init
 apm install ~/src/poc-agentic-platform/demo --target copilot
+git add -A && git commit -q -m "install design-system skill via APM"
 # open ~/deep-umbra-landing in the Copilot app
 ```
+
+The commit right after `apm install` matters: the Copilot desktop app
+creates a per-session git worktree from the last commit, and
+uncommitted files (including everything APM just installed) are
+invisible in that worktree. If you already opened the folder in
+Copilot before committing, close the Copilot session and reopen it —
+the worktree is created at session start.
 
 Then, in Copilot Chat, an intent-first prompt (no mention of the
 skill by name):

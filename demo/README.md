@@ -24,6 +24,20 @@ apm install owulveryck/poc-agentic-platform/demo --target copilot
 A local checkout works the same way:
 `apm install /path/to/poc-agentic-platform/demo --target claude`.
 
+**Commit right after install** if the project is a fresh git repo:
+
+```bash
+git add -A && git commit -q -m "install skills via APM"
+```
+
+Why: the Copilot desktop app creates a per-session git worktree from
+the last commit; uncommitted files are invisible in that worktree
+(the app will say *"I don't see `.agents/skills/…` in the
+repository"*). Claude Code is less strict but committing works
+either way. If you already opened the folder in Copilot before
+committing, close the Copilot session and reopen it — the worktree
+is created at session start and does not refresh mid-session.
+
 Then invoke them from a session. Invocation differs by agent surface.
 
 **Claude Code** — auto-discovers `.claude/skills/*/SKILL.md` and

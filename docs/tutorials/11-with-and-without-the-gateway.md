@@ -63,7 +63,20 @@ point of this tutorial is the contrast.
 cd ~/demo
 mkdir without-platform && cd without-platform && git init
 apm install owulveryck/poc-agentic-platform/demo --target copilot
+git add -A && git commit -q -m "install skills via APM"
 ```
+
+> **Why the commit right after `apm install`**: the Copilot desktop
+> app creates a per-session git worktree from the last commit.
+> Uncommitted files (including everything APM just installed) are not
+> visible to Copilot in that worktree — the app will honestly report
+> *"I don't see `.agents/skills/design-system/SKILL.md` in the
+> repository"* even though the files are on disk. Committing makes
+> them land in the worktree.
+>
+> If you already opened the folder in Copilot before committing:
+> **close that Copilot session and reopen it**. The worktree is
+> created at session start and does not refresh mid-session.
 
 Open `~/demo/without-platform` in the Copilot desktop app. **Select
 the small model** in the model dropdown.
@@ -154,8 +167,15 @@ curl -sf http://localhost:8765/debt_report >/dev/null && echo "gateway OK"
 ```bash
 cd ~/demo
 mkdir with-platform && cd with-platform && git init
+printf '.ppg-ticket\n.ppg-session\n' >> .gitignore
 apm install owulveryck/poc-agentic-platform/demo --target copilot
+git add -A && git commit -q -m "install skills via APM"
 ```
+
+Same reason as Act 1 for the commit: Copilot's per-session worktree
+only reflects committed files. The extra `.gitignore` lines here
+prevent the ticket and session files (written at runtime by the
+platform) from being accidentally tracked.
 
 Open `~/demo/with-platform` in the Copilot desktop app. **Select the
 same small model** as before.
