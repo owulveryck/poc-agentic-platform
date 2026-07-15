@@ -66,15 +66,27 @@ every project on this machine.
 Both surfaces read `~/.copilot/mcp-config.json`. Two equivalent ways
 to write it:
 
+> ⚠️ **macOS GUI PATH gotcha** — the Copilot desktop app is a GUI
+> process, and macOS GUI processes **do not inherit your shell's
+> `PATH`**. `~/.local/bin` (and often `~/.local/bin` even after
+> `.zshrc` edits) is *not* on the PATH the app sees when it spawns
+> the MCP subprocess. Config values like `"command": "ppg-mcp-server"`
+> silently fail with a "connecting…" loop. **Use a fully-expanded
+> absolute path** (`$HOME/.local/bin/ppg-mcp-server`, expanded by
+> the shell before it lands in the JSON) or install the binaries
+> under `/usr/local/bin/` (macOS GUI PATH includes it by default).
+
 **A. With the `copilot` CLI** (shortest, if it is installed):
 
 ```bash
-copilot mcp add ppg --env PPG_URL=http://localhost:8765 -- ppg-mcp-server
+copilot mcp add ppg --env PPG_URL=http://localhost:8765 \
+  -- "$HOME/.local/bin/ppg-mcp-server"
 copilot mcp list       # → ppg  connected
 ```
 
 **B. Without the CLI** — hand-edit the file (the desktop app reads it
-directly, no CLI required):
+directly, no CLI required). Note the `<<EOF` (no quotes) so `$HOME`
+expands to your literal absolute path before landing in the JSON:
 
 ```bash
 mkdir -p ~/.copilot
@@ -82,21 +94,21 @@ mkdir -p ~/.copilot
 if [ -f ~/.copilot/mcp-config.json ]; then
   echo "⚠️  ~/.copilot/mcp-config.json already exists — NOT overwriting." >&2
   echo "   Merge this block into its 'mcpServers' object by hand:" >&2
-  cat >&2 <<'EOF'
+  cat >&2 <<EOF
     "ppg": {
       "type": "stdio",
-      "command": "ppg-mcp-server",
+      "command": "$HOME/.local/bin/ppg-mcp-server",
       "env": { "PPG_URL": "http://localhost:8765" },
       "tools": ["*"]
     }
 EOF
 else
-  cat > ~/.copilot/mcp-config.json <<'EOF'
+  cat > ~/.copilot/mcp-config.json <<EOF
 {
   "mcpServers": {
     "ppg": {
       "type": "stdio",
-      "command": "ppg-mcp-server",
+      "command": "$HOME/.local/bin/ppg-mcp-server",
       "env": { "PPG_URL": "http://localhost:8765" },
       "tools": ["*"]
     }
@@ -105,15 +117,20 @@ else
 EOF
 fi
 
-cat ~/.copilot/mcp-config.json    # verify
+cat ~/.copilot/mcp-config.json    # verify — you should see /Users/<you>/.local/bin/... in "command"
 ```
 
 ### Claude Code
 
 ```bash
-claude mcp add ppg --scope user --env PPG_URL=http://localhost:8765 -- ppg-mcp-server
+claude mcp add ppg --scope user --env PPG_URL=http://localhost:8765 \
+  -- "$HOME/.local/bin/ppg-mcp-server"
 claude mcp list        # → ppg  connected
 ```
+
+(Absolute path recommended for consistency with the Copilot case above
+and because Claude Code as a launchd agent would face the same GUI-
+PATH restriction if launched from Finder rather than a terminal.)
 
 ### VS Code Copilot Chat
 
@@ -203,14 +220,53 @@ Common failure modes we've hit while shipping the tutorials:
   Those surfaces read `~/.copilot/mcp-config.json`. VS Code reads
   `.vscode/mcp.json`. If your Copilot session can't find the `ppg`
   tools, check the right file for your surface.
-- **`ppg-copilot-guard: command not found` inside a hook.** The
-  binary is not on the `PATH` the Copilot desktop app sees. Either
-  install it to a system location (`/usr/local/bin`), or make the
-  hook config path absolute.
+
+- **Copilot shows the `ppg` server but loops on "connecting…"**
+  Almost always a **PATH problem**: the Copilot desktop app is a GUI
+  process, so it inherits the macOS *login* PATH, not your shell's
+  PATH. `~/.local/bin` is not on the login PATH. Steps to check, in
+  order:
+    1. Verify the config uses a **fully-expanded absolute path** (open
+       `~/.copilot/mcp-config.json` — the `command` should read
+       `/Users/<you>/.local/bin/ppg-mcp-server`, not
+       `~/.local/bin/…` and not `ppg-mcp-server` alone).
+    2. Verify the binary starts standalone:
+       ```bash
+       python3 -c "
+       import json,subprocess,select
+       p=subprocess.Popen(['$HOME/.local/bin/ppg-mcp-server'],stdin=subprocess.PIPE,stdout=subprocess.PIPE,env={'PATH':'/usr/bin:/bin','PPG_URL':'http://localhost:8765'})
+       p.stdin.write(b'{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{},\"clientInfo\":{\"name\":\"t\",\"version\":\"1\"}}}\n')
+       p.stdin.flush()
+       r,_,_=select.select([p.stdout],[],[],3)
+       print('OK:' if r else 'HANG', p.stdout.readline().decode() if r else '')
+       p.kill()"
+       ```
+       Expected: `OK: {"jsonrpc":"2.0","id":1,"result":{...}}`. If
+       you see `HANG`, the binary itself is broken (rebuild). If you
+       see `FileNotFoundError`, path is wrong.
+    3. Clear macOS quarantine on the binary (compiled binaries can
+       carry `com.apple.quarantine` if downloaded via a browser; not
+       normally set by `go build`, but worth checking):
+       `xattr -d com.apple.quarantine ~/.local/bin/ppg-mcp-server`.
+    4. Restart the Copilot session (the MCP client only re-reads
+       config at session start).
+  If none of that helps, the Copilot logs are typically under
+  `~/Library/Application Support/*Copilot*/logs/` or
+  `~/Library/Logs/*Copilot*/`. Search there for the string
+  `ppg-mcp-server` to find the actual error.
+
+- **`ppg-copilot-guard: command not found` inside a hook.** Same
+  GUI-PATH story as above, but for the hook subprocess. Use an
+  absolute path (`$HOME/.local/bin/ppg-copilot-guard`) in the
+  `.github/hooks/*.json` `command` field, or install the binaries
+  under `/usr/local/bin/` which is on the macOS login PATH by
+  default.
+
 - **`PPG_URL` mismatch.** If you started the gateway on a different
   port than the MCP server was registered with, the MCP call succeeds
   but returns nothing. Re-register the MCP server with the correct
   `--env PPG_URL=…`, or restart the gateway on the expected port.
+
 - **Gateway startup shows `4 invariants` instead of `5`.** You are on
   a checkout that predates ADR-090. `git pull`.
 

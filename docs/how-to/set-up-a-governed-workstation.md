@@ -82,11 +82,12 @@ Verify:
 claude mcp list          # → ppg   connected   (user)
 ```
 
-If missing, re-run:
+If missing, re-run (use an absolute path for the binary — GUI-launched
+agents can lack `~/.local/bin` in their PATH):
 
 ```bash
 claude mcp add --scope user ppg \
-  --env PPG_URL=http://localhost:8765 -- ppg-mcp-server
+  --env PPG_URL=http://localhost:8765 -- "$HOME/.local/bin/ppg-mcp-server"
 ```
 
 ### 2. Contract — write `~/.claude/CLAUDE.md`
@@ -105,6 +106,11 @@ extend it, its own `./CLAUDE.md` takes precedence.
 
 ### 3. Hooks — write `~/.claude/settings.json`
 
+Note the `<<EOF` (no quotes) below — this expands `$HOME` before it
+lands in the JSON. GUI-launched agent runtimes may not have
+`~/.local/bin` on their PATH, so the hook `command` needs an
+absolute path.
+
 ```bash
 mkdir -p ~/.claude
 
@@ -112,32 +118,32 @@ if [ -f ~/.claude/settings.json ]; then
   echo "⚠️  ~/.claude/settings.json already exists — NOT overwriting." >&2
   echo "   Merge these entries into its 'hooks' object by hand" >&2
   echo "   (append to existing SessionStart/PreToolUse arrays):" >&2
-  cat >&2 <<'EOF'
+  cat >&2 <<EOF
   "SessionStart": [
     { "hooks": [
-      { "type": "command", "command": "ppg-guard", "args": [] }
+      { "type": "command", "command": "$HOME/.local/bin/ppg-guard", "args": [] }
     ] }
   ],
   "PreToolUse": [
     { "matcher": "Edit|Write",
       "hooks": [
-        { "type": "command", "command": "ppg-guard", "args": [] }
+        { "type": "command", "command": "$HOME/.local/bin/ppg-guard", "args": [] }
       ] }
   ]
 EOF
 else
-  cat > ~/.claude/settings.json <<'EOF'
+  cat > ~/.claude/settings.json <<EOF
 {
   "hooks": {
     "SessionStart": [
       { "hooks": [
-        { "type": "command", "command": "ppg-guard", "args": [] }
+        { "type": "command", "command": "$HOME/.local/bin/ppg-guard", "args": [] }
       ] }
     ],
     "PreToolUse": [
       { "matcher": "Edit|Write",
         "hooks": [
-          { "type": "command", "command": "ppg-guard", "args": [] }
+          { "type": "command", "command": "$HOME/.local/bin/ppg-guard", "args": [] }
         ] }
     ]
   }
@@ -186,14 +192,20 @@ copilot mcp list                       # if the copilot CLI is installed
 cat ~/.copilot/mcp-config.json         # otherwise — check for the ppg entry
 ```
 
-Re-add if missing. **A.** With the CLI:
+Re-add if missing. **Both forms use an absolute path** — the Copilot
+desktop app is a GUI process and doesn't inherit your shell's PATH.
+`~/.local/bin` is invisible; a bare `ppg-mcp-server` will result in
+the app looping on "connecting…" with no visible error.
+
+**A.** With the CLI:
 
 ```bash
-copilot mcp add ppg --env PPG_URL=http://localhost:8765 -- ppg-mcp-server
+copilot mcp add ppg --env PPG_URL=http://localhost:8765 \
+  -- "$HOME/.local/bin/ppg-mcp-server"
 ```
 
-**B.** Without the CLI — hand-edit the file (the desktop app reads it
-directly):
+**B.** Without the CLI — hand-edit the file (note `<<EOF` unquoted so
+`$HOME` expands to your literal absolute path in the JSON):
 
 ```bash
 mkdir -p ~/.copilot
@@ -201,21 +213,21 @@ mkdir -p ~/.copilot
 if [ -f ~/.copilot/mcp-config.json ]; then
   echo "⚠️  ~/.copilot/mcp-config.json already exists — NOT overwriting." >&2
   echo "   Merge this block into its 'mcpServers' object by hand:" >&2
-  cat >&2 <<'EOF'
+  cat >&2 <<EOF
     "ppg": {
       "type": "stdio",
-      "command": "ppg-mcp-server",
+      "command": "$HOME/.local/bin/ppg-mcp-server",
       "env": { "PPG_URL": "http://localhost:8765" },
       "tools": ["*"]
     }
 EOF
 else
-  cat > ~/.copilot/mcp-config.json <<'EOF'
+  cat > ~/.copilot/mcp-config.json <<EOF
 {
   "mcpServers": {
     "ppg": {
       "type": "stdio",
-      "command": "ppg-mcp-server",
+      "command": "$HOME/.local/bin/ppg-mcp-server",
       "env": { "PPG_URL": "http://localhost:8765" },
       "tools": ["*"]
     }
@@ -260,14 +272,15 @@ customized this file, back it up first (`cp ~/.copilot/hooks/ppg.json{,.bak}`).
 
 ```bash
 mkdir -p ~/.copilot/hooks
-cat > ~/.copilot/hooks/ppg.json <<'EOF'
+# <<EOF (no quotes) so $HOME expands to your literal path in the JSON.
+cat > ~/.copilot/hooks/ppg.json <<EOF
 {
   "hooks": {
     "SessionStart": [
-      { "type": "command", "command": "ppg-copilot-guard", "timeoutSec": 5 }
+      { "type": "command", "command": "$HOME/.local/bin/ppg-copilot-guard", "timeoutSec": 5 }
     ],
     "PreToolUse": [
-      { "type": "command", "command": "ppg-copilot-guard", "timeoutSec": 5 }
+      { "type": "command", "command": "$HOME/.local/bin/ppg-copilot-guard", "timeoutSec": 5 }
     ]
   }
 }
