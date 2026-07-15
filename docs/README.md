@@ -24,6 +24,7 @@ one directory each.
 8. [Govern a design system through a skill](tutorials/08-design-system-end-to-end.md) — extend the loop from path-scope to content-scope: enforce the Deep Umbra palette on buttons with a shell-script PreToolUse hook shipped inside the skill
 9. [Copilot on a governed workstation](tutorials/09-copilot-on-governed-workstation.md) — with the workstation configured user-wide (see how-to below), a fresh project is governed with three commands and one prompt
 10. [Claude Code on a governed workstation](tutorials/10-claude-on-governed-workstation.md) — the same demo for Claude Code
+11. [With and without the Gateway — a side-by-side demo](tutorials/11-with-and-without-the-gateway.md) — same skill, same prompts, two projects: without the platform a small model drifts under an adversarial prompt; with the platform, the drift is deterministically refused
 
 ## How-to guides — task-oriented
 
