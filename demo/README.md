@@ -24,12 +24,32 @@ apm install owulveryck/poc-agentic-platform/demo --target copilot
 A local checkout works the same way:
 `apm install /path/to/poc-agentic-platform/demo --target claude`.
 
-Then invoke them from a session:
+Then invoke them from a session. **Invocation differs by agent
+surface**:
+
+**Claude Code** — auto-discovers `.claude/skills/*/SKILL.md`
+as slash-commands:
 
 ```
 /ppg-tutorial Add Stripe as a payment method to the checkout service
 /add-payment-method Stripe
 /design-system Build a landing page with a big START PAYMENT CTA button
+```
+
+**Copilot desktop app** — does NOT auto-discover
+`.agents/skills/*/SKILL.md`. Its `/skill` dispatcher only knows
+Copilot's built-in skills. Reference the SKILL.md file explicitly
+in the prompt instead:
+
+```
+Read .agents/skills/ppg-tutorial/SKILL.md and follow it. Argument:
+"Add Stripe as a payment method to the checkout service".
+
+Read .agents/skills/add-payment-method/SKILL.md and follow it.
+Provider: Stripe.
+
+Read .agents/skills/design-system/SKILL.md and follow it to build
+a landing page with a big START PAYMENT CTA button.
 ```
 
 `ppg-tutorial` needs Go 1.25+ and network access to `localhost:8765` (it

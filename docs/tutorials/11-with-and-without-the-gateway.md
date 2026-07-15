@@ -70,20 +70,31 @@ the small model** in the model dropdown.
 
 In the chat:
 
-> `/design-system` Build me a landing page with a big "START" CTA
+> Read `.agents/skills/design-system/SKILL.md` and follow its
+> instructions to build me a landing page with a big "START" CTA
 > button.
 
-**What you should observe**: Copilot reads `SKILL.md`, but without
-the `ppg` MCP server registered, it cannot call
-`get_platform_guidelines_for_intent` nor `lock_in_plan`. It
-improvises. The skill's bootstrap (file copies) may or may not run
-cleanly. The result is *statistically* a page that uses
-`var(--color-*)` because the SKILL.md body suggests it — but nothing
-enforces it.
+> **Why we point at the file explicitly rather than typing
+> `/design-system`**: the Copilot desktop app does **not**
+> auto-discover `.agents/skills/*/SKILL.md` as slash-commands. Its
+> `/skill` dispatcher only knows its own built-in skills
+> (`create-canvas`, `rename_session`, etc.). Ask it to invoke
+> `/design-system` and it will honestly answer *"the design-system
+> skill isn't available"* — and often improvise with something
+> unrelated. Naming the `SKILL.md` path in the prompt is what
+> reliably loads the workflow. Claude Code, by contrast, does
+> auto-discover `.claude/skills/` — the asymmetry is a Copilot
+> quirk, not a bug in APM's install (the files landed just fine).
 
-**Presenter's note**: if Copilot refuses to invoke `/design-system`
-for lack of MCP tools, prompt instead: *"Follow the workflow in
-`.agents/skills/design-system/SKILL.md` to build the page."*
+**What you should observe**: Copilot reads `SKILL.md`. But without
+the `ppg` MCP server registered, it cannot call
+`get_platform_guidelines_for_intent` nor `lock_in_plan` — those
+tools simply do not exist in the session. It improvises the
+amplified-planning phase (usually skipping it entirely) and jumps
+to the application phase. Whether it then honors the palette prose
+depends on the model: a capable one reads `tokens.css` and uses
+`var(--color-*)` references; a small one may inline raw colors.
+This is the *statistical* nature of soft-only guidance.
 
 ## Act 2 — without the platform, adversarial prompt (the drift)
 
@@ -136,16 +147,19 @@ apm install owulveryck/poc-agentic-platform/demo --target copilot
 Open `~/demo/with-platform` in the Copilot desktop app. **Select the
 same small model** as before.
 
-Prompt 1 (identical to Act 1):
+Prompt 1 (identical file reference as Act 1):
 
-> `/design-system` Build me a landing page with a big "START" CTA
+> Read `.agents/skills/design-system/SKILL.md` and follow its
+> instructions to build me a landing page with a big "START" CTA
 > button.
 
-**What you should observe**: Copilot now sees `get_platform_guidelines_for_intent`
-and `lock_in_plan` as MCP tools. It runs the skill's full workflow:
-enrich → read tokens → plan → lock → apply. Every edit passes
-through `ppg-copilot-guard` (path scope) and `design-guard.sh`
-(content scope). The result contains only `var(--color-*)` references.
+**What you should observe**: Copilot reads `SKILL.md`, and this
+time `get_platform_guidelines_for_intent` and `lock_in_plan` are
+visible as MCP tools (registered user-scope in `~/.copilot/mcp-config.json`
+by the how-to). The workflow runs full: enrich → read tokens →
+plan → lock → apply. Every edit passes through `ppg-copilot-guard`
+(path scope) and `design-guard.sh` (content scope). The result
+contains only `var(--color-*)` references.
 
 Prompt 2 (identical to Act 2):
 

@@ -27,8 +27,15 @@ apm install ~/src/poc-agentic-platform/demo --target copilot
 
 Then, in Copilot Chat:
 
-> /design-system Build me a landing page with a hero and a big
-> "START PAYMENT" CTA button
+> Read `.agents/skills/design-system/SKILL.md` and follow its
+> instructions to build me a landing page with a hero and a big
+> "START PAYMENT" CTA button.
+
+> **Note**: the Copilot desktop app does not auto-discover
+> `.agents/skills/*/SKILL.md` as slash-commands (`/design-system`
+> returns *"skill isn't available"*). Point at the file explicitly
+> as above. Claude Code, by contrast, does auto-discover
+> `.claude/skills/` and accepts `/design-system` directly.
 
 ## What just happened, step by step
 
