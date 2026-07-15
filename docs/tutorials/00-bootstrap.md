@@ -78,7 +78,20 @@ directly, no CLI required):
 
 ```bash
 mkdir -p ~/.copilot
-cat > ~/.copilot/mcp-config.json <<'EOF'
+
+if [ -f ~/.copilot/mcp-config.json ]; then
+  echo "⚠️  ~/.copilot/mcp-config.json already exists — NOT overwriting." >&2
+  echo "   Merge this block into its 'mcpServers' object by hand:" >&2
+  cat >&2 <<'EOF'
+    "ppg": {
+      "type": "stdio",
+      "command": "ppg-mcp-server",
+      "env": { "PPG_URL": "http://localhost:8765" },
+      "tools": ["*"]
+    }
+EOF
+else
+  cat > ~/.copilot/mcp-config.json <<'EOF'
 {
   "mcpServers": {
     "ppg": {
@@ -90,11 +103,10 @@ cat > ~/.copilot/mcp-config.json <<'EOF'
   }
 }
 EOF
+fi
+
 cat ~/.copilot/mcp-config.json    # verify
 ```
-
-If the file already exists with other `mcpServers`, add the `ppg`
-block into the existing object instead of replacing the whole file.
 
 ### Claude Code
 

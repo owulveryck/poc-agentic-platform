@@ -106,7 +106,27 @@ extend it, its own `./CLAUDE.md` takes precedence.
 ### 3. Hooks — write `~/.claude/settings.json`
 
 ```bash
-cat > ~/.claude/settings.json <<'EOF'
+mkdir -p ~/.claude
+
+if [ -f ~/.claude/settings.json ]; then
+  echo "⚠️  ~/.claude/settings.json already exists — NOT overwriting." >&2
+  echo "   Merge these entries into its 'hooks' object by hand" >&2
+  echo "   (append to existing SessionStart/PreToolUse arrays):" >&2
+  cat >&2 <<'EOF'
+  "SessionStart": [
+    { "hooks": [
+      { "type": "command", "command": "ppg-guard", "args": [] }
+    ] }
+  ],
+  "PreToolUse": [
+    { "matcher": "Edit|Write",
+      "hooks": [
+        { "type": "command", "command": "ppg-guard", "args": [] }
+      ] }
+  ]
+EOF
+else
+  cat > ~/.claude/settings.json <<'EOF'
 {
   "hooks": {
     "SessionStart": [
@@ -123,6 +143,7 @@ cat > ~/.claude/settings.json <<'EOF'
   }
 }
 EOF
+fi
 ```
 
 From now on, opening ANY project in `claude` triggers `SessionStart`
@@ -176,7 +197,20 @@ directly):
 
 ```bash
 mkdir -p ~/.copilot
-cat > ~/.copilot/mcp-config.json <<'EOF'
+
+if [ -f ~/.copilot/mcp-config.json ]; then
+  echo "⚠️  ~/.copilot/mcp-config.json already exists — NOT overwriting." >&2
+  echo "   Merge this block into its 'mcpServers' object by hand:" >&2
+  cat >&2 <<'EOF'
+    "ppg": {
+      "type": "stdio",
+      "command": "ppg-mcp-server",
+      "env": { "PPG_URL": "http://localhost:8765" },
+      "tools": ["*"]
+    }
+EOF
+else
+  cat > ~/.copilot/mcp-config.json <<'EOF'
 {
   "mcpServers": {
     "ppg": {
@@ -188,10 +222,8 @@ cat > ~/.copilot/mcp-config.json <<'EOF'
   }
 }
 EOF
+fi
 ```
-
-If the file already has other `mcpServers` entries, add `ppg` into
-the existing object rather than replacing the whole file.
 
 ### 2. Contract — write `~/.copilot/copilot-instructions.md`
 
@@ -220,6 +252,11 @@ EOF
 ```
 
 ### 3. Hooks — write `~/.copilot/hooks/ppg.json`
+
+This file is dedicated to `ppg` (its name is `ppg.json`). Re-running
+the block below overwrites any local edits you may have made to it —
+that is the intended semantics of "re-install the ppg hook". If you
+customized this file, back it up first (`cp ~/.copilot/hooks/ppg.json{,.bak}`).
 
 ```bash
 mkdir -p ~/.copilot/hooks
