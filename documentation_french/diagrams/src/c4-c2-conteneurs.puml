@@ -1,0 +1,45 @@
+@startuml c4-c2-conteneurs
+!include <C4/C4_Container>
+
+title Conteneurs — dans la Plateforme PPG\n<size:12>C4 niveau 2 (Container) — les gros composants et leurs échanges</size>
+
+Person(dev, "Développeur")
+System_Ext(agent, "Agent d'IA", "Copilot / Claude Code")
+
+System_Boundary(ppg, "Plateforme PPG") {
+
+    Container(gateway, "Gateway PPG", "Go, HTTP :8765", "Le cerveau. Expose /enrich, /lock_in_plan, /tools/*, /validate_skill, /debt_report. Évalue les policies Rego contre le plan, signe et remet les tickets JWT.")
+
+    Container(mcp, "Serveur MCP", "Go, stdio", "Traduit les deux tools MCP (get_platform_guidelines_for_intent, lock_in_plan) en appels HTTP à la gateway. Écrit .ppg-ticket sur disque quand un plan est verrouillé.")
+
+    Container(guard, "Garde de scope", "Go, hook PreToolUse", "Générique, machine-globale. Lit .ppg-ticket, vérifie signature + TTL + session + scope. Refuse déterministiquement les cibles hors-scope avec OUT_OF_PLAN_SCOPE.")
+
+    Container(skill, "Skill installé", "Répertoire, SKILL.md + SKILL.rego", "Workflow exécutable par l'agent. Peut embarquer ses propres hooks de contenu (ex. design-guard.sh), auto-enregistrés dans .github/hooks/ au premier appel.")
+
+    ContainerDb(adr, "Corpus ADR", "Fichiers .md + .rego", "Chaque ADR a deux moitiés : prose (invariant lu par le modèle) et Rego (règle évaluée par le linter).")
+
+    ContainerDb(skillgov, "Skill Governance", "Fichiers .rego", "Règles structurelles et de sécurité que tout skill doit satisfaire pour être publié.")
+
+    ContainerDb(ticket, ".ppg-ticket", "JWT sur disque", "Le passeport actif de la session. Écrit à lock_in_plan, lu par la garde à chaque Edit/Write.")
+
+    ContainerDb(session, ".ppg-session", "Fichier local", "Identifiant de la session en cours. Lie le ticket à la session pour éviter le vol de ticket.")
+
+    ContainerDb(contract, "Contrat + hooks du projet", ".github/copilot-instructions.md + .github/hooks/*.json", "Prose lue par l'agent au démarrage + déclarations des hooks à déclencher.")
+}
+
+Rel(dev, skill, "Installe via", "apm install --target ...")
+Rel(agent, contract, "Lit au démarrage")
+Rel(agent, skill, "Invoque", "/nom-du-skill ARGS")
+Rel(agent, mcp, "Appelle les tools MCP", "stdio")
+Rel(mcp, gateway, "Relaie les appels", "HTTP")
+Rel(mcp, ticket, "Écrit le JWT sur succès")
+Rel(agent, guard, "Déclenche PreToolUse", "JSON stdin/stdout")
+Rel(guard, ticket, "Lit et vérifie")
+Rel(guard, session, "Lit")
+Rel(skill, guard, "(optionnel) livre un hook additionnel de contenu")
+Rel(gateway, adr, "Évalue les policies contre le plan")
+Rel(gateway, skillgov, "Valide les skills soumis")
+
+SHOW_LEGEND()
+
+@enduml

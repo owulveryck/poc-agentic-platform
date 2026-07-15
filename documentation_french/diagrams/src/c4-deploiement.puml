@@ -1,0 +1,55 @@
+@startuml c4-deploiement
+!include <C4/C4_Deployment>
+
+title Déploiement — tout tourne sur le laptop du développeur\n<size:12>topologie physique : où vit concrètement chaque conteneur</size>
+
+Deployment_Node(laptop, "Laptop du développeur", "macOS / Linux / WSL2") {
+
+    Deployment_Node(agentApp, "Application agent", "Copilot Desktop / Claude Code CLI / VS Code") {
+        Container(chat, "Boucle de chat", "Runtime propriétaire de l'agent")
+        Container(mcpClient, "Client MCP", "Intégré au runtime")
+        Container(hookRuntime, "Runtime des hooks", "Intégré au runtime")
+    }
+
+    Deployment_Node(bin, "~/.local/bin (sur PATH)", "Binaires installés une fois par le tutoriel 0") {
+        Container(ppgBin, "ppg", "Binaire Go", "Le service gateway (source : ./cmd/ppg)")
+        Container(mcpBin, "ppg-mcp-server", "Binaire Go", "Sous-processus lancé par le client MCP de l'agent")
+        Container(guardBin, "ppg-copilot-guard", "Binaire Go", "Sous-processus lancé par le runtime des hooks à chaque PreToolUse")
+    }
+
+    Deployment_Node(procs, "Processus en cours", "Terminal utilisateur en arrière-plan") {
+        Container(ppgRunning, "ppg -addr :8765", "Instance longue-durée du binaire ppg", "Écoute HTTP sur le loopback")
+    }
+
+    Deployment_Node(project, "~/mon-projet", "Un dépôt gouverné parmi d'autres") {
+        Container(skillDir, ".agents/skills/design-system/", "Dossier installé par APM", "SKILL.md, SKILL.rego, tokens.css, hooks/design-guard.sh")
+        Container(hooksDir, ".github/hooks/*.json", "Déclarations des hooks", "Enregistre ppg-copilot-guard et design-guard.sh sur PreToolUse")
+        Container(contractFile, ".github/copilot-instructions.md", "Contrat prose", "Lu par l'agent au démarrage")
+        Container(state, ".ppg-ticket + .ppg-session", "Fichiers d'état", "Écrits pendant la session, gitignored")
+        Container(appCode, "Code applicatif", "Sources", "Ce que l'agent est autorisé à modifier — dans les limites du ticket")
+    }
+
+    Deployment_Node(checkout, "~/src/poc-agentic-platform", "Checkout git — source de la plateforme") {
+        Container(adrCorpus, "adr/", "Fichiers .md + .rego", "Corpus lu par la gateway au démarrage")
+        Container(skillGovDir, "skill-governance/", "Fichiers .rego", "Règles de publication des skills")
+        Container(demoPkg, "demo/", "Paquet APM source", "Contient les skills ppg-tutorial, add-payment-method, design-system")
+    }
+}
+
+Deployment_Node(remote, "GitHub (ou autre git remote)", "Le seul composant hors du laptop") {
+    Container(gitRepo, "poc-agentic-platform", "Repository", "Source à cloner ; registry APM des skills")
+}
+
+Rel(mcpClient, mcpBin, "Lance en sous-processus", "stdio")
+Rel(hookRuntime, guardBin, "Lance sur PreToolUse", "JSON stdin/stdout")
+Rel(hookRuntime, skillDir, "Lance aussi les hooks livrés par le skill")
+Rel(mcpBin, ppgRunning, "Relaie", "HTTP :8765")
+Rel(ppgRunning, adrCorpus, "Lit au démarrage")
+Rel(ppgRunning, skillGovDir, "Lit au démarrage")
+Rel(mcpBin, state, "Écrit .ppg-ticket")
+Rel(guardBin, state, "Lit .ppg-ticket + .ppg-session")
+Rel(chat, contractFile, "Lit")
+Rel(remote, checkout, "git clone une fois")
+Rel(remote, skillDir, "apm install")
+
+@enduml

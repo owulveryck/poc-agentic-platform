@@ -51,17 +51,67 @@ consultez-la à la volée sans essayer de tout mémoriser.
 > édition ; toute modification hors du scope du plan est refusée avant
 > exécution.
 
-L'architecture est composée de cinq pièces :
+L'architecture se lit en trois diagrammes, du plus large au plus
+physique.
 
-![Architecture globale](diagrams/archi-globale.svg)
+> 📖 **Le modèle C4** (Simon Brown) propose quatre niveaux de zoom pour
+> décrire un système logiciel : **C1 Contexte** (le système et son
+> environnement), **C2 Conteneurs** (les gros composants runtime),
+> **C3 Composants** et **C4 Code** (rarement utilisés). Cette
+> documentation utilise le C1 et le C2, plus une vue de **déploiement**
+> (topologie physique). Les couleurs bleu/gris sont la convention
+> standard du modèle — d'où le contraste avec les diagrammes de
+> séquence qui suivent, restés au thème visuel du projet.
+
+### 1.1 Contexte système (C1) — qui interagit avec quoi
+
+![C1 — Contexte système](diagrams/c4-c1-contexte.svg)
+
+Le développeur écrit du code et utilise un **agent d'IA** (Copilot ou
+Claude Code) pour l'assister. Cet agent est *gouverné* par la
+**Plateforme PPG** — via le protocole MCP (pour la planification) et
+via des hooks (pour l'exécution). Le développeur peut aussi installer
+des **skills** publiés dans une **registry** git : la plateforme les
+consomme comme de la capacité additionnelle. Quatre boîtes, aucun
+détail technique.
+
+### 1.2 Conteneurs (C2) — les gros composants de la plateforme
+
+![C2 — Conteneurs](diagrams/c4-c2-conteneurs.svg)
+
+Zoom dans la Plateforme PPG. On y trouve quatre conteneurs runtime :
+la **Gateway PPG** (le service HTTP qui évalue les policies Rego et
+signe les tickets), le **Serveur MCP** (qui traduit les tools MCP en
+appels HTTP), la **Garde de scope** (le hook générique qui vérifie le
+ticket à chaque édition), et le **Skill installé** (workflow que
+l'agent invoque, éventuellement porteur de ses propres hooks). Et
+cinq zones de données : le **Corpus ADR**, la **Skill Governance**,
+**`.ppg-ticket`**, **`.ppg-session`**, et le **Contrat + hooks du
+projet**. Les flèches disent qui parle à quoi.
+
+### 1.3 Déploiement — où tout ça vit-il concrètement
+
+![Déploiement](diagrams/c4-deploiement.svg)
+
+Le message important de ce diagramme : **tout tourne sur le laptop du
+développeur**. La « gateway » n'est pas un service centralisé — c'est
+un binaire local (`ppg`) lancé dans un terminal en arrière-plan. Les
+adaptateurs (`ppg-mcp-server`, `ppg-copilot-guard`) sont des binaires
+locaux installés une fois pour toutes dans `~/.local/bin/`. Les
+fichiers d'état (`.ppg-ticket`, `.ppg-session`) sont locaux au projet.
+Le seul composant hors du laptop est le remote git qui héberge le
+code source et les skills — utilisé une fois pour le clone, puis
+périodiquement pour `apm install`.
+
+### 1.4 Récapitulatif textuel des pièces
 
 | Pièce | Où elle vit | Rôle |
 |---|---|---|
 | **Gateway PPG** | binaire `ppg`, HTTP `:8765` | expose `/enrich`, `/lock_in_plan`, `/tools/{name}`, `/validate_skill`, `/debt_report` |
 | **Corpus ADR** | fichiers `adr/*.md` + `adr/*.rego` | chaque ADR a une moitié *sémantique* (invariants prose) et une moitié *exécutable* (Rego) |
-| **Adaptateurs** | binaires locaux (`ppg-mcp-server`, `ppg-copilot-guard`, `ppg-guard`) | traduisent entre l'agent et la gateway |
+| **Adaptateurs machine** | binaires locaux (`ppg-mcp-server`, `ppg-copilot-guard`, `ppg-guard`) | génériques, installés une fois par machine ; traduisent entre l'agent et la gateway |
 | **Contrat + hooks du projet** | `.github/copilot-instructions.md` (ou `CLAUDE.md`), `.github/hooks/*.json` | soft (contrat prose lu par l'agent) + hard (subprocess qui refuse) |
-| **Skills** | `.agents/skills/*` ou `.claude/skills/*` | workflows distribués (paquet APM) qui invoquent la gateway |
+| **Skills** | `.agents/skills/*` ou `.claude/skills/*` | workflows distribués (paquet APM) ; peuvent embarquer leurs propres hooks de contenu |
 
 Le point important : **la gateway n'écrit jamais sur le disque du projet**.
 Elle est un service HTTP pur. Toute la matérialisation locale

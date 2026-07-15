@@ -1,0 +1,21 @@
+@startuml c4-c1-contexte
+!include <C4/C4_Context>
+
+title Contexte système — Plateforme PPG\n<size:12>C4 niveau 1 (System Context) — qui interagit avec quoi</size>
+
+Person(dev, "Développeur", "Écrit du code applicatif. Veut que ses agents produisent un travail conforme aux invariants architecturaux et de sécurité, sans avoir à les rappeler à chaque prompt.")
+
+System_Ext(agent, "Agent d'IA", "Copilot Desktop, Copilot CLI, VS Code + Copilot, ou Claude Code. Fourni par un tiers (GitHub / Anthropic). Boucle agentique : lit, décide, appelle des tools, observe, recommence.")
+
+System(ppg, "Plateforme PPG", "Gouvernance de la boucle agentique : enrichit le contexte de planification, verrouille le plan proposé, refuse déterministiquement les actions hors-scope. Locale au poste — pas de service centralisé.")
+
+System_Ext(registry, "Registry de skills", "Dépôt git (GitHub, GitLab, forge interne...) qui héberge les paquets APM. La plateforme s'y approvisionne en workflows gouvernés que l'agent peut invoquer.")
+
+Rel(dev, agent, "Utilise pour coder")
+Rel_D(agent, ppg, "Est gouverné par", "MCP + hooks PreToolUse")
+Rel(dev, registry, "Installe des skills depuis", "apm install")
+Rel(registry, ppg, "Fournit des paquets à", "dépôt local .agents/skills/")
+
+SHOW_LEGEND()
+
+@enduml
