@@ -7,10 +7,10 @@ skinparam componentStyle rectangle
 
 ' ============ Projet cible (côté développeur) ============
 package "Projet cible\n<size:10><i>le dépôt du développeur, celui que l'on gouverne</i></size>" as Projet #E8F0FE {
-  folder ".agents/skills/ (Copilot)\n.claude/skills/ (Claude)\n<size:10><i>workflows installés via APM</i></size>" as Skills {
+  folder ".agents/skills/ (Copilot)\n.claude/skills/ (Claude)\n<size:10><i>workflows installés via APM — un dossier par skill</i></size>" as Skills {
     [SKILL.md\n<size:10>workflow prose exécuté par l'agent</size>]
     [SKILL.rego\n<size:10>politique compagnon (Rego)</size>]
-    [hooks/design-guard.sh\n<size:10>garde de contenu livrée par le skill</size>]
+    [hooks/design-guard.sh\n<size:10>PreToolUse **spécifique au skill**,</size>\n<size:10>livré dans le paquet APM,</size>\n<size:10>versionné avec lui,</size>\n<size:10>refuse toute couleur brute hors palette</size>] as SkillDesignGuard
   }
   folder ".github/hooks/\n<size:10><i>déclarations locales des hooks PreToolUse</i></size>" as Hooks {
     [ppg.json\n<size:10>enregistre le garde de scope (ticket)</size>]
@@ -34,11 +34,10 @@ node "Agent\n<size:10><i>GitHub Copilot ou Claude Code — modèle + boucle</i><
   [Runtime des hooks\n<size:10>lance les scripts déclarés en .github/hooks/</size>] as HookRt
 }
 
-' ============ Adaptateurs (binaires locaux) ============
-node "Adaptateurs (binaires locaux, sur PATH)\n<size:10><i>installés une fois par machine — tutoriel 0</i></size>" as Adapters #E6F4EA {
+' ============ Adaptateurs (binaires locaux, machine-globaux) ============
+node "Adaptateurs machine\n<size:10><i>binaires génériques, agnostiques du domaine,</i></size>\n<size:10><i>sur PATH — installés une fois par machine (tutoriel 0)</i></size>" as Adapters #E6F4EA {
   [ppg-mcp-server\n<size:10>expose enrich + lock_in_plan comme tools MCP,</size>\n<size:10>relaie en HTTP à la gateway, écrit .ppg-ticket</size>] as MCPSrv
   [ppg-copilot-guard / ppg-guard\n<size:10>PreToolUse : lit .ppg-ticket, vérifie</size>\n<size:10>signature + TTL + session + scope, refuse hors-scope</size>] as PathGuard
-  [design-guard.sh\n<size:10>PreToolUse livré dans le skill design-system,</size>\n<size:10>refuse toute couleur brute hors palette</size>] as ContentGuard
 }
 
 ' ============ La passerelle PPG ============
@@ -64,11 +63,11 @@ MCPSrv --> Lock : POST /lock_in_plan
 Lock --> Ticket : écrit le JWT
 
 Loop --> HookRt : Edit / Write déclenche PreToolUse
-HookRt --> PathGuard : payload JSON
-HookRt --> ContentGuard : payload JSON
+HookRt --> PathGuard : payload JSON\n(garde machine)
+HookRt --> SkillDesignGuard : payload JSON\n(garde livrée par le skill)
 PathGuard --> Ticket : lit .ppg-ticket
 PathGuard --> Session : lit .ppg-session
-ContentGuard --> Tokens : lit design/tokens.css
+SkillDesignGuard --> Tokens : lit design/tokens.css
 
 Enrich --> ADR : sélecteurs → invariants
 Lock --> ADR : évaluation des policies
@@ -84,10 +83,21 @@ note bottom of PPG #FFEDB8
 end note
 
 note left of Adapters #E6F4EA
-  Les adaptateurs sont installés une fois par machine
-  (tutoriel 0). Ils sont écrits en Go (les gardes de scope)
-  ou en shell (les gardes de contenu). Le contrat entre l'agent
-  et un hook est trivial : JSON sur stdin, JSON sur stdout.
+  **Adaptateurs machine** = binaires génériques, installés
+  une fois pour toutes (tutoriel 0). Ils ne connaissent aucun
+  skill en particulier.
+  Le contrat entre l'agent et un hook est trivial :
+  JSON sur stdin, JSON sur stdout.
+end note
+
+note right of Skills #E6F4EA
+  **Un skill peut embarquer ses propres hooks** dans son
+  dossier hooks/. Son bootstrap (première étape du SKILL.md)
+  écrit un .github/hooks/*.json qui pointe vers le script du
+  skill. La garde vit et meurt avec le skill : elle est
+  livrée, versionnée et désinstallée avec lui.
+  C'est le cas de design-guard.sh, spécifique au design system
+  Deep Umbra.
 end note
 
 @enduml
