@@ -81,36 +81,25 @@ git add -A && git commit -q -m "install skills via APM"
 Open `~/demo/without-platform` in the Copilot desktop app. **Select
 the small model** in the model dropdown.
 
-Two prompts to try, in order. Both invoke the same skill; the first
-lets Copilot's own semantic matcher find it, the second tells Copilot
-exactly where to look if the matcher didn't fire.
+In the chat:
 
-**A. Intent-first (recommended)** — no mention of the skill by name:
+> `/design-system` Build me a landing page with a big "START" CTA
+> button.
 
-> Build me a landing page with a big "START" CTA button.
+Copilot desktop auto-discovers skills committed under
+`.agents/skills/` and exposes each as a slash-command (per the
+[APM targets matrix](https://microsoft.github.io/apm/reference/targets-matrix/)
+and the [agent-skills spec](https://agent-skills.io/)). Typing
+`/design-system` invokes `.agents/skills/design-system/SKILL.md`
+directly.
 
-Per the [agent-skills spec](https://agent-skills.io/) and the
-[APM targets matrix](https://microsoft.github.io/apm/reference/targets-matrix/),
-skills installed under `.agents/skills/` are meant to be model-invoked
-via semantic matching on the SKILL.md's `description` field — no
-slash-command needed. If Copilot's matcher fires, it reads
-`.agents/skills/design-system/SKILL.md` and follows the workflow.
-
-**B. Explicit reference (reliable fallback)** — if the matcher didn't
-seem to fire (visible from the answer: no mention of `tokens.css`,
-of the platform, or an improvised route like Copilot's built-in
-`create-canvas`), give a second prompt that names the file:
-
-> Follow the workflow in `.agents/skills/design-system/SKILL.md` to
-> build me a landing page with a big "START" CTA button.
-
-The Copilot desktop app's automatic discovery of `.agents/skills/` is
-evolving — in some sessions the matcher fires, in others it doesn't
-(a name-based prompt like *"invoke the 'design-system' skill"* tends
-to short-circuit into Copilot's built-in skill catalog and miss the
-user-installed skills entirely). The explicit-reference form always
-works because it converts discovery into a plain "read this file"
-instruction.
+Alternative prompt forms that also work:
+- **Intent-first** — no mention of the skill; Copilot's semantic
+  matcher finds it from the SKILL.md `description`: *"Build me a
+  landing page with a big START CTA button."*
+- **Explicit file reference** — reliable fallback if slash-command
+  or matcher don't fire: *"Follow the workflow in
+  `.agents/skills/design-system/SKILL.md`."*
 
 **What you should observe**: Copilot reads `SKILL.md`. But without
 the `ppg` MCP server registered, it cannot call
@@ -180,14 +169,10 @@ platform) from being accidentally tracked.
 Open `~/demo/with-platform` in the Copilot desktop app. **Select the
 same small model** as before.
 
-Prompt 1 — same intent as Act 1 (start intent-first, fall back to
-explicit reference if needed):
+Prompt 1 — identical to Act 1:
 
-> Build me a landing page with a big "START" CTA button.
-
-If the matcher doesn't fire on the first prompt, add:
-
-> Follow the workflow in `.agents/skills/design-system/SKILL.md`.
+> `/design-system` Build me a landing page with a big "START" CTA
+> button.
 
 **What you should observe**: Copilot picks up the skill (via
 semantic match OR explicit reference), and this time

@@ -38,10 +38,11 @@ either way. If you already opened the folder in Copilot before
 committing, close the Copilot session and reopen it — the worktree
 is created at session start and does not refresh mid-session.
 
-Then invoke them from a session. Invocation differs by agent surface.
-
-**Claude Code** — auto-discovers `.claude/skills/*/SKILL.md` and
-exposes each as a slash-command:
+Then invoke them from a session. **Same slash-command form works on
+both agent surfaces** — Claude Code auto-discovers `.claude/skills/`
+and Copilot desktop auto-discovers `.agents/skills/`, and each exposes
+skills as slash-commands (per the [APM targets matrix](https://microsoft.github.io/apm/reference/targets-matrix/)
+and the [agent-skills spec](https://agent-skills.io/)):
 
 ```
 /ppg-tutorial Add Stripe as a payment method to the checkout service
@@ -49,30 +50,14 @@ exposes each as a slash-command:
 /design-system Build a landing page with a big START PAYMENT CTA button
 ```
 
-**Copilot desktop app / CLI / VS Code** — per the [agent-skills
-spec](https://agent-skills.io/) and the [APM targets matrix](https://microsoft.github.io/apm/reference/targets-matrix/),
-skills installed under `.agents/skills/` are model-invoked via
-semantic matching on the SKILL.md's `description` field. Give an
-intent-first prompt and let Copilot pick up the skill on its own:
+Alternative prompt forms that also work — useful for narration or if a
+slash-command doesn't fire:
 
-```
-Add Stripe as a payment method to the checkout service.
-Build a landing page with a big START PAYMENT CTA button.
-Walk me through the Platform Planning Gateway end-to-end.
-```
-
-If Copilot's matcher doesn't fire — the desktop app's automatic
-discovery of `.agents/skills/` is still evolving — reference the
-SKILL.md file explicitly as a reliable fallback:
-
-```
-Follow the workflow in .agents/skills/design-system/SKILL.md to
-build a landing page with a big START PAYMENT CTA button.
-```
-
-Avoid name-based prompts like *"invoke the design-system skill"* —
-those tend to be routed into Copilot's built-in skill catalog and
-miss the user-installed skills entirely.
+- **Intent-first** — no mention of the skill; the runtime matches on
+  the SKILL.md `description`: *"Build me a landing page with a big
+  START PAYMENT CTA button."*
+- **Explicit file reference** — reliable fallback: *"Follow the
+  workflow in `.agents/skills/design-system/SKILL.md`."*
 
 `ppg-tutorial` needs Go 1.25+ and network access to `localhost:8765` (it
 starts the gateway itself if none is running); `add-payment-method` expects

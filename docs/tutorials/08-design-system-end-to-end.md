@@ -33,27 +33,25 @@ invisible in that worktree. If you already opened the folder in
 Copilot before committing, close the Copilot session and reopen it —
 the worktree is created at session start.
 
-Then, in Copilot Chat, an intent-first prompt (no mention of the
-skill by name):
+Then, in Copilot Chat:
 
-> Build me a landing page with a hero and a big "START PAYMENT" CTA
-> button.
+> `/design-system` Build me a landing page with a hero and a big
+> "START PAYMENT" CTA button.
 
-Per the [agent-skills spec](https://agent-skills.io/) and the
-[APM targets matrix](https://microsoft.github.io/apm/reference/targets-matrix/),
-skills installed under `.agents/skills/` are model-invoked via
-semantic matching on their SKILL.md `description`. If Copilot's
-matcher fires, it reads `.agents/skills/design-system/SKILL.md` and
-follows the workflow.
+Copilot desktop auto-discovers skills committed under
+`.agents/skills/` and exposes each as a slash-command (per the
+[APM targets matrix](https://microsoft.github.io/apm/reference/targets-matrix/)
+and the [agent-skills spec](https://agent-skills.io/)). Claude Code
+uses the same slash-command form on `.claude/skills/`.
 
-If the matcher doesn't fire (auto-discovery in the Copilot desktop
-app is still evolving), add a second prompt pointing at the file
-explicitly:
-
-> Follow the workflow in `.agents/skills/design-system/SKILL.md`.
-
-Claude Code, by contrast, auto-discovers `.claude/skills/` and also
-exposes user skills as slash-commands (`/design-system Build me ...`).
+Alternative prompt forms that also work — pick whichever fits your
+narration:
+- **Intent-first** (no mention of the skill name; Copilot's semantic
+  matcher finds it from the SKILL.md `description`): *"Build me a
+  landing page with a hero and a big START PAYMENT CTA button."*
+- **Explicit file reference** (works even if discovery fails for any
+  reason): *"Follow the workflow in
+  `.agents/skills/design-system/SKILL.md`."*
 
 ## What just happened, step by step
 
