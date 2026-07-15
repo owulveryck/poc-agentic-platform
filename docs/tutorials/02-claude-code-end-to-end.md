@@ -4,57 +4,26 @@
 > pillars work end to end: the plan is enriched and locked through MCP tools,
 > and an out-of-plan edit is blocked by a hook *before* it executes.
 >
-> Time: ~15 minutes. Prerequisites: Go 1.25+, the
-> [Claude Code CLI](https://code.claude.com/) installed, this repository
-> cloned (the paths below assume `/path/to/poc-agentic-platform`).
+> Time: ~10 minutes. Prerequisites: [tutorial 0](00-bootstrap.md) completed
+> (gateway running on `:8765`; `ppg-guard` and `ppg-mcp-server` on `PATH`;
+> `claude mcp list` shows `ppg` as connected).
 
-## Step 1 — Start the gateway
-
-From the `poc-agentic-platform` root:
-
-```bash
-go run ./cmd/ppg -addr :8765
-```
-
-Wait for `Platform Planning Gateway listening on :8765`.
-
-## Step 2 — Create a scratch target project
+## Step 1 — Create a scratch target project
 
 The governed session runs in a *separate* project, like any team repository:
 
 ```bash
 mkdir ~/ppg-demo && cd ~/ppg-demo && git init
-echo ".ppg-ticket" >> .gitignore
+printf '.ppg-ticket\n.ppg-session\n' >> .gitignore
 mkdir -p internal/payment internal/auth
 printf 'package payment\n' > internal/payment/router.go
 printf 'package auth\n'    > internal/auth/login.go
 ```
 
 `internal/auth/` is one of the frozen legacy paths of ADR-070 — we will use
-it to trigger a refusal later.
+it to trigger a refusal in step 5.
 
-## Step 3 — Build and install the guard
-
-```bash
-go build -o ~/.local/bin/ppg-guard /path/to/poc-agentic-platform/adapters/claudecode/guard
-```
-
-(`~/.local/bin` must be on your `PATH`.)
-
-## Step 4 — Register the MCP server
-
-Still in `~/ppg-demo`:
-
-```bash
-claude mcp add ppg --env PPG_URL=http://localhost:8765 \
-  -- go run /path/to/poc-agentic-platform/adapters/claudecode/mcpserver
-```
-
-**What you should observe**: `claude mcp list` shows `ppg` as connected, and
-inside a session the tools `get_platform_guidelines_for_intent` and
-`lock_in_plan` are available.
-
-## Step 5 — Register the hooks
+## Step 2 — Register the hooks
 
 Create `.claude/settings.json` in `~/ppg-demo` (content of
 [`settings.example.json`](../../adapters/claudecode/settings.example.json)):
@@ -86,13 +55,13 @@ id in `.ppg-session` (which the MCP server stamps into the plan at lock
 time) and purges any ticket left by a previous session. Add `.ppg-session`
 to `.gitignore` alongside `.ppg-ticket`.
 
-## Step 6 — Add the behavioral contract
+## Step 3 — Add the behavioral contract
 
 Copy [`CLAUDE.example.md`](../../adapters/claudecode/CLAUDE.example.md) to
 `~/ppg-demo/CLAUDE.md`. It contains the three rules: enrich before planning,
 lock before modifying, never retry an `OUT_OF_PLAN_SCOPE` refusal verbatim.
 
-## Step 7 — Run the governed session
+## Step 4 — Run the governed session
 
 Start `claude` in `~/ppg-demo` and prompt:
 
@@ -137,7 +106,7 @@ Start `claude` in `~/ppg-demo` and prompt:
 4. Every `Edit`/`Write` inside the locked scope passes silently through
    `ppg-guard`.
 
-## Step 8 — Trigger the drift refusal
+## Step 5 — Trigger the drift refusal
 
 In the same session, prompt:
 
@@ -165,12 +134,15 @@ copy of it would be refused (`SESSION_MISMATCH`: the ticket's `session_id`
 claim no longer matches the session). A capability dies with the session
 that locked it, not only with its 15-minute TTL.
 
-## Step 9 — Clean up
+## Step 6 — Clean up
 
 ```bash
-claude mcp remove ppg
 rm -rf ~/ppg-demo
 ```
+
+(The `ppg` MCP registration is user-scope from [tutorial 0](00-bootstrap.md);
+leave it in place for the next tutorial. Remove it with
+`claude mcp remove ppg --scope user` if you are unwinding the whole setup.)
 
 **✅ Done.** You have seen pillar 1 (amplified planning via MCP) and pillar 2
 (deterministic in-tool gating via the hook) run inside an off-the-shelf

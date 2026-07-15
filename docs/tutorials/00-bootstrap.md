@@ -83,7 +83,7 @@ MCP config in VS Code is **workspace-scoped**, not user-scoped. It lives
 in `.vscode/mcp.json` inside each project — so this is done per-project,
 not here. Every downstream tutorial that targets VS Code creates that
 file itself. See
-[tutorial 7](07-copilot-end-to-end.md#step-4--register-the-mcp-server-copilot-specific)
+[tutorial 7](07-copilot-end-to-end.md#vs-code-copilot-chat-workspace-mcp)
 for the schema.
 
 ## Step 4 — Start the gateway (one terminal, leave it running)
