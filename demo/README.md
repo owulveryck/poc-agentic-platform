@@ -1,11 +1,12 @@
 # Demo skill package (APM)
 
-An [APM](https://github.com/microsoft/apm) package containing two skills:
+An [APM](https://github.com/microsoft/apm) package containing three skills:
 
 | Skill | Tier | What it does |
 |---|---|---|
 | `ppg-tutorial` | 2 (Bash) | Runs the amplified planning loop demo on its own: gateway, enrich, deterministic rejection, capability ticket, out-of-scope refusal, debt report, and the GitHub Copilot pre-flight variant, narrating every real transcript |
 | `add-payment-method` | 1 (Edit) | The governed workflow from the companion article: enrich the plan with the platform ADRs, lock it for a capability ticket, implement within the ticket scope. Authored step by step in [tutorial 6](../docs/tutorials/06-skill-to-session-end-to-end.md) |
+| `design-system` | 1 (Edit) | Applies the Deep Umbra design system (canonical `tokens.css` + button rule) and enforces every subsequent UI edit through a shell-script PreToolUse hook shipped inside the skill. Walkthrough in [tutorial 8](../docs/tutorials/08-design-system-end-to-end.md); the enforcement pattern is generalized in [Enforce a content invariant](../docs/how-to/enforce-a-content-invariant.md) |
 
 ## Install
 
@@ -28,11 +29,15 @@ Then invoke them from a session:
 ```
 /ppg-tutorial Add Stripe as a payment method to the checkout service
 /add-payment-method Stripe
+/design-system Build a landing page with a big START PAYMENT CTA button
 ```
 
 `ppg-tutorial` needs Go 1.25+ and network access to `localhost:8765` (it
 starts the gateway itself if none is running); `add-payment-method` expects
-the full tutorial-2 wiring (MCP server + hooks).
+the full tutorial-2 or tutorial-7 wiring (MCP server + hooks);
+`design-system` bootstraps itself on first invocation (copies
+`tokens.css` to `design/tokens.css` and registers its PreToolUse hook in
+`.github/hooks/design.json`).
 
 ## Dogfooding: the skill passes its own gate
 

@@ -1,0 +1,63 @@
+/* Deep Umbra — canonical design tokens.
+ *
+ * This file is the sole source of truth for visual style. Every other
+ * stylesheet MUST reach these values through var(--*) references.
+ *
+ * Enforced by:
+ *  - ADR-090 (plan-linter: UI plans must include a step reading this file)
+ *  - design-guard.sh (PreToolUse hook: raw colors and button re-styling
+ *    are denied on write)
+ *
+ * The canonical <button>/.btn rule lives here. Markup uses <button> or
+ * class="btn"; no page-level stylesheet re-declares button styling.
+ */
+
+:root {
+  /* Palette */
+  --color-bg:        #0B0B0F;
+  --color-surface:   #1B1B24;
+  --color-text:      #F0EDE5;
+  --color-primary:   #7C3AED;
+  --color-accent:    #F97316;
+  --color-warning:   #FACC15;
+  --color-success:   #10B981;
+  --color-danger:    #EF4444;
+  --color-muted:     #6B6B7B;
+
+  /* Button geometry */
+  --btn-radius:          0 12px 0 12px;
+  --btn-padding:         0.5rem 1.5rem;
+  --btn-font:            'IBM Plex Mono', ui-monospace, monospace;
+  --btn-font-weight:     600;
+  --btn-font-size:       0.875rem;
+  --btn-letter-spacing:  0.08em;
+  --btn-border-width:    1px;
+  --btn-transition:      background 120ms ease-in, color 120ms ease-in;
+}
+
+/* Canonical button. Applied to every <button> element and every element
+ * with class="btn". Do not re-declare this rule elsewhere — the design
+ * guard will refuse any file that does. */
+button,
+.btn,
+[role="button"] {
+  background:      transparent;
+  color:           var(--color-primary);
+  border:          var(--btn-border-width) solid var(--color-primary);
+  border-radius:   var(--btn-radius);
+  padding:         var(--btn-padding);
+  font-family:     var(--btn-font);
+  font-weight:     var(--btn-font-weight);
+  font-size:       var(--btn-font-size);
+  letter-spacing:  var(--btn-letter-spacing);
+  text-transform:  uppercase;
+  transition:      var(--btn-transition);
+  cursor:          pointer;
+}
+
+button:hover,
+.btn:hover,
+[role="button"]:hover {
+  background: var(--color-primary);
+  color:      var(--color-bg);
+}

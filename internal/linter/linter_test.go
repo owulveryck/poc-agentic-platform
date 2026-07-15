@@ -44,6 +44,16 @@ func testStore() *adr.Store {
 					RegoFile: "ADR-070.rego",
 				},
 			},
+			{
+				ADRID:  "ADR-090",
+				Title:  "Design tokens are the canonical source of visual style",
+				Nature: "amplifier",
+				Enforcement: adr.Enforcement{
+					Mode:     "programmatic",
+					PolicyID: "design_tokens_referenced",
+					RegoFile: "ADR-090.rego",
+				},
+			},
 		},
 	}
 }
@@ -192,6 +202,52 @@ func TestUndecodableViolationFailsClosed(t *testing.T) {
 	}
 	if violations[0].PolicyID != "linter_eval_error" {
 		t.Fatalf("expected linter_eval_error, got %v", violations)
+	}
+}
+
+func TestUIPlanWithoutTokensReadIsRejected(t *testing.T) {
+	lint, err := New(testStore(), "testdata")
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	p := basePlan([]plan.Step{
+		{ID: "s1", Action: "write landing page", Tool: "Write", Targets: []string{"index.html"}},
+		{ID: "s2", Action: "write page styles", Tool: "Write", Targets: []string{"style.css"}},
+		{ID: "s3", Action: "go test ./...", Tool: "go-test", Targets: []string{"tests/x_test.go"}},
+	})
+	violations := lint.Validate(p)
+	found := false
+	for _, v := range violations {
+		if v.PolicyID == "design_tokens_referenced" {
+			found = true
+			if v.Nature != Amplifier {
+				t.Errorf("design_tokens_referenced should be tagged amplifier, got %s", v.Nature)
+			}
+			if !strings.Contains(v.Message, "design/tokens.css") {
+				t.Errorf("violation message should name the tokens file, got %q", v.Message)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("expected design_tokens_referenced violation, got %v", violations)
+	}
+}
+
+func TestUIPlanReadingTokensPasses(t *testing.T) {
+	lint, err := New(testStore(), "testdata")
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	p := basePlan([]plan.Step{
+		{ID: "s1", Action: "read design tokens", Tool: "Read", Targets: []string{"design/tokens.css"}},
+		{ID: "s2", Action: "write landing page", Tool: "Write", Targets: []string{"index.html"}},
+		{ID: "s3", Action: "write page styles", Tool: "Write", Targets: []string{"style.css"}},
+		{ID: "s4", Action: "go test ./...", Tool: "go-test", Targets: []string{"tests/x_test.go"}},
+	})
+	for _, v := range lint.Validate(p) {
+		if v.PolicyID == "design_tokens_referenced" {
+			t.Fatalf("a plan that reads design/tokens.css should satisfy the policy, got %v", v)
+		}
 	}
 }
 
