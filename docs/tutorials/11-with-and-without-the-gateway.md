@@ -49,6 +49,13 @@ mkdir ~/demo && cd ~/demo
 
 # Move the user-scope Copilot config aside so Act 1 sees the machine
 # as un-governed. You will restore it before Act 3.
+# Guard: if ~/.copilot.saved already exists (leftover from a previous
+# demo run), refuse to overwrite it.
+if [ -e ~/.copilot.saved ]; then
+  echo "⚠️  ~/.copilot.saved already exists — leftover from a previous demo?" >&2
+  echo "   Rename it out of the way first: mv ~/.copilot.saved ~/.copilot.saved.old" >&2
+  return 1 2>/dev/null || exit 1
+fi
 mv ~/.copilot ~/.copilot.saved
 ```
 
@@ -142,6 +149,16 @@ switching to something smaller and rerun Act 2.
 
 ```bash
 cd ~/demo
+
+# If ~/.copilot was re-created during Acts 1-2 (the Copilot app or a
+# `copilot` CLI call may do this silently), move that partial dir
+# aside first — otherwise `mv ~/.copilot.saved ~/.copilot` would NEST
+# the saved dir inside it (…/.copilot/.copilot.saved/), leaving the
+# platform effectively unrestored.
+if [ -e ~/.copilot ]; then
+  mv ~/.copilot ~/.copilot.acts12-residue
+  echo "ℹ️  ~/.copilot had been re-created during Acts 1-2 — set aside as ~/.copilot.acts12-residue."
+fi
 mv ~/.copilot.saved ~/.copilot
 ```
 
@@ -231,8 +248,19 @@ in an agent's context is negotiable.
 ```bash
 cd ~ && rm -rf ~/demo
 
-# Safety net: if you forgot to restore ~/.copilot at the intermezzo:
-[ -d ~/.copilot.saved ] && mv ~/.copilot.saved ~/.copilot
+# Safety net: if you forgot to restore ~/.copilot at the intermezzo,
+# same guard as the intermezzo — move any re-created ~/.copilot aside
+# so the saved config isn't nested inside it.
+if [ -d ~/.copilot.saved ]; then
+  if [ -e ~/.copilot ]; then
+    mv ~/.copilot ~/.copilot.acts12-residue
+  fi
+  mv ~/.copilot.saved ~/.copilot
+fi
+
+# And if you kept `~/.copilot.acts12-residue` from the intermezzo, you
+# can inspect and delete it now:
+[ -e ~/.copilot.acts12-residue ] && rm -rf ~/.copilot.acts12-residue
 ```
 
 ## Presenter's preparation checklist
