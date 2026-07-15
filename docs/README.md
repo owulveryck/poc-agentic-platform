@@ -19,6 +19,7 @@ one directory each.
 4. [Validate your first skill](tutorials/04-validate-your-first-skill.md) — the skill governance gate and the security tiers
 5. [Write your first ADR, end to end](tutorials/05-write-your-first-adr.md) — author an invariant (Markdown + Rego) and watch both halves act
 6. [From a governed skill to a governed session](tutorials/06-skill-to-session-end-to-end.md) — write a skill and its policy, pass the publication gate, watch it drive a session through every gateway
+7. [Govern a live GitHub Copilot session](tutorials/07-copilot-end-to-end.md) — the Copilot sibling of tutorial 2: MCP planning + `PreToolUse` gating in the official Copilot app
 
 ## How-to guides — task-oriented
 

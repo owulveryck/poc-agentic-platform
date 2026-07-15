@@ -131,8 +131,8 @@ Two surfaces now offer the hard half (in-loop gating) as well:
   can `deny` a tool call with a semantic reason. The
   [Copilot adapter](../../adapters/copilot/) wires the platform's
   capability ticket into that hook — the same `OUT_OF_PLAN_SCOPE` refusal
-  the Claude Code adapter emits, now running inside Copilot. Follow that
-  adapter's README to install it alongside this pre-flight.
+  the Claude Code adapter emits, now running inside Copilot. The full
+  walkthrough is [tutorial 7](07-copilot-end-to-end.md).
 - **The `gh copilot` CLI** stays truly black-box (no hook surface). For
   it, the compensating control is a locked-plan check at apply time —
   a pre-push platform CLI or the CI gate.
