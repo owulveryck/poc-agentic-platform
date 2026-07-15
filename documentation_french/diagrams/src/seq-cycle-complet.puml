@@ -1,0 +1,49 @@
+@startuml seq-cycle-complet
+!include octo-theme.puml
+autonumber
+
+title Cycle complet — de la demande de l'utilisateur au commit gouverné
+
+actor "Développeur" as Dev
+participant "Agent\n(Copilot / Claude)" as Agent
+participant "ppg-mcp-server\n(local, stdio)" as MCP
+participant "Gateway PPG\n(HTTP :8765)" as PPG
+database "Corpus ADR" as ADR
+participant "PreToolUse hook\n(ppg-*-guard)" as Hook
+database ".ppg-ticket\n(JWT sur disque)" as Ticket
+
+== Phase 1 — Amplification (le contexte est enrichi) ==
+Dev -> Agent : "Ajoute la méthode Seka au checkout"
+Agent -> Agent : lit .github/copilot-instructions.md\n(contrat : appeler MCP avant de planifier)
+Agent -> MCP : get_platform_guidelines_for_intent(intent, repo_context)
+MCP -> PPG : POST /enrich
+PPG -> ADR : sélecteurs → ADR pertinents
+ADR --> PPG : invariants (ADR-042, ADR-070)
+PPG --> MCP : {architectural_invariants, source_adrs}
+MCP --> Agent : invariants (paiement → egress proxy ; chemins gelés)
+
+== Phase 2 — Verrouillage (le plan est validé) ==
+Agent -> Agent : rédige un plan structuré\n(steps avec id/action/tool/targets)
+Agent -> MCP : lock_in_plan(plan)
+MCP -> PPG : POST /lock_in_plan
+PPG -> PPG : évalue les policies Rego\n(ADR-051, 060, 070, ...)
+alt Plan valide
+  PPG -> PPG : signe JWT (plan_hash, scope, exp+15min)
+  PPG --> MCP : {status: PLAN_LOCKED, execution_ticket}
+  MCP -> Ticket : écrit le JWT sur disque
+  MCP --> Agent : PLAN_LOCKED
+end
+
+== Phase 3 — Application (chaque édition est gardée) ==
+Agent -> Agent : Edit internal/payment/router.go
+Agent -> Hook : payload PreToolUse (path, new_str, session_id)
+Hook -> Ticket : lit le JWT
+Hook -> Hook : vérifie signature, TTL, session,\n scope.allow_modify
+Hook --> Agent : {"continue": true}
+Agent -> Agent : l'édition est appliquée
+note over Agent
+  Ce cycle Edit → Hook → allow se répète
+  pour chaque fichier dans le scope du plan.
+end note
+
+@enduml

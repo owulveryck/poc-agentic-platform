@@ -1,0 +1,46 @@
+' OCTO Technology visual identity for PlantUML diagrams
+' Palette: navy #0E2356 (text), cyan #00D2DD (accent), blue #6D9EEB/#E8F0FE (platform),
+' green #34A853/#E6F4EA (success), red #EA4335/#FFF0F0 (error), yellow #FFD966/#FFEDB8 (notes)
+skinparam backgroundColor #FFFFFF
+skinparam defaultFontName "Outfit"
+skinparam defaultFontColor #0E2356
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 8
+
+skinparam sequence {
+  ArrowColor #0E2356
+  ArrowFontColor #0E2356
+  ArrowFontSize 12
+  LifeLineBorderColor #CFD3DD
+  LifeLineBackgroundColor #E8F0FE
+  ParticipantBorderColor #6D9EEB
+  ParticipantBackgroundColor #E8F0FE
+  ParticipantFontColor #0E2356
+  ParticipantFontStyle bold
+  ActorBorderColor #0E2356
+  ActorBackgroundColor #DAF6F9
+  ActorFontColor #0E2356
+  ActorFontStyle bold
+  BoxBorderColor #6D9EEB
+  BoxFontColor #0E2356
+  GroupBorderColor #CFD3DD
+  GroupBackgroundColor #E8F0FE
+  GroupFontColor #0E2356
+  GroupHeaderFontColor #0E2356
+  DividerBackgroundColor #E8F0FE
+  DividerBorderColor #6D9EEB
+  DividerFontColor #0E2356
+}
+
+skinparam note {
+  BackgroundColor #FFEDB8
+  BorderColor #FFD966
+  FontColor #0E2356
+  FontSize 12
+}
+
+skinparam database {
+  BackgroundColor #E8F0FE
+  BorderColor #6D9EEB
+}

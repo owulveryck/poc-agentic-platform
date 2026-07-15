@@ -1,0 +1,40 @@
+@startuml deux-couches-hook
+!include octo-theme.puml
+autonumber
+
+title Deux couches de garde — path-scope ET content-scope, en parallèle
+
+participant "Agent" as Agent
+participant "Runtime PreToolUse\n(Copilot / VS Code)" as Runtime
+participant "ppg-copilot-guard\n(path-scope, ticket)" as PathG
+participant "design-guard.sh\n(content-scope, palette)" as ContentG
+
+Agent -> Runtime : Edit style.css\n{ new_str: ".hero { color: #FF69B4; }" }
+
+par En parallèle
+  Runtime -> PathG : payload PreToolUse
+  PathG -> PathG : style.css ∈ scope ? OUI (allow)
+  PathG --> Runtime : {"continue": true}
+else
+  Runtime -> ContentG : payload PreToolUse
+  ContentG -> ContentG : #FF69B4 ∉ var(--color-*) : NON
+  ContentG --> Runtime : <color:#EA4335>{"permissionDecision": "deny",\n "reason": "DESIGN_SYSTEM_VIOLATION:\n couleur brute #FF69B4 hors palette"}</color>
+end
+
+Runtime -> Runtime : décision la plus restrictive gagne\n(deny > ask > allow)
+Runtime --> Agent : <color:#EA4335>DENY (raison : DESIGN_SYSTEM_VIOLATION)</color>
+
+note over PathG, ContentG #E6F4EA
+  Deux hooks totalement indépendants, chacun avec
+  son propre code, son propre scope, sa propre langue
+  d'implémentation (Go pour l'un, shell pour l'autre).
+  Ils ignorent l'existence l'un de l'autre.
+end note
+
+note right of Runtime #FFEDB8
+  Composition libre : ajouter une 3e couche
+  (voix éditoriale, clés i18n, en-têtes de licence...)
+  est un fichier .json de plus dans .github/hooks/.
+end note
+
+@enduml

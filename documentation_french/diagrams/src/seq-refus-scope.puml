@@ -1,0 +1,42 @@
+@startuml seq-refus-scope
+!include octo-theme.puml
+autonumber
+
+title Refus déterministe — hors du scope du plan
+
+actor "Développeur" as Dev
+participant "Agent" as Agent
+participant "PreToolUse hook\n(ppg-copilot-guard\nou ppg-guard)" as Hook
+database ".ppg-ticket\n(JWT)" as Ticket
+
+Dev -> Agent : "Modifie aussi internal/auth/login.go"
+
+Agent -> Agent : tente Edit internal/auth/login.go
+Agent -> Hook : payload {tool: Edit,\n path: ".../internal/auth/login.go"}
+
+Hook -> Ticket : lit le JWT
+Hook -> Hook : vérifie signature + TTL : OK
+Hook -> Hook : cible ∈ scope.allow_modify ?\n → NON (le plan n'incluait que\n internal/payment/router.go)
+
+Hook --> Agent : <color:#EA4335>{"permissionDecision": "deny",\n "permissionDecisionReason":\n "OUT_OF_PLAN_SCOPE: \"internal/auth/login.go\"\n n'est pas dans le plan verrouillé\n (autorisés : internal/payment/router.go, ...).\n Rien n'a été modifié."}</color>
+
+note right of Agent #FFF0F0
+  Refus DÉTERMINISTE, avant tout appel du tool.
+  Zéro dégât, zéro nettoyage.
+
+  Le message est adressé au modèle :
+  il nomme la cible refusée, liste
+  le scope autorisé, indique le chemin
+  de sortie (re-planifier via lock_in_plan).
+end note
+
+Agent -> Dev : "Cette modification n'est pas dans le plan.\n Voulez-vous re-planifier ou rester dans le scope ?"
+
+note over Hook, Ticket #E6F4EA
+  Le hook effectue aussi trois autres vérifications :
+  signature HMAC (ticket non falsifié),
+  TTL (< 15 min), session_id (le ticket meurt
+  avec la session qui l'a verrouillé).
+end note
+
+@enduml

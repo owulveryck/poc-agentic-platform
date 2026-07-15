@@ -1,0 +1,61 @@
+@startuml anatomie-skill
+!include octo-theme.puml
+
+title Anatomie et cycle de vie d'un skill compatible PPG
+
+' ============ Structure d'un package skill ============
+package "Package skill (répertoire)" as Pkg #E8F0FE {
+  [SKILL.md\n<size:10>front-matter YAML + corps du workflow</size>] as MD
+  [SKILL.rego\n<size:10>obligatoire dès tier 1</size>] as Rego
+  folder "hooks/ (optionnel)" as HooksDir {
+    [design-guard.sh\n<size:10>content-scope PreToolUse</size>] as GuardShell
+    [design-guard-test.sh\n<size:10>tests fixtures</size>] as GuardTest
+  }
+  [tokens.css / data\n<size:10>ressources du skill</size>] as Data
+}
+
+' ============ Cycle de vie ============
+package "Cycle de vie" as Life #FFEDB8 {
+  usecase "1. Auteur\n(équipe stream-aligned)" as Auteur
+  usecase "2. Gate 1 — Publication\nPOST /validate_skill\n(SKILL_VALID + tier 0/1/2)" as Gate1
+  usecase "3. Publication\nAPM (git tag)" as Pub
+  usecase "4. Installation\napm install ... --target copilot" as Install
+  usecase "5. Invocation\n/design-system ..." as Invoke
+}
+
+Auteur --> Pkg : écrit SKILL.md + SKILL.rego
+Auteur --> Gate1 : soumet le package
+Gate1 --> Pub : SKILL_VALID
+Pub --> Install : disponible dans la registry
+Install --> Pkg : dépose sous\n.agents/skills/design-system/
+Invoke --> Pkg : lit et exécute SKILL.md
+
+' ============ Tiers de sécurité ============
+package "Tiers de sécurité\n(dérivés du corps de SKILL.md)" as Tiers #DAF6F9 {
+  [Tier 0 — lecture seule\n<size:10>ni Edit/Write ni Bash</size>\n<size:10>auto-approuvable</size>] as T0
+  [Tier 1 — modifications\n<size:10>contient Edit / Write</size>\n<size:10>Rego obligatoire, CI gate</size>] as T1
+  [Tier 2 — shell\n<size:10>contient Bash</size>\n<size:10>revue humaine requise</size>] as T2
+}
+
+MD ..> T0 : détermine
+MD ..> T1 : détermine
+MD ..> T2 : détermine
+
+note bottom of Pkg #FFEDB8
+  Extension optionnelle : un skill peut EMBARQUER
+  ses propres hooks (comme design-system).
+  Son bootstrap (première étape de SKILL.md)
+  copie tokens.css et enregistre le hook dans
+  .github/hooks/. Le skill s'auto-installe.
+end note
+
+note right of Life #E6F4EA
+  Trois gates dans le modèle cible :
+  1 (Publish) — implémenté dans la PoC.
+  2 (Install) — à faire : re-vérification
+     contre policies éventuellement durcies.
+  3 (Runtime) — à faire : le linter du plan
+     évalue aussi le SKILL.rego du skill invoqué.
+end note
+
+@enduml

@@ -1,0 +1,37 @@
+@startuml seq-rejet-correction
+!include octo-theme.puml
+autonumber
+
+title Rejet et correction — le linter parle, l'agent corrige
+
+participant "Agent" as Agent
+participant "ppg-mcp-server" as MCP
+participant "Gateway PPG\n(linter Rego)" as PPG
+
+Agent -> MCP : lock_in_plan(plan sans étape de test)
+MCP -> PPG : POST /lock_in_plan
+PPG -> PPG : ADR-060 (go_tests_present)\n→ policy violée
+
+PPG --> MCP : 422 PLAN_REJECTED\n{policy_id: "go_tests_present",\n message: "Ajoutez une étape dont le tool est \"go-test\"...",\n nature: "amplifier"}
+MCP --> Agent : violations (message actionnable)
+
+note right of Agent #FFF0F0
+  Le message nomme le critère exact
+  à corriger. L'agent lit et ajoute
+  l'étape manquante, il ne devine pas.
+end note
+
+Agent -> Agent : ajoute step {tool: "go-test",\n targets: ["tests/integration_test.go"]}
+Agent -> MCP : lock_in_plan(plan corrigé)
+MCP -> PPG : POST /lock_in_plan
+PPG -> PPG : toutes les policies passent
+PPG --> MCP : PLAN_LOCKED + execution_ticket
+MCP --> Agent : ticket disponible
+
+note over Agent, PPG #E6F4EA
+  La rétroaction est sémantique : la gateway
+  dit CE qui manque, pas seulement "non".
+  En pratique, 1 à 2 itérations suffisent.
+end note
+
+@enduml

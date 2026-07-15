@@ -1,0 +1,90 @@
+@startuml archi-globale
+!include octo-theme.puml
+
+title Architecture globale — Platform Planning Gateway (PPG)
+
+skinparam componentStyle rectangle
+
+' ============ Projet cible (côté développeur) ============
+package "Projet cible\n(ex. ~/mon-service)" as Projet #E8F0FE {
+  folder ".agents/skills/\n(ou .claude/skills/)" as Skills {
+    [SKILL.md]
+    [SKILL.rego]
+    [hooks/design-guard.sh]
+  }
+  folder ".github/hooks/" as Hooks {
+    [ppg.json]
+    [design.json]
+  }
+  folder ".github/" as Instr {
+    [copilot-instructions.md]
+  }
+  folder "racine du projet" as Racine {
+    [.ppg-ticket] as Ticket
+    [.ppg-session] as Session
+    [design/tokens.css] as Tokens
+    [code applicatif]
+  }
+}
+
+' ============ L'agent ============
+node "Agent\n(GitHub Copilot ou Claude Code)" as Agent #DAF6F9 {
+  [Chat / Boucle agentique] as Loop
+  [Client MCP] as MCPClient
+  [Runtime des hooks] as HookRt
+}
+
+' ============ Adaptateurs (binaires locaux) ============
+node "Adaptateurs (binaires locaux, sur PATH)" as Adapters #E6F4EA {
+  [ppg-mcp-server\n(stdio)] as MCPSrv
+  [ppg-copilot-guard\nou ppg-guard\n(PreToolUse)] as PathGuard
+  [design-guard.sh\n(PreToolUse, livré dans le skill)] as ContentGuard
+}
+
+' ============ La passerelle PPG ============
+node "Platform Planning Gateway\n(HTTP :8765)" as PPG #FFEDB8 {
+  [/enrich] as Enrich
+  [/lock_in_plan\n(linter Rego + JWT)] as Lock
+  [/tools/{name}\n(smart tools sandboxés)] as Tools
+  [/validate_skill] as Validate
+  [/debt_report] as Debt
+}
+
+' ============ Corpus (côté PPG) ============
+database "Corpus ADR\n(adr/*.md + *.rego)" as ADR #E8F0FE
+database "Skill Governance\n(skill-governance/*.rego)" as SkillGov #E8F0FE
+
+' ============ Liens ============
+Loop --> Instr : lit\n(contrat)
+Loop --> Skills : invoque un skill\n(/design-system ...)
+Loop --> MCPClient : appelle un tool MCP
+MCPClient --> MCPSrv : stdio
+MCPSrv --> Enrich : POST /enrich
+MCPSrv --> Lock : POST /lock_in_plan
+Lock --> Ticket : écrit le JWT
+
+Loop --> HookRt : Edit / Write déclenche PreToolUse
+HookRt --> PathGuard : payload JSON
+HookRt --> ContentGuard : payload JSON
+PathGuard --> Ticket : lit .ppg-ticket
+PathGuard --> Session : lit .ppg-session
+ContentGuard --> Tokens : lit design/tokens.css
+
+Enrich --> ADR : sélecteurs → invariants
+Lock --> ADR : évaluation des policies
+Validate --> SkillGov
+Tools --> ADR : (analyseurs sémantiques)
+
+note bottom of PPG #FFEDB8
+  La gateway n'écrit jamais sur le disque du projet.
+  Seul le MCP server (côté client) matérialise
+  le ticket dans .ppg-ticket.
+end note
+
+note left of Adapters #E6F4EA
+  Les adaptateurs sont installés une fois par machine
+  (tutoriel 0). Les hooks se déclarent par projet,
+  dans .github/hooks/*.json.
+end note
+
+@enduml
