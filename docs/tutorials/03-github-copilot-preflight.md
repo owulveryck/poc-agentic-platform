@@ -5,15 +5,45 @@
 > loop) through the repository custom-instructions file it reads natively.
 >
 > Time: ~5 minutes. Prerequisites: the gateway running (tutorial 1, step 1),
-> VS Code with GitHub Copilot (or any tool reading
-> `.github/copilot-instructions.md` / `.cursorrules`).
+> and one of the Copilot surfaces below.
 
-## Step 1 — Run the pre-flight in your project
+## Which Copilot surface?
+
+The pre-flight writes `.github/copilot-instructions.md` (and `.cursorrules`).
+That file is honored by:
+
+- **VS Code** with the GitHub Copilot extension — auto-injected as
+  repository custom instructions.
+- **JetBrains / Visual Studio** with the GitHub Copilot plugin — same
+  mechanism, same file.
+- **The GitHub Copilot desktop app** (macOS) — the app runs each session on
+  a git worktree of your folder, so the file is not auto-injected: it is
+  discovered when Copilot explores the repository. The recommended prompt
+  in step 4 makes that discovery deterministic.
+- **The `gh copilot` CLI extension** — **does not** read the file. Use the
+  fallbacks in step 4 instead.
+
+## Step 1 — Build the pre-flight binary (once)
+
+`go run` requires a Go module in the current directory, so shipping the
+binary is friendlier when the target project is not a Go module (or uses a
+different toolchain):
+
+```bash
+# In the poc-agentic-platform checkout
+go build -o /usr/local/bin/ppg-preflight ./adapters/preflight
+```
+
+If your target project *is* a Go module, you can substitute
+`go run /path/to/poc-agentic-platform/adapters/preflight ...` for
+`ppg-preflight ...` in every step below.
+
+## Step 2 — Run the pre-flight in your project
 
 From the root of the project Copilot will work on:
 
 ```bash
-PPG_URL=http://localhost:8765 go run /path/to/poc-agentic-platform/adapters/preflight \
+PPG_URL=http://localhost:8765 ppg-preflight \
   -repo my-checkout-service -stack Go,SQL \
   "Add the Seka payment method to checkout"
 ```
@@ -28,7 +58,7 @@ platform context written to .github/copilot-instructions.md
 `-repo` and `-stack` populate the `repository_context` sent to `/enrich`;
 the intent is the positional argument.
 
-## Step 2 — Inspect the generated instructions
+## Step 3 — Inspect the generated instructions
 
 ```bash
 cat .github/copilot-instructions.md
@@ -60,27 +90,57 @@ The following paths are frozen and MUST NOT be modified by an agent:
 ...
 ```
 
-## Step 3 — Use it from Copilot
+## Step 4 — Use it from Copilot
 
-Open the project in VS Code and ask Copilot Chat:
+Open the project in your Copilot surface (VS Code, JetBrains, the Copilot
+desktop app, …) and ask Copilot Chat:
 
-> Plan the implementation of the Seka payment method.
+> Plan the implementation of the Seka payment method. Cite any repository
+> instructions you are following.
 
-**What you should observe**: Copilot reads
-`.github/copilot-instructions.md` as repository custom instructions, and its
-proposal routes the Seka calls through `security-egress-proxy` and avoids the
-frozen paths — the same invariants every other agent gets from the gateway.
+The "cite any repository instructions" clause is important for the desktop
+app: the app runs on a git worktree of your folder, so it will not
+auto-inject the instructions file — it has to discover it. The clause makes
+that discovery deterministic. In VS Code / JetBrains the file is
+auto-injected, but the clause does no harm.
 
-## Step 4 — Understand the limit
+**Pass criterion** (how you know it worked):
 
-This is the **soft half only**. Copilot is a black box: no hook can
-intercept its edits, so nothing *forces* the plan to be honored in-loop
-(pillar 2 does not apply). The compensating control is a locked-plan check
-at apply time — a pre-push platform CLI or the CI gate — instead of in-loop.
+- the proposal routes Seka calls through the `security-egress-proxy`
+  (ADR-042), and
+- it explicitly avoids `internal/old_payment.go` and `internal/auth/`
+  (ADR-070) — the frozen legacy paths.
+
+If both are missing, the surface likely didn't read the file. Fallbacks:
+
+1. Paste the contents of `.github/copilot-instructions.md` as the first
+   chat turn, or
+2. Install the equivalent workflow as an APM skill:
+   `apm install /path/to/poc-agentic-platform/demo --target copilot`
+   (see [demo/README.md](../../demo/README.md)).
+
+## Step 5 — Understand the limit
+
+This tutorial is the **soft half only**: injecting invariants into the
+prompt. Nothing here *forces* the plan to be honored — the model can still
+drift.
+
+Two surfaces now offer the hard half (in-loop gating) as well:
+
+- **VS Code and the Copilot desktop app** expose a `PreToolUse` hook that
+  can `deny` a tool call with a semantic reason. The
+  [Copilot adapter](../../adapters/copilot/) wires the platform's
+  capability ticket into that hook — the same `OUT_OF_PLAN_SCOPE` refusal
+  the Claude Code adapter emits, now running inside Copilot. Follow that
+  adapter's README to install it alongside this pre-flight.
+- **The `gh copilot` CLI** stays truly black-box (no hook surface). For
+  it, the compensating control is a locked-plan check at apply time —
+  a pre-push platform CLI or the CI gate.
+
 The trade-off is explained in
 [capability-tickets-and-in-tool-guards.md](../explanation/capability-tickets-and-in-tool-guards.md).
 
-## Step 5 — Re-run on intent change
+## Step 6 — Re-run on intent change
 
 The generated files are scoped to one intent: re-run the pre-flight whenever
 the task changes. Add them to `.gitignore` (as this repository does) or

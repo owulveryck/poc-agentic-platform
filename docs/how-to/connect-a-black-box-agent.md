@@ -4,16 +4,21 @@
 > inside their loop. For the full worked example, see the
 > [GitHub Copilot tutorial](../tutorials/03-github-copilot-preflight.md).
 
-1. Start the gateway, then run the pre-flight with your intent:
+1. Start the gateway (default `:8000`, or `-addr :8765` to match the
+   tutorials), then run the pre-flight with your intent — either as
+   `go run ./adapters/preflight` from inside the poc-agentic-platform
+   checkout, or after `go build -o /usr/local/bin/ppg-preflight
+   ./adapters/preflight` from anywhere:
 
    ```bash
-   PPG_URL=http://localhost:8000 go run ./adapters/preflight \
+   PPG_URL=http://localhost:8765 ppg-preflight \
      -repo my-checkout-service -stack Go,SQL \
      "Add the Seka payment method to checkout"
    ```
 
    `-repo` and `-stack` populate the `repository_context`; `PPG_URL` defaults
-   to `http://localhost:8000` (same convention as the MCP server).
+   to `http://localhost:8000` (same convention as the MCP server) — set it
+   explicitly if you started the gateway on a different port.
 
 2. Check the generated `.github/copilot-instructions.md` (and `.cursorrules`).
    Copilot reads it natively as repository custom instructions:
