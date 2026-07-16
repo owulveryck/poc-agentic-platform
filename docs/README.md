@@ -25,6 +25,7 @@ one directory each.
 9. [Copilot on a governed workstation](tutorials/09-copilot-on-governed-workstation.md) — with the workstation configured user-wide (see how-to below), a fresh project is governed with three commands and one prompt
 10. [Claude Code on a governed workstation](tutorials/10-claude-on-governed-workstation.md) — the same demo for Claude Code
 11. [With and without the Gateway — a side-by-side demo](tutorials/11-with-and-without-the-gateway.md) — same skill, same prompts, two projects: without the platform a small model drifts under an adversarial prompt; with the platform, the drift is deterministically refused
+12. [Try to bypass the gateway (and watch it hold)](tutorials/12-bypassing-the-gateway.md) — a red-team catalogue of every trick against the Claude Code loop (no ticket, out-of-scope, traversal, sibling-prefix, forbidden content, session replay, tampered/forged ticket, gateway-down, self-disable) paired with its refusal — plus the honest limits caught only at apply time by `ppg-verify`; asserted end-to-end by `scripts/redteam-bypass.sh`
 
 ## How-to guides — task-oriented
 

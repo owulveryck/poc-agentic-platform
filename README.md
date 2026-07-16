@@ -41,7 +41,10 @@ different install location. Then follow the
 Copilot** through the pre-flight adapter
 ([tutorial 3](docs/tutorials/03-github-copilot-preflight.md)), or validate a
 skill against the governance gate
-([tutorial 4](docs/tutorials/04-validate-your-first-skill.md)).
+([tutorial 4](docs/tutorials/04-validate-your-first-skill.md)). To red-team
+the whole loop — every bypass trick paired with its refusal, plus the honest
+limits — run [tutorial 12](docs/tutorials/12-bypassing-the-gateway.md)
+(`bash scripts/redteam-bypass.sh`).
 
 > Want the 30-second overview first? Watch the 90-second animated tour of the
 > whole chain: [docs/diagrams/ppg-tutorials-tour.svg](docs/diagrams/ppg-tutorials-tour.svg).
