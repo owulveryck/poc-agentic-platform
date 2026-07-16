@@ -14,5 +14,5 @@
 
    ```bash
    go test ./internal/debt/
-   curl -s localhost:8000/debt_report
+   curl -s localhost:8765/debt_report
    ```

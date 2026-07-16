@@ -20,11 +20,11 @@ Statuses: ✅ conforms · 🟡 partial · ❌ not implemented · 📄 article-on
 |---|---|---|
 | `enrich()` soft move: ADR retrieval via scope selectors, no hard-coded business pattern | `internal/adr`, `internal/enrich`, `POST /enrich` | ✅ verified live (ADR-042 + ADR-070 returned for a payment intent) |
 | `lock_in_plan()` hard move: OPA/Rego linter, deterministic 422 with semantic violations | `internal/linter`, `adr/*.rego` (package `ppg.linter`) | ✅ verified live (`go_tests_present` rejection, then `PLAN_LOCKED`) |
-| Capability ticket: ephemeral signed JWT, plan fingerprint + least-privilege scope | `internal/ticket` (HS256, TTL 15 min, `plan_hash`, `scope`) | ✅ verified live (claims decoded and matched the locked plan) |
+| Capability ticket: ephemeral signed JWT, plan fingerprint + least-privilege scope | `internal/ticket` (HS256, configurable TTL (default 8h, session-bound), `plan_hash`, `scope`) | ✅ verified live (claims decoded and matched the locked plan) |
 | Smart Tools: in-tool ticket check, sandbox, semantic errors with `remediation_guidance` | `internal/smarttools/{patchcode,dbmigrate,translate}` | ✅ verified live (`OUT_OF_PLAN_SCOPE`, `GO_SYNTAX_ERROR`, `DATABASE_SCHEMA_CONFLICT`) |
-| Dual-representation ADRs; ADR-042 intentionally declarative-only | `adr/` (4 ADRs, 3 paired `.rego`) | ✅ |
-| Debt report: tagged artifacts, sunset conditions, PoC ships in `DEBT_ALERT` (2/5) | `internal/debt`, `GET /debt_report` | ✅ verified live (`transition_debt_ratio: 0.4`, 2 pending sunsets) |
-| Claude Code adapter: stdio MCP server, 2 tools, ticket in `.ppg-ticket` | `adapters/claudecode/mcpserver` | ✅ |
+| Dual-representation ADRs; ADR-042 intentionally declarative-only | `adr/` (6 ADRs, 5 paired `.rego`) | ✅ |
+| Debt report: tagged artifacts, sunset conditions, currently `health: OK` (2/7, ratio ≈ 0.29, just under the 0.3 alert threshold) | `internal/debt`, `GET /debt_report` | ✅ verified live (`transition_debt_ratio` ≈ `0.29`, 2 pending sunsets) |
+| Claude Code adapter: stdio MCP server, 2 tools, ticket persisted via TokenStore (per-machine `$XDG_STATE_HOME/ppg/projects/<slug>/tickets/<sid>`) | `adapters/claudecode/mcpserver`, `internal/store` | ✅ |
 | `ppg-guard` PreToolUse hook on `Edit\|Write`, exit 2, semantic stderr | `adapters/claudecode/guard` | ✅ verified live (block out-of-scope, pass in-scope, block without ticket) |
 | Copilot path: pre-flight writes `.github/copilot-instructions.md` | `adapters/preflight` | ✅ verified live; gateway URL/repo-context hardcoding fixed during this audit (see below) |
 | MCP tool schema auto-generated from `internal/plan#Plan` | `modelcontextprotocol/go-sdk` typed tools | ✅ |
@@ -42,7 +42,7 @@ Statuses: ✅ conforms · 🟡 partial · ❌ not implemented · 📄 article-on
 | Structural rule: body **≤ 500 lines** | `structure.rego` | ✅ implemented 2026-07-10 |
 | Structural rule: **no hardcoded secrets** | `structure.rego` | ✅ implemented 2026-07-10 (pattern scan: AWS keys, PEM, inline assignments) |
 | Companion Rego required for tier ≥ 1 | `security.rego` (`privileged`) | ✅ fixed 2026-07-10: fires on `Edit`/`Write`/`Bash`; a Bash-only skill no longer escapes |
-| Security tiers 0/1/2 from tool mentions, deliberately keyword-based | `skill.Linter.Tier` (Go substring match) | ✅ as described; the article itself flags paraphrase evasion (production: deny-by-default allowlist). Note: tier logic exists in Go while `modifies_files` re-implements it in Rego — two sources of truth |
+| Security tiers 0/1/2 from tool mentions, deliberately keyword-based | `skill.Linter.Tier` (Go substring match) | ✅ as described; the article itself flags paraphrase evasion (production: deny-by-default allowlist). Note: tier logic exists in Go while `privileged` re-implements it in Rego — two sources of truth |
 | Gate 1 (publish, CI) | `/validate_skill` | ✅ (recipe: `docs/how-to/gate-skill-publication-in-ci.md`) |
 | Gate 2 (install revalidation, content hashes) | — | ❌ described as registry-side production path |
 | Gate 3 (plan carries `skill_id`; plan linter unions companion Rego) | — | ❌ `plan.Plan` has no `skill_id` field; `linter.New` loads ADR regos only |
@@ -58,6 +58,7 @@ Statuses: ✅ conforms · 🟡 partial · ❌ not implemented · 📄 article-on
 | Panic on truncated `CREATE TABLE ` statement (`fields[2]`) | `internal/smarttools/dbmigrate/dbmigrate.go` | Length guard + `EXECUTION_FAILED`; test |
 | Pre-flight hardcoded `http://localhost:8000` (no `PPG_URL`, unlike the MCP server) and hardcoded repo context `checkout-service`/`["Go"]` | `adapters/preflight/main.go` | `PPG_URL` env + `-repo`/`-stack` flags; tests |
 | Ticket was a pure bearer capability: a new session within the 15-min TTL inherited `.ppg-ticket`, and the `session_id` claim was agent-chosen and never checked (post-audit finding, 2026-07-10) | `adapters/claudecode/{guard,mcpserver}` | Session binding: `SessionStart` hook records the real session id (`.ppg-session`) and purges leftover tickets; the MCP server stamps it into the plan at lock; the guard blocks `SESSION_MISMATCH`; tests |
+| Ticket and session id lived as bare files in the project cwd (`.ppg-ticket`, `.ppg-session`), fragile across cwd changes and worktree spawns, editor-visible artefacts, required per-project `.gitignore` (post-audit finding, 2026-07-16) | `adapters/claudecode/{guard,mcpserver}`, `adapters/copilot/guard`, `internal/store` | New `internal/store` package with `TokenStore`/`SessionStore` abstractions; `store.Filesystem` persists under `$XDG_STATE_HOME/ppg/projects/<slug>/` (0700/0600) keyed by base64-encoded absolute project path; `PPG_PROJECT_DIR` / `PPG_STORE_ROOT` overrides on the adapter binaries (the two guards and the MCP server; `ppg` and `ppg-preflight` do not read them); guarded by ADR-100 (Rego prevents regressions to bare-file storage) |
 
 ## Known limits kept as-is (assumed PoC posture, documented)
 
@@ -69,8 +70,8 @@ Statuses: ✅ conforms · 🟡 partial · ❌ not implemented · 📄 article-on
 - Duplications accepted at PoC scale: front-matter parsing
   (`internal/adr` vs `internal/skill`), OPA eval boilerplate + `Violation`
   structs (`internal/linter` vs `internal/skill`), testdata Rego copies of
-  production Rego (drift risk — the skill testdata already lacks the
-  \>500-char description rule).
+  production Rego (drift risk — the testdata mirrors are byte-for-byte
+  duplicates of the production policies and must be kept in sync by hand).
 - `enrich.Enrich` accepts and ignores `RepoContext` (reserved for
   stack-aware retrieval).
 - `smarttools.ToolMeta.Nature/SunsetCondition` are registered but never

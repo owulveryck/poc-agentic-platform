@@ -33,7 +33,8 @@ one directory each.
 - [Write a Rego plan policy](how-to/write-a-rego-plan-policy.md)
 - [Retire compensatory scaffolding](how-to/retire-compensatory-scaffolding.md)
 - [Add a Smart Tool](how-to/add-a-smart-tool.md)
-- [Enforce a content invariant with a PreToolUse hook](how-to/enforce-a-content-invariant.md) — the pattern behind tutorial 8, generalized for any content-scope policy
+- [Enforce a content invariant](how-to/enforce-a-content-invariant.md) — the pattern behind tutorial 8, generalized: an ADR's artifact-view Rego rule, enforced by the guard and `ppg-verify`
+- [Gate changes at apply time](how-to/gate-changes-at-apply-time.md) — `ppg-verify` as a pre-commit / pre-push / CI backstop for hookless surfaces
 - [Connect a black-box agent (Copilot / Cursor)](how-to/connect-a-black-box-agent.md)
 - [Connect Claude Code](how-to/connect-claude-code.md)
 - [Set up a governed workstation](how-to/set-up-a-governed-workstation.md) — install the platform user-wide so every project on this machine is governed by default; tutorials 9 and 10 demonstrate the result

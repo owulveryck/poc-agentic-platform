@@ -49,15 +49,12 @@ into the *machine* rather than into each *project* means:
 
 ## What has to stay per-project — and only that
 
-Two files, both ephemeral, both session state. They cannot be global
-by nature:
-
-- `.ppg-ticket` — a capability JWT bound to one plan in one project.
-- `.ppg-session` — the current agent session's id.
-
-Both live inside the project (add them to `.gitignore`), are written
-by the platform on demand, and disappear when the session ends.
-Everything else moves to `~/`.
+Nothing. All ephemeral session state (the capability JWT and the active
+session id) is written by the platform under a per-machine state root
+outside the project — `$XDG_STATE_HOME/ppg/projects/<slug>/` by default
+(see [capability-ticket.md — Storage layout](../reference/capability-ticket.md#storage-layout)).
+Projects stay clean: no `.ppg-ticket`, no `.ppg-session`, no additions
+to `.gitignore`. Everything the workstation needs lives under `~/`.
 
 ## Prerequisite
 
@@ -71,23 +68,31 @@ completed. This means:
 
 ## Recipe — Claude Code (user-wide)
 
-Four steps. Steps 1 and 4 are already done by tutorial 0 for the MCP
-piece; steps 2 and 3 are the new user-scope files.
+### 1. MCP + hooks — one command
 
-### 1. MCP — already user-scope from tutorial 0
+From the `poc-agentic-platform` checkout:
+
+```bash
+make setup-claude-code
+```
+
+That single command:
+
+- Registers `ppg` under user-scope `mcpServers` in `~/.claude.json` (idempotent — skips if already present; pass `FORCE=1` to overwrite a differing entry).
+- Merges the `SessionStart` and `PreToolUse` (matcher `Edit|Write`) hook entries into `~/.claude/settings.json` **surgically** — any non-ppg hook you already had is preserved.
+- Backs up each file it actually modifies to `<file>.bak-YYYYMMDDHHMMSS`.
+- Uses **absolute paths** to the binaries (via `command -v`), which is what GUI-launched agents need — they don't inherit shell PATH.
+
+Preview without touching the disk:
+
+```bash
+DRY_RUN=1 make setup-claude-code
+```
 
 Verify:
 
 ```bash
 claude mcp list          # → ppg   connected   (user)
-```
-
-If missing, re-run (use an absolute path for the binary — GUI-launched
-agents can lack `~/.local/bin` in their PATH):
-
-```bash
-claude mcp add --scope user ppg \
-  --env PPG_URL=http://localhost:8765 -- "$HOME/.local/bin/ppg-mcp-server"
 ```
 
 ### 2. Contract — write `~/.claude/CLAUDE.md`
@@ -104,58 +109,21 @@ Every `claude` session on this machine now loads this contract at
 startup, regardless of the project. If a project needs to override or
 extend it, its own `./CLAUDE.md` takes precedence.
 
-### 3. Hooks — write `~/.claude/settings.json`
+### About the session state
 
-Note the `<<EOF` (no quotes) below — this expands `$HOME` before it
-lands in the JSON. GUI-launched agent runtimes may not have
-`~/.local/bin` on their PATH, so the hook `command` needs an
-absolute path.
+Opening ANY project in `claude` now triggers `SessionStart`, which
+purges any stale tickets from the per-project TokenStore under
+`$XDG_STATE_HOME/ppg/projects/<slug>/tickets/` and records the fresh
+session id in the SessionStore. `Edit`/`Write` calls then get gated
+through the ticket scope.
 
-```bash
-mkdir -p ~/.claude
+### Manual alternative (if you'd rather see the wiring)
 
-if [ -f ~/.claude/settings.json ]; then
-  echo "⚠️  ~/.claude/settings.json already exists — NOT overwriting." >&2
-  echo "   Merge these entries into its 'hooks' object by hand" >&2
-  echo "   (append to existing SessionStart/PreToolUse arrays):" >&2
-  cat >&2 <<EOF
-  "SessionStart": [
-    { "hooks": [
-      { "type": "command", "command": "$HOME/.local/bin/ppg-guard", "args": [] }
-    ] }
-  ],
-  "PreToolUse": [
-    { "matcher": "Edit|Write",
-      "hooks": [
-        { "type": "command", "command": "$HOME/.local/bin/ppg-guard", "args": [] }
-      ] }
-  ]
-EOF
-else
-  cat > ~/.claude/settings.json <<EOF
-{
-  "hooks": {
-    "SessionStart": [
-      { "hooks": [
-        { "type": "command", "command": "$HOME/.local/bin/ppg-guard", "args": [] }
-      ] }
-    ],
-    "PreToolUse": [
-      { "matcher": "Edit|Write",
-        "hooks": [
-          { "type": "command", "command": "$HOME/.local/bin/ppg-guard", "args": [] }
-        ] }
-    ]
-  }
-}
-EOF
-fi
-```
-
-From now on, opening ANY project in `claude` triggers `SessionStart`
-(which purges any stale `.ppg-ticket` and records the fresh session id
-into `.ppg-session`) and gates every `Edit`/`Write` through the ticket
-scope.
+The Make target is a wrapper over `scripts/setup-claude-code.sh`. Read
+that script for the exact JSON writes; the target files are
+`~/.claude.json` (`mcpServers.ppg`) and `~/.claude/settings.json`
+(`hooks.SessionStart[]` + `hooks.PreToolUse[]` with matcher `Edit|Write`),
+using absolute paths to `ppg-mcp-server` and `ppg-guard`.
 
 ### 4. Skills — install them user-wide
 
@@ -192,50 +160,17 @@ copilot mcp list                       # if the copilot CLI is installed
 cat ~/.copilot/mcp-config.json         # otherwise — check for the ppg entry
 ```
 
-Re-add if missing. **Both forms use an absolute path** — the Copilot
-desktop app is a GUI process and doesn't inherit your shell's PATH.
-`~/.local/bin` is invisible; a bare `ppg-mcp-server` will result in
-the app looping on "connecting…" with no visible error.
-
-**A.** With the CLI:
+Re-add if missing — one command from the `poc-agentic-platform`
+checkout, same guarantees as the Claude Code recipe (idempotent, backup
+on modify, absolute paths, non-ppg entries preserved):
 
 ```bash
-copilot mcp add ppg --env PPG_URL=http://localhost:8765 \
-  -- "$HOME/.local/bin/ppg-mcp-server"
+make setup-github-copilot     # DRY_RUN=1 to preview, FORCE=1 to overwrite
 ```
 
-**B.** Without the CLI — hand-edit the file (note `<<EOF` unquoted so
-`$HOME` expands to your literal absolute path in the JSON):
-
-```bash
-mkdir -p ~/.copilot
-
-if [ -f ~/.copilot/mcp-config.json ]; then
-  echo "⚠️  ~/.copilot/mcp-config.json already exists — NOT overwriting." >&2
-  echo "   Merge this block into its 'mcpServers' object by hand:" >&2
-  cat >&2 <<EOF
-    "ppg": {
-      "type": "stdio",
-      "command": "$HOME/.local/bin/ppg-mcp-server",
-      "env": { "PPG_URL": "http://localhost:8765" },
-      "tools": ["*"]
-    }
-EOF
-else
-  cat > ~/.copilot/mcp-config.json <<EOF
-{
-  "mcpServers": {
-    "ppg": {
-      "type": "stdio",
-      "command": "$HOME/.local/bin/ppg-mcp-server",
-      "env": { "PPG_URL": "http://localhost:8765" },
-      "tools": ["*"]
-    }
-  }
-}
-EOF
-fi
-```
+That target writes `mcpServers.ppg` in `~/.copilot/mcp-config.json` and
+the ppg-dedicated hook file `~/.copilot/hooks/ppg.json` (rewritten
+whole; a backup is taken first if the file already existed).
 
 ### 2. Contract — write `~/.copilot/copilot-instructions.md`
 
@@ -263,34 +198,19 @@ cat >> ~/.copilot/copilot-instructions.md <<'EOF'
 EOF
 ```
 
-### 3. Hooks — write `~/.copilot/hooks/ppg.json`
+### 3. Hooks — already written by step 1
 
-This file is dedicated to `ppg` (its name is `ppg.json`). Re-running
-the block below overwrites any local edits you may have made to it —
-that is the intended semantics of "re-install the ppg hook". If you
-customized this file, back it up first (`cp ~/.copilot/hooks/ppg.json{,.bak}`).
+`make setup-github-copilot` in step 1 wrote `~/.copilot/hooks/ppg.json`
+for you (dedicated file, safe to rewrite; a backup was taken if it
+already existed).
 
-```bash
-mkdir -p ~/.copilot/hooks
-# <<EOF (no quotes) so $HOME expands to your literal path in the JSON.
-cat > ~/.copilot/hooks/ppg.json <<EOF
-{
-  "hooks": {
-    "SessionStart": [
-      { "type": "command", "command": "$HOME/.local/bin/ppg-copilot-guard", "timeoutSec": 5 }
-    ],
-    "PreToolUse": [
-      { "type": "command", "command": "$HOME/.local/bin/ppg-copilot-guard", "timeoutSec": 5 }
-    ]
-  }
-}
-EOF
-```
-
-Project-level `.github/hooks/*.json` still takes precedence when
-present, so a project can add a content-scope hook (e.g. the
-`design-guard.sh` shipped by the `design-system` skill) on top of the
-user-scope gates.
+Content invariants do not need a project hook: the user-scope guard
+already sends every edit to the gateway's `/verify_artifact`, so an ADR's
+artifact-view rule (e.g. `adr/ADR-090.rego` for the `design-system`
+skill) is enforced machine-wide. Project-level `.github/hooks/*.json`
+still takes precedence when present, so a project can add a bespoke hook
+on top of the user-scope gates for the rare check that cannot be
+expressed in Rego.
 
 ### 4. Skills — install them user-wide
 
@@ -355,9 +275,11 @@ mkdir /tmp/govern-check && cd /tmp/govern-check && git init
 Open the folder in your agent (Copilot desktop, `claude`, ...) and
 ask it to edit any file. Expected:
 
-- `SessionStart` hook fires, `.ppg-session` appears in the project.
-- The first `Edit` attempt is refused with `No capability ticket
-  found` (from the user-scope guard).
+- `SessionStart` hook fires; `ls -la` in the project shows **no**
+  `.ppg-session` / `.ppg-ticket` file (the session id is now recorded
+  under `$XDG_STATE_HOME/ppg/projects/<slug>/session`).
+- The first `Edit` attempt is refused with `No capability ticket for
+  this session` (from the user-scope guard).
 - The agent, following the user-scope contract, calls
   `lock_in_plan` first — the paved road is the only road.
 
@@ -371,31 +293,56 @@ Claude Code see
 
 ## Rollback
 
-Deployment recipes always ship with their inverse.
+Deployment recipes always ship with their inverse. Same guarantees as
+setup: surgical removal (only ppg entries), timestamped backups, no
+touch to non-ppg config.
 
 ### Claude Code
 
 ```bash
-claude mcp remove ppg --scope user
-rm ~/.claude/CLAUDE.md
-rm ~/.claude/settings.json
-rm -rf ~/.claude/skills
+make remove-claude-code        # DRY_RUN=1 to preview
+rm -f ~/.claude/CLAUDE.md      # if you deployed the contract
+rm -rf ~/.claude/skills        # if you deployed skills user-wide
 ```
+
+`make remove-claude-code` clears ppg from **global config and the current
+project only** — other projects on this machine are never touched. It removes
+the top-level `mcpServers.ppg` (user scope), the current project's
+`projects.<cwd>.mcpServers.ppg` (local scope) and the stale `ppg` entry in its
+`enabled`/`disabledMcpjsonServers` approval lists, the ppg-guard hook entries
+in `~/.claude/settings.json`, and `mcpServers.ppg` in `~/.mcp.json` (the
+project-scoped `.mcp.json` that otherwise makes Claude prompt "New MCP server
+found, use it?"). Non-ppg config is untouched and a backup is taken before
+each write. A `.mcp.json` **committed inside the current project repo** is
+reported (not edited) with the exact key to remove yourself. Run it from
+inside each project you want cleaned.
 
 ### Copilot desktop / CLI
 
 ```bash
-# Remove the ppg MCP entry — either form works:
-copilot mcp remove ppg     # with the CLI
-# OR, without the CLI, hand-edit ~/.copilot/mcp-config.json to delete
-# the "ppg" key from the mcpServers object:
-jq 'del(.mcpServers.ppg)' ~/.copilot/mcp-config.json \
-  > /tmp/mcp-config.json && mv /tmp/mcp-config.json ~/.copilot/mcp-config.json
+make remove-github-copilot
+rm -f ~/.copilot/copilot-instructions.md    # if you deployed the contract
+rm -rf ~/.copilot/skills                     # if you deployed skills user-wide
+```
 
-rm ~/.copilot/copilot-instructions.md
-rm -rf ~/.copilot/hooks
-rm -rf ~/.copilot/skills
+`make remove-github-copilot` unregisters `mcpServers.ppg` in
+`~/.copilot/mcp-config.json` (other MCP servers preserved) and deletes
+the ppg-dedicated hook file `~/.copilot/hooks/ppg.json` (backup taken
+first). It also **detects and lists** the current project's repo-committed ppg
+registrations — `.github/hooks/ppg.json`, a ppg-guard hook in
+`.claude/settings.json`, and `servers.ppg` in `.vscode/mcp.json` — with the
+exact removal step for each (these are often git-committed, so they are
+reported, not edited). Only the current directory is inspected; run it from
+inside each project you want cleaned.
+
+### State directory
+
+The per-machine state dir (`$XDG_STATE_HOME/ppg`) survives — it's data,
+not config. Wipe manually if fully unwinding:
+
+```bash
+rm -rf "${XDG_STATE_HOME:-$HOME/.local/state}/ppg"
 ```
 
 The gateway (`ppg` process) and machine binaries under `~/.local/bin/`
-survive — remove them separately if fully unwinding the platform.
+survive too — `make uninstall` from the checkout removes the binaries.

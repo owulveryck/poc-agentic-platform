@@ -141,9 +141,11 @@ triggered by the skill's own body:
    proxied client, test step) and submits it through `lock_in_plan`. If a
    violation comes back, it reads the criterion and resubmits: one
    round-trip.
-3. `PLAN_LOCKED`: the capability ticket lands in `.ppg-ticket`, bound to
-   this session (`.ppg-session`, recorded by the `SessionStart` hook). A
-   ticket copied into another session would be refused
+3. `PLAN_LOCKED`: the capability ticket is persisted through the
+   per-machine TokenStore
+   (`$XDG_STATE_HOME/ppg/projects/<slug>/tickets/<sid>`), bound to this
+   session id (recorded by the `SessionStart` hook in the SessionStore).
+   A ticket reused from another session would be refused
    (`SESSION_MISMATCH`).
 4. Implementation: every in-scope `Edit` passes the guard silently. Ask for
    *"also quickly update internal/auth/login.go"* to see the drift blocked

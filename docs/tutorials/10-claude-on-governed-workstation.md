@@ -20,12 +20,12 @@
 
 ```bash
 mkdir ~/govern-check && cd ~/govern-check && git init
-printf '.ppg-ticket\n.ppg-session\n' > .gitignore
-git add -A && git commit -q -m "init"
+git commit --allow-empty -q -m "init"
 ```
 
-Zero per-project files beyond `.gitignore`. Contrast with
-[tutorial 2](02-claude-code-end-to-end.md) which places hooks and
+Zero per-project files at all — session state lives under
+`$XDG_STATE_HOME/ppg/projects/<slug>/`, outside the project. Contrast
+with [tutorial 2](02-claude-code-end-to-end.md) which places hooks and
 `CLAUDE.md` by hand.
 
 ## Step 2 — Launch `claude` in the folder
@@ -43,10 +43,12 @@ Observe:
 - **Contract loaded** — the three-rules contract from
   `~/.claude/CLAUDE.md` is part of the session's system prompt (Claude
   Code merges user-scope `CLAUDE.md` with the project one, if any).
-- **SessionStart fires** — `.ppg-session` appears in the project. The
-  `ppg-guard` binary was invoked by the user-scope hook declaration
-  in `~/.claude/settings.json`; it purges any stale `.ppg-ticket` and
-  records the fresh session id.
+- **SessionStart fires** — no artefact appears in the project; the
+  session id is recorded via the SessionStore under
+  `$XDG_STATE_HOME/ppg/projects/<slug>/session`. The `ppg-guard` binary
+  was invoked by the user-scope hook declaration in
+  `~/.claude/settings.json`; it purges any stale tickets from the
+  TokenStore and records the fresh session id.
 
 ## Step 3 — Run the amplified loop from a single prompt
 
@@ -63,7 +65,8 @@ tutorial 2):
    a `go test` step, the gateway answers `PLAN_REJECTED` with the
    `go_tests_present` violation, and Claude corrects in one
    round-trip.
-3. On success: `PLAN_LOCKED`, ticket written to `.ppg-ticket`.
+3. On success: `PLAN_LOCKED`, ticket persisted through the TokenStore
+   at `$XDG_STATE_HOME/ppg/projects/<slug>/tickets/<sid>`.
 4. Every `Edit`/`Write` inside the scope passes silently through
    `ppg-guard`.
 

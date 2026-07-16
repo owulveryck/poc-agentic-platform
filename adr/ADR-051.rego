@@ -3,6 +3,7 @@ package ppg.linter
 import rego.v1
 
 violation contains v if {
+	input.view == "plan"
 	some step in input.steps
 	target_is_db(step)
 	not plan_has_migration

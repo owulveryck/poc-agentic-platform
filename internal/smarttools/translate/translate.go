@@ -45,6 +45,22 @@ func SyntaxError(base map[string]any, detail string) map[string]any {
 	return base
 }
 
+// PolicyViolation enriches a rejection with the architectural-invariant
+// messages the artifact's content violated (artifact-view policy) plus generic
+// remediation guidance. Used by Smart Tools to refuse content that breaks an
+// invariant, in the same actionable shape as the other enrichers.
+func PolicyViolation(base map[string]any, messages []string) map[string]any {
+	base["error_category"] = "ARCHITECTURAL_INVARIANT_VIOLATION"
+	base["message"] = "The submitted content violates one or more architectural invariants."
+	base["remediation_guidance"] = map[string]any{
+		"violations": messages,
+		"allowed_actions": []string{
+			"Revise the content to satisfy the invariants listed above, then resubmit.",
+		},
+	}
+	return base
+}
+
 // DBConflict enriches a schema conflict with the current staging state — the
 // context the model cannot guess on its own.
 func DBConflict(base map[string]any, table, schemaVersion string) map[string]any {

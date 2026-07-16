@@ -251,6 +251,98 @@ func TestUIPlanReadingTokensPasses(t *testing.T) {
 	}
 }
 
+func hasPolicy(vs []Violation, id string) bool {
+	for _, v := range vs {
+		if v.PolicyID == id {
+			return true
+		}
+	}
+	return false
+}
+
+func TestArtifactViewRejectsRawColorsAndButtonRules(t *testing.T) {
+	lint, err := New(testStore(), "testdata")
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	reject := []struct {
+		name    string
+		content string
+	}{
+		{"raw hex", ".a{color:#F0F;}"},
+		{"var fallback with raw hex", ".a{color:var(--x, #F0F);}"},
+		{"rgb function", ".a{color:rgb(1,2,3);}"},
+		{"rgba function", ".a{color:rgba(1,2,3,.5);}"},
+		{"hsl function", ".a{color:hsl(1,2%,3%);}"},
+		{"named color teal", ".a{color:teal;}"},
+		{"named color fuchsia", ".a{color: fuchsia;}"},
+		{"named color aqua", ".a{color:aqua;}"},
+		{"button pseudo-class", "button:hover{padding:4px;}"},
+		{"button combinator", "button > span{padding:4px;}"},
+		{"btn class", ".btn{padding:4px;}"},
+	}
+	for _, tc := range reject {
+		t.Run("reject/"+tc.name, func(t *testing.T) {
+			vs := lint.EvaluateArtifact(Artifact{Path: "index.css", Content: tc.content})
+			if !hasPolicy(vs, "design_tokens_referenced") {
+				t.Fatalf("expected design_tokens_referenced violation for %q, got %v", tc.content, vs)
+			}
+		})
+	}
+
+	allow := []struct {
+		name    string
+		path    string
+		content string
+	}{
+		{"token var", "index.css", ".a{color:var(--color-primary);}"},
+		{"css keyword", "index.css", ".a{color:transparent;border-color:currentColor;}"},
+		{"tokens file exempt", "design/tokens.css", ":root{--color-primary:#0af;} button{padding:4px;}"},
+		{"non-ui file", "server.go", `x := "#F0F"`},
+	}
+	for _, tc := range allow {
+		t.Run("allow/"+tc.name, func(t *testing.T) {
+			vs := lint.EvaluateArtifact(Artifact{Path: tc.path, Content: tc.content})
+			if hasPolicy(vs, "design_tokens_referenced") {
+				t.Fatalf("expected no design_tokens violation for %s %q, got %v", tc.path, tc.content, vs)
+			}
+		})
+	}
+}
+
+func TestArtifactViewDoesNotFirePlanRules(t *testing.T) {
+	lint, err := New(testStore(), "testdata")
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	// A clean UI artifact must not trip any plan-altitude policy (e.g.
+	// go_tests_present, which has no step context in the artifact view).
+	vs := lint.EvaluateArtifact(Artifact{Path: "index.css", Content: ".a{color:var(--color-primary);}"})
+	if len(vs) != 0 {
+		t.Fatalf("expected no violations for a clean artifact, got %v", vs)
+	}
+}
+
+func TestChangesetViewChecksEveryFile(t *testing.T) {
+	lint, err := New(testStore(), "testdata")
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	// A clean file plus a raw-color file: the changeset must be rejected.
+	cs := Changeset{Files: []Artifact{
+		{Path: "ok.css", Content: ".a{color:var(--color-primary)}"},
+		{Path: "bad.css", Content: ".b{color:#abc}"},
+	}}
+	if !hasPolicy(lint.EvaluateChangeset(cs), "design_tokens_referenced") {
+		t.Fatal("expected a raw-color file in the changeset to be rejected")
+	}
+	// An all-clean changeset passes.
+	clean := Changeset{Files: []Artifact{{Path: "ok.css", Content: ".a{color:var(--color-primary)}"}}}
+	if len(lint.EvaluateChangeset(clean)) != 0 {
+		t.Fatalf("expected a clean changeset to pass, got %v", lint.EvaluateChangeset(clean))
+	}
+}
+
 func TestDBChangeRequiresMigration(t *testing.T) {
 	lint, err := New(testStore(), "testdata")
 	if err != nil {

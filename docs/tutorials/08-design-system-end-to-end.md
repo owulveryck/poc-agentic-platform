@@ -62,13 +62,18 @@ the Copilot conversation:
 
 The skill's first phase materializes itself in the project:
 
-- `chmod +x .agents/skills/design-system/hooks/design-guard.sh` (defensive; some APM versions strip execute bits).
 - `mkdir -p design && cp .agents/skills/design-system/tokens.css design/tokens.css` — the canonical Deep Umbra palette and the sole `button {}` rule land in the project.
-- `.github/hooks/design.json` is written, registering `design-guard.sh` as a PreToolUse hook. From the next edit onward, every write is enforced.
 - A one-line contract is appended to `.github/copilot-instructions.md` (or the file is created): "All button styling lives in `design/tokens.css`. Use `<button>` or `class='btn'` in markup; reach visual values through `var(--color-*)` and `var(--btn-*)` references only."
 
-**What you should observe**: four small edits to the project, all
-passing (no guard active yet). After this phase, the guard is loaded.
+There is **no per-skill hook to install**. Enforcement is platform-native:
+the workstation's `ppg-guard` / `ppg-copilot-guard` (wired in tutorial 0)
+already sends every edit's content to the gateway, which evaluates
+**ADR-090 at the artifact altitude** (`/verify_artifact`) and denies any
+raw color or button re-styling outside `design/tokens.css`.
+
+**What you should observe**: two small edits to the project. The
+content guard is already active — it is the standard workstation guard,
+not a script the skill drops.
 
 ### 2. Amplified planning
 
@@ -77,16 +82,17 @@ passing (no guard active yet). After this phase, the guard is loaded.
 - Copilot drafts a plan: `index.html` (semantic `<button class="btn">` markup) + `style.css` (page layout only, no button rules) + a step reading `design/tokens.css`.
 - Copilot submits the plan through `lock_in_plan`. The plan linter's ADR-090 rule requires a read step on `design/tokens.css` — with it present, the plan locks.
 
-**What you should observe**: `PLAN_LOCKED`, ticket lands in
-`.ppg-ticket`. If Copilot forgets the tokens-read step, the gateway
-answers `PLAN_REJECTED` with the `design_tokens_referenced` violation
-and Copilot self-corrects in one round-trip.
+**What you should observe**: `PLAN_LOCKED`, ticket persisted through
+the TokenStore under `$XDG_STATE_HOME/ppg/projects/<slug>/tickets/`.
+If Copilot forgets the tokens-read step, the gateway answers
+`PLAN_REJECTED` with the `design_tokens_referenced` violation and
+Copilot self-corrects in one round-trip.
 
 ### 3. Application
 
 - Copilot writes `index.html` and `style.css`.
 - Every color is `var(--color-*)`. No CSS rule targets `button` or `.btn` outside `design/tokens.css`.
-- Every `Edit` passes both `ppg-copilot-guard` (path scope, tutorial 7) and `design-guard.sh` (content scope, this tutorial).
+- Every `Edit` passes `ppg-copilot-guard`, which checks **both** the path scope (tutorial 7) and the content: it POSTs the edited bytes to `/verify_artifact`, where ADR-090's artifact rule runs.
 
 **What you should observe**: `<link rel="stylesheet" href="design/tokens.css">` loads before `style.css` in the produced HTML, and the button in the rendered page has:
 
@@ -103,10 +109,11 @@ speak.
 
 > Actually, make the button hot pink.
 
-**What you should observe**: `design-guard.sh` denies with
-`DESIGN_SYSTEM_VIOLATION`, naming the closest allowed tokens. Copilot
-does NOT retry — per the contract, it either uses a palette variable
-or re-plans if a new variant is genuinely needed.
+**What you should observe**: `ppg-copilot-guard` denies with
+`ARCHITECTURAL_INVARIANT_VIOLATION`, the reason carrying ADR-090's
+design-token message (naming the raw value and the palette to pick
+from). Copilot does NOT retry — per the contract, it either uses a
+palette variable or re-plans if a new variant is genuinely needed.
 
 Some interesting failure modes to test:
 
@@ -119,18 +126,21 @@ Some interesting failure modes to test:
 
 > Override the button style in style.css with a border-radius of 4px.
 
-**What you should observe**: `design-guard.sh` denies with a different
-reason:
+**What you should observe**: the guard denies with a different ADR-090
+message, again prefixed `ARCHITECTURAL_INVARIANT_VIOLATION`:
 
 ```
-DESIGN_SYSTEM_VIOLATION: button styling belongs in design/tokens.css
-only. The design system's <button> rule is canonical — use <button> or
-class="btn" in markup, do not re-style buttons in style.css. If a new
-button variant is genuinely needed, extend design/tokens.css.
+ARCHITECTURAL_INVARIANT_VIOLATION: Design-system invariant (style.css):
+button styling belongs in design/tokens.css only. Use <button> or
+class="btn" in markup; do not re-declare button geometry here. Extend
+design/tokens.css if a new variant is genuinely needed.
 ```
 
 The reason is written for the agent to reason over: it names the *why*
-and the *paved path*, not just the *no*.
+and the *paved path*, not just the *no*. This same rule catches the
+bypasses the old shell hook missed — `button:hover`, `button > span`,
+`.btn`, `[role="button"]`, and raw colors hidden in a `var(--x, #F0F)`
+fallback.
 
 ## Final verification — deterministic, reader-runnable
 
@@ -149,19 +159,21 @@ the model was polite, but because the bytes couldn't get past the guard.
 
 ## What makes this different from tutorial 7
 
-Same PreToolUse mechanism, different granularity:
+Same guard, same `PreToolUse` mechanism — the guard just checks a second
+thing:
 
 | | Tutorial 7 | Tutorial 8 |
 |---|---|---|
-| Enforcement lever | `ppg-copilot-guard` (path-scope) | `design-guard.sh` (content-scope) |
+| Enforcement lever | `ppg-copilot-guard` (path scope) | the same `ppg-copilot-guard` (content, via `/verify_artifact`) |
 | Reads from payload | `tool_input.path` | `tool_input.new_str` + `tool_input.path` |
-| Denial semantics | `OUT_OF_PLAN_SCOPE` (this file isn't in the ticket) | `DESIGN_SYSTEM_VIOLATION` (this *value* isn't allowed) |
-| Language | Go binary | Shell script |
-| Location | `adapters/copilot/guard/` | Inside the skill (`demo/skills/design-system/hooks/`) |
+| Where the rule lives | the ticket's `scope.allow_modify` | `adr/ADR-090.rego`, artifact view |
+| Denial semantics | `OUT_OF_PLAN_SCOPE` (this file isn't in the ticket) | `ARCHITECTURAL_INVARIANT_VIOLATION` (this *value* isn't allowed) |
 
-Both hooks fire on `PreToolUse`; most-restrictive `deny` wins. They
-compose without knowing about each other — that's the mechanism's
-generality.
+The path scope comes from the ticket; the content invariant is Rego in
+the ADR corpus, evaluated by the gateway at the artifact altitude. There
+is no separate shell hook — one guard enforces both, and the same
+ADR-090 rules also run at apply time through `ppg-verify`
+([gate at apply time](../how-to/gate-changes-at-apply-time.md)).
 
 ## Where to go from here
 
@@ -175,6 +187,7 @@ generality.
   are the only ones that ship.
 
 **✅ Done.** You just governed a design system the same way the platform
-governs a payment router — through a skill, a plan-linter, and a
-content-scope PreToolUse hook. Nothing about the mechanism is specific
-to design; the pattern travels.
+governs a payment router — through a skill, a plan-linter, and the
+standard guard evaluating an ADR's content rules at the artifact
+altitude. Nothing about the mechanism is specific to design; the pattern
+travels.

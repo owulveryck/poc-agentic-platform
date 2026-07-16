@@ -30,15 +30,30 @@ func (Tool) Run(targets []string, payload map[string]any) map[string]any {
 	stmt, _ := payload["statement"].(string)
 	lower := strings.ToLower(stmt)
 	if strings.HasPrefix(lower, "create table ") && !strings.Contains(lower, "if not exists") {
-		fields := strings.Fields(lower)
-		if len(fields) < 3 {
+		table := parseTableName(lower[len("create table "):])
+		if table == "" {
 			return translate.Generic(1, "malformed CREATE TABLE statement: missing table name")
 		}
-		table := strings.Trim(fields[2], "(")
 		if stagingTables[table] {
 			base := translate.Generic(1, `SQLSTATE 42P07: table "`+table+`" already exists`)
 			return translate.DBConflict(base, table, stagingSchemaVersion)
 		}
 	}
 	return map[string]any{"status": "OK", "applied": targets}
+}
+
+// parseTableName extracts the table identifier from the text following
+// "create table " (already lowercased). It stops at the first whitespace or
+// opening parenthesis, so both "payments (id int)" and "payments(id int)"
+// yield "payments", and strips surrounding SQL identifier quoting
+// (double quotes, backticks, brackets). Returns "" when no name is present.
+func parseTableName(rest string) string {
+	rest = strings.TrimSpace(rest)
+	end := strings.IndexAny(rest, " \t\n\r(")
+	name := rest
+	if end >= 0 {
+		name = rest[:end]
+	}
+	name = strings.Trim(name, "\"`[]")
+	return name
 }

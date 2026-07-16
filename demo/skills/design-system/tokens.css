@@ -3,10 +3,11 @@
  * This file is the sole source of truth for visual style. Every other
  * stylesheet MUST reach these values through var(--*) references.
  *
- * Enforced by:
- *  - ADR-090 (plan-linter: UI plans must include a step reading this file)
- *  - design-guard.sh (PreToolUse hook: raw colors and button re-styling
- *    are denied on write)
+ * Enforced by ADR-090 at two altitudes (same adr/ADR-090.rego corpus):
+ *  - plan: UI plans must include a step reading this file
+ *  - artifact: the platform guard sends each edit's content to the gateway
+ *    (/verify_artifact), which denies raw colors and button re-styling
+ *    outside this file
  *
  * The canonical <button>/.btn rule lives here. Markup uses <button> or
  * class="btn"; no page-level stylesheet re-declares button styling.

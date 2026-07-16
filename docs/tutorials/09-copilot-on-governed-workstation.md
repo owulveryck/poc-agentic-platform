@@ -19,8 +19,7 @@
 
 ```bash
 mkdir ~/govern-check && cd ~/govern-check && git init
-printf '.ppg-ticket\n.ppg-session\n' > .gitignore
-git add -A && git commit -q -m "init"
+git commit --allow-empty -q -m "init"
 ```
 
 That is the entire per-project setup. No hooks, no contract, no
@@ -38,7 +37,9 @@ Point the Copilot app at `~/govern-check`. Observe:
 - **Contract loaded** — the platform instructions from
   `~/.copilot/copilot-instructions.md` are visible in the session's
   context (agent-dependent surface).
-- **SessionStart fires** — `.ppg-session` appears in the project (the
+- **SessionStart fires** — no artefact appears inside the project;
+  the session id is recorded via the SessionStore under
+  `$XDG_STATE_HOME/ppg/projects/<slug>/session` (the
   `ppg-copilot-guard` binary was invoked by the user-scope hook
   declaration in `~/.copilot/hooks/ppg.json`).
 
@@ -56,7 +57,8 @@ tutorial 7):
 2. Copilot drafts a plan and calls `lock_in_plan`. If the plan lacks
    a `go test` step, the gateway answers `PLAN_REJECTED` and Copilot
    self-corrects in one round-trip.
-3. On success: `PLAN_LOCKED`, ticket written to `.ppg-ticket`.
+3. On success: `PLAN_LOCKED`, ticket persisted through the TokenStore
+   at `$XDG_STATE_HOME/ppg/projects/<slug>/tickets/<sid>`.
 4. Every `Edit`/`Write` in the ticket scope passes silently through
    `ppg-copilot-guard`.
 

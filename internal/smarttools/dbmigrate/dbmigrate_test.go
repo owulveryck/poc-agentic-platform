@@ -22,3 +22,18 @@ func TestNewTablePasses(t *testing.T) {
 		t.Fatalf("expected OK, got %v", out)
 	}
 }
+
+func TestExistingTableConflictWithoutSpaceBeforeParen(t *testing.T) {
+	// Regression: "payments(id int)" must still be detected as a conflict even
+	// though there is no space separating the name from the column list.
+	for _, stmt := range []string{
+		"CREATE TABLE payments(id int)",
+		`CREATE TABLE "payments" (id int)`,
+		"CREATE TABLE `payments`(id int)",
+	} {
+		out := Tool{}.Run([]string{"payments"}, map[string]any{"statement": stmt})
+		if out["error_category"] != "DATABASE_SCHEMA_CONFLICT" {
+			t.Fatalf("stmt %q: expected DATABASE_SCHEMA_CONFLICT, got %v", stmt, out)
+		}
+	}
+}

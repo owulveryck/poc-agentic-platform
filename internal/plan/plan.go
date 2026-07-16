@@ -77,12 +77,75 @@ func (p *Plan) ValidateStructure() error {
 	if len(p.Steps) == 0 {
 		return fmt.Errorf("plan must contain at least one step")
 	}
+	ids := make(map[string]bool, len(p.Steps))
 	for i, s := range p.Steps {
 		if s.ID == "" || s.Action == "" || s.Tool == "" || len(s.Targets) == 0 {
 			return fmt.Errorf("step %d: id, action, tool and targets are required", i)
 		}
+		if ids[s.ID] {
+			return fmt.Errorf("step %d: duplicate step id %q", i, s.ID)
+		}
+		ids[s.ID] = true
+	}
+	// The Steps form an acyclic dependency graph: every DependsOn must name an
+	// existing step, and the graph must contain no cycles. Without this a plan
+	// could reference a phantom prerequisite or lock a ticket for a mutually
+	// recursive graph that can never execute in order.
+	for i, s := range p.Steps {
+		for _, dep := range s.DependsOn {
+			if !ids[dep] {
+				return fmt.Errorf("step %d (%q): depends_on references unknown step %q", i, s.ID, dep)
+			}
+			if dep == s.ID {
+				return fmt.Errorf("step %d (%q): depends_on references itself", i, s.ID)
+			}
+		}
+	}
+	if cycle := p.findDependencyCycle(); cycle != "" {
+		return fmt.Errorf("plan dependency graph has a cycle involving step %q", cycle)
 	}
 	return nil
+}
+
+// findDependencyCycle returns the ID of a step involved in a dependency cycle,
+// or "" if the DependsOn graph is acyclic. It assumes every DependsOn target
+// exists (validated by the caller) and detects cycles with a depth-first
+// three-color walk.
+func (p *Plan) findDependencyCycle() string {
+	const (
+		white = 0 // unvisited
+		gray  = 1 // on the current DFS stack
+		black = 2 // fully explored
+	)
+	byID := make(map[string]Step, len(p.Steps))
+	for _, s := range p.Steps {
+		byID[s.ID] = s
+	}
+	color := make(map[string]int, len(p.Steps))
+	var visit func(id string) string
+	visit = func(id string) string {
+		color[id] = gray
+		for _, dep := range byID[id].DependsOn {
+			switch color[dep] {
+			case gray:
+				return dep
+			case white:
+				if c := visit(dep); c != "" {
+					return c
+				}
+			}
+		}
+		color[id] = black
+		return ""
+	}
+	for _, s := range p.Steps {
+		if color[s.ID] == white {
+			if c := visit(s.ID); c != "" {
+				return c
+			}
+		}
+	}
+	return ""
 }
 
 // Hash returns the canonical SHA-256 fingerprint of the plan. It is embedded

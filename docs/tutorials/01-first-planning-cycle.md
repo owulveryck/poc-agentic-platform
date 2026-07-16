@@ -10,18 +10,20 @@
 ## Step 0 — Prerequisites
 
 - Go 1.25+
+- `make install` from the repo root — puts `ppg` and the adapters under
+  `~/.local/bin`.
 
 ## Step 1 — Start the gateway
 
 ```bash
-go run ./cmd/ppg -addr :8765
+ppg -addr :8765
 ```
 
 You should see the three readiness lines, then the listen line:
 
 ```
-ADR store loaded: 4 invariants
-Plan linter ready: 4 policies
+ADR store loaded: 6 invariants
+Plan linter ready: 6 policies
 Skill governance linter ready
 Platform Planning Gateway listening on :8765
 ```
@@ -155,11 +157,11 @@ content and you get `status: OK`.
 curl -s localhost:8765/debt_report | python3 -m json.tool
 ```
 
-**What you should observe**: `transition_debt_ratio: 0.4`, two
-`pending_sunsets`, and `health: DEBT_ALERT` (this PoC intentionally ships
-with two of five artifacts as scaffolding). 👉 *You just measured how much
-temporary scaffolding the platform maintains, and under which conditions it
-will be removed.*
+**What you should observe**: `transition_debt_ratio` ≈ `0.29`, two
+`pending_sunsets`, and `health: OK` (this PoC ships with two of seven
+artifacts as scaffolding — just under the 0.3 `DEBT_ALERT` threshold). 👉
+*You just measured how much temporary scaffolding the platform maintains,
+and under which conditions it will be removed.*
 
 **✅ Done.** You have run the complete cycle by hand. Next steps:
 

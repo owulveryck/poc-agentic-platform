@@ -14,14 +14,11 @@
 package linter
 
 import (
-	"context"
-	"encoding/json"
-	"fmt"
 	"path/filepath"
 
-	"github.com/open-policy-agent/opa/v1/rego"
 	"github.com/owulveryck/poc-agentic-platform/internal/adr"
 	"github.com/owulveryck/poc-agentic-platform/internal/plan"
+	"github.com/owulveryck/poc-agentic-platform/internal/policy"
 )
 
 // Nature positions an artifact on the durability axis.
@@ -60,12 +57,53 @@ type Violation struct {
 	Nature Nature `json:"nature"`
 }
 
-// Linter evaluates OPA/Rego policies derived from ADR .rego files.
+// Linter evaluates OPA/Rego policies derived from ADR .rego files. The same
+// compiled corpus is evaluated at three altitudes — plan, artifact and
+// changeset — discriminated by the input.view field (see Validate,
+// EvaluateArtifact, EvaluateChangeset).
 type Linter struct {
 	// Registry is the governance catalog of all tracked policies, keyed by
 	// policy_id. Used by the debt report to measure the compensatory ratio.
 	Registry map[string]PolicyMeta
-	prepared *rego.PreparedEvalQuery
+	eval     *policy.Evaluator
+}
+
+// Artifact is one edited file's actual content — the artifact view of the
+// policy input, used by the in-loop guard hook and the Smart Tools.
+type Artifact struct {
+	// Path is the file path being written, relative to the project root.
+	Path string `json:"path"`
+	// Content is the full proposed content of the file after the edit.
+	Content string `json:"content"`
+	// Op is the operation ("write", "edit", "create"); optional.
+	Op string `json:"op,omitempty"`
+}
+
+// Changeset is a set of edited files — the changeset (diff) view of the policy
+// input, used by the apply-time gate. PlanHash lets the gate detect plan
+// substitution against the ticket.
+type Changeset struct {
+	// Files are the changed files with their post-change content.
+	Files []Artifact `json:"files"`
+	// PlanHash is the fingerprint of the plan the changeset claims to execute.
+	PlanHash string `json:"plan_hash,omitempty"`
+}
+
+// planInput is the plan view: the plan fields promoted to the top level (so
+// existing rules reading input.steps keep working) plus the view discriminator.
+type planInput struct {
+	plan.Plan
+	View string `json:"view"`
+}
+
+type artifactInput struct {
+	View     string   `json:"view"`
+	Artifact Artifact `json:"artifact"`
+}
+
+type changesetInput struct {
+	View      string    `json:"view"`
+	Changeset Changeset `json:"changeset"`
 }
 
 // New builds a Linter from the ADR store. It populates the Registry from ADR
@@ -90,57 +128,41 @@ func New(store *adr.Store, adrDir string) (*Linter, error) {
 		}
 	}
 
-	if len(regoPaths) == 0 {
-		return l, nil
-	}
-
-	ctx := context.Background()
-	pq, err := rego.New(
-		rego.Query("data.ppg.linter.violation"),
-		rego.Load(regoPaths, nil),
-	).PrepareForEval(ctx)
+	eval, err := policy.Prepare("data.ppg.linter.violation", regoPaths)
 	if err != nil {
-		return nil, fmt.Errorf("preparing OPA query: %w", err)
+		return nil, err
 	}
-	l.prepared = &pq
+	l.eval = eval
 	return l, nil
 }
 
-// Validate evaluates all Rego policies against the plan and returns the
-// violations. An empty slice means the plan can be locked.
+// Validate evaluates all Rego policies against the plan (plan view) and returns
+// the violations. An empty slice means the plan can be locked.
 func (l *Linter) Validate(p *plan.Plan) []Violation {
-	if l.prepared == nil {
-		return nil
-	}
+	return l.evaluate(planInput{Plan: *p, View: "plan"})
+}
 
-	ctx := context.Background()
-	rs, err := l.prepared.Eval(ctx, rego.EvalInput(p))
+// EvaluateArtifact evaluates the corpus against a single edited file's content
+// (artifact view) — the in-loop check behind the guard hook and Smart Tools.
+func (l *Linter) EvaluateArtifact(a Artifact) []Violation {
+	return l.evaluate(artifactInput{View: "artifact", Artifact: a})
+}
+
+// EvaluateChangeset evaluates the corpus against a whole diff (changeset view) —
+// the apply-time backstop.
+func (l *Linter) EvaluateChangeset(c Changeset) []Violation {
+	return l.evaluate(changesetInput{View: "changeset", Changeset: c})
+}
+
+// evaluate runs the corpus against one input document. It fails closed: an
+// evaluation or decode error surfaces as a synthetic rejection rather than a
+// silent pass.
+func (l *Linter) evaluate(input any) []Violation {
+	violations, err := policy.Eval[Violation](l.eval, input)
 	if err != nil {
 		return []Violation{{
 			PolicyID: "linter_eval_error",
-			Message:  fmt.Sprintf("OPA evaluation error: %v", err),
-			Nature:   Compensatory,
-		}}
-	}
-	if len(rs) == 0 || rs[0].Expressions[0].Value == nil {
-		return nil
-	}
-
-	// Fail closed: a plan whose evaluation result cannot be decoded must be
-	// rejected, not silently locked.
-	raw, err := json.Marshal(rs[0].Expressions[0].Value)
-	if err != nil {
-		return []Violation{{
-			PolicyID: "linter_eval_error",
-			Message:  fmt.Sprintf("cannot encode OPA result: %v", err),
-			Nature:   Compensatory,
-		}}
-	}
-	var violations []Violation
-	if err := json.Unmarshal(raw, &violations); err != nil {
-		return []Violation{{
-			PolicyID: "linter_eval_error",
-			Message:  fmt.Sprintf("cannot decode OPA violations: %v", err),
+			Message:  err.Error(),
 			Nature:   Compensatory,
 		}}
 	}

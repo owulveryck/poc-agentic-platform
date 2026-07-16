@@ -8,7 +8,7 @@
 //	go run ./adapters/preflight [-repo <name>] [-stack Go,SQL] "add the Seka payment method to checkout"
 //
 // The gateway URL is read from the PPG_URL environment variable and defaults
-// to http://localhost:8000 (same convention as the Claude Code MCP server).
+// to http://localhost:8765 (same convention as the Claude Code MCP server).
 package main
 
 import (
@@ -27,7 +27,7 @@ func gatewayURL() string {
 	if u := os.Getenv("PPG_URL"); u != "" {
 		return u
 	}
-	return "http://localhost:8000"
+	return "http://localhost:8765"
 }
 
 func main() {

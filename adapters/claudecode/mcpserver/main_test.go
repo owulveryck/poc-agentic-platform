@@ -1,20 +1,33 @@
 package main
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
+
+	"github.com/owulveryck/poc-agentic-platform/internal/plan"
+	"github.com/owulveryck/poc-agentic-platform/internal/store"
 )
 
-func TestSessionIDFromFile(t *testing.T) {
-	dir := t.TempDir()
-	if got := sessionIDFromFile(dir); got != "" {
-		t.Fatalf("no session file should yield an empty id, got %q", got)
+func TestStampSessionID_NoActiveKeepsPlanValue(t *testing.T) {
+	ss := store.NewMemory()
+	p := &plan.Plan{SessionID: "plan-provided"}
+	if stampSessionID(p, ss) {
+		t.Fatal("stampSessionID should return false when no active session")
 	}
-	if err := os.WriteFile(filepath.Join(dir, sessionFile), []byte("sess-42\n"), 0o600); err != nil {
+	if p.SessionID != "plan-provided" {
+		t.Errorf("SessionID = %q, want plan-provided", p.SessionID)
+	}
+}
+
+func TestStampSessionID_ActiveOverridesPlanValue(t *testing.T) {
+	ss := store.NewMemory()
+	if err := ss.PutActive("real-session-42"); err != nil {
 		t.Fatal(err)
 	}
-	if got := sessionIDFromFile(dir); got != "sess-42" {
-		t.Fatalf("session id should be read and trimmed, got %q", got)
+	p := &plan.Plan{SessionID: "agent-guessed"}
+	if !stampSessionID(p, ss) {
+		t.Fatal("stampSessionID should return true when an active session exists")
+	}
+	if p.SessionID != "real-session-42" {
+		t.Errorf("SessionID = %q, want real-session-42", p.SessionID)
 	}
 }

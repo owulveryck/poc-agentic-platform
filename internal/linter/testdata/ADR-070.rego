@@ -5,6 +5,7 @@ import rego.v1
 frozen_paths := {"internal/old_payment.go", "internal/auth/"}
 
 violation contains v if {
+	input.view == "plan"
 	some step in input.steps
 	some target in step.targets
 	some fp in frozen_paths

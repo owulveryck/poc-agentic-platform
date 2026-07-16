@@ -2,6 +2,7 @@ package ticket
 
 import (
 	"testing"
+	"time"
 
 	"github.com/owulveryck/poc-agentic-platform/internal/plan"
 )
@@ -53,6 +54,47 @@ func TestScopeIsDerivedFromSteps(t *testing.T) {
 	}
 	if len(scope.AllowModify) != 2 {
 		t.Errorf("expected 2 allowed files, got %v", scope.AllowModify)
+	}
+}
+
+func TestExpiredTicketIsRejected(t *testing.T) {
+	// JWT exp has second precision; a 1s TTL slept just past reliably expires.
+	tok, err := IssueWithTTL(testPlan(), time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(1200 * time.Millisecond)
+	if _, err := Verify(tok); err == nil {
+		t.Fatal("expected an expired ticket to be rejected")
+	}
+}
+
+func TestCustomTTLIsApplied(t *testing.T) {
+	tok, err := IssueWithTTL(testPlan(), 2*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	claims, err := Verify(tok)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := claims.ExpiresAt.Sub(claims.IssuedAt.Time); got != 2*time.Hour {
+		t.Errorf("expected a 2h lifetime, got %s", got)
+	}
+}
+
+func TestIssueWithTTLZeroFallsBackToDefault(t *testing.T) {
+	tok, err := IssueWithTTL(testPlan(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	claims, err := Verify(tok)
+	if err != nil {
+		t.Fatalf("a zero ttl should fall back to DefaultTTL and verify, got %v", err)
+	}
+	got := claims.ExpiresAt.Sub(claims.IssuedAt.Time)
+	if got != DefaultTTL {
+		t.Errorf("expected DefaultTTL %s, got %s", DefaultTTL, got)
 	}
 }
 

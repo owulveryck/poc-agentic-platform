@@ -173,9 +173,11 @@ The fastest loop needs nothing but the gateway: point it at your ADR
 directory and submit a plan that should fail.
 
 ```bash
-go run ./cmd/ppg -addr :8765          # watch: "Plan linter ready: N policies"
+ppg -addr :8765                       # watch: "Plan linter ready: N policies"
 curl -s -X POST localhost:8765/lock_in_plan -H "Content-Type: application/json" -d @bad_plan.json
 ```
+
+(`ppg` comes from `make install` — see the [top-level README](../../README.md#quick-start).)
 
 A malformed rule fails fast: the gateway refuses to start and prints the
 Rego error with file and line. A well-formed rule that never fires is the
@@ -194,7 +196,7 @@ opa eval -d ADR-0XX.rego -i plan.json 'data.ppg.linter.violation'
 ## What you do NOT need
 
 Everything else. No `default`, no `with`, no partial evaluation, no
-functions beyond simple helpers, no data documents. The four production
+functions beyond simple helpers, no data documents. The five production
 policies of this repository (`adr/*.rego`) and the two skill governance
 files (`skill-governance/*.rego`) are all written with only the material on
 this page; read them as your reference corpus.

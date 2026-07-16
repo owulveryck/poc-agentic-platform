@@ -26,6 +26,14 @@ type Enforcement struct {
 	// time. Only set when Mode is "programmatic". The semantic directive
 	// (InvariantText) serves at enrich() time; this file serves at lock time.
 	RegoFile string `yaml:"rego" json:"rego,omitempty"`
+	// Altitudes lists which enforcement altitudes the RegoFile implements:
+	// "plan" (checked at lock_in_plan), "artifact" (checked in-loop against a
+	// single edit's content), and/or "changeset" (checked against the whole
+	// diff at apply time). Defaults to ["plan"] for a programmatic policy when
+	// omitted, so existing ADRs keep their behavior. Purely documentary: the
+	// discrimination itself lives in the .rego (input.view), but declaring it
+	// here lets the catalog show coverage.
+	Altitudes []string `yaml:"altitudes" json:"altitudes,omitempty"`
 }
 
 // Invariant is one architectural invariant, parsed from an ADR file.
@@ -94,6 +102,11 @@ func parseFile(path string) (Invariant, error) {
 		return Invariant{}, err
 	}
 	inv.InvariantText = strings.TrimSpace(parts[1])
+	// A programmatic policy with no explicit altitudes enforces at plan time,
+	// matching every pre-existing ADR.
+	if inv.Enforcement.RegoFile != "" && len(inv.Enforcement.Altitudes) == 0 {
+		inv.Enforcement.Altitudes = []string{"plan"}
+	}
 	return inv, nil
 }
 

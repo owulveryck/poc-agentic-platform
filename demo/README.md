@@ -6,7 +6,7 @@ An [APM](https://github.com/microsoft/apm) package containing three skills:
 |---|---|---|
 | `ppg-tutorial` | 2 (Bash) | Runs the amplified planning loop demo on its own: gateway, enrich, deterministic rejection, capability ticket, out-of-scope refusal, debt report, and the GitHub Copilot pre-flight variant, narrating every real transcript |
 | `add-payment-method` | 1 (Edit) | The governed workflow from the companion article: enrich the plan with the platform ADRs, lock it for a capability ticket, implement within the ticket scope. Authored step by step in [tutorial 6](../docs/tutorials/06-skill-to-session-end-to-end.md) |
-| `design-system` | 1 (Edit) | Applies the Deep Umbra design system (canonical `tokens.css` + button rule) and enforces every subsequent UI edit through a shell-script PreToolUse hook shipped inside the skill. Walkthrough in [tutorial 8](../docs/tutorials/08-design-system-end-to-end.md); the enforcement pattern is generalized in [Enforce a content invariant](../docs/how-to/enforce-a-content-invariant.md) |
+| `design-system` | 1 (Edit) | Applies the Deep Umbra design system (canonical `tokens.css` + button rule); every subsequent UI edit is enforced by the platform guard against `adr/ADR-090.rego` at the artifact altitude (`/verify_artifact`) — no per-skill hook. Walkthrough in [tutorial 8](../docs/tutorials/08-design-system-end-to-end.md); the enforcement pattern is generalized in [Enforce a content invariant](../docs/how-to/enforce-a-content-invariant.md) |
 
 ## Install
 
@@ -63,8 +63,9 @@ slash-command doesn't fire:
 starts the gateway itself if none is running); `add-payment-method` expects
 the full tutorial-2 or tutorial-7 wiring (MCP server + hooks);
 `design-system` bootstraps itself on first invocation (copies
-`tokens.css` to `design/tokens.css` and registers its PreToolUse hook in
-`.github/hooks/design.json`).
+`tokens.css` to `design/tokens.css`); its palette invariant is enforced
+by the standard workstation guard against `adr/ADR-090.rego`, not a
+skill-specific hook.
 
 ## Dogfooding: the skill passes its own gate
 

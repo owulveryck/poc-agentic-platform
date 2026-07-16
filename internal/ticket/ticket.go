@@ -19,8 +19,16 @@ import (
 // with rotation. Never ship a symmetric hard-coded secret.
 var secret = []byte("poc-secret-rotate-me")
 
-// TTL is the ticket lifetime: short by design, the ticket dies with the task.
-const TTL = 15 * time.Minute
+// DefaultTTL is the wall-clock lifetime stamped on a ticket when the caller
+// does not specify one. It is a defense-in-depth CAP, not the primary bound:
+// since ADR-100 the capability already dies with its session — SessionStart
+// purges the TokenStore and the session_id claim is checked on every hook — so
+// a leaked ticket is useless in any other session. The wall-clock cap only
+// bounds a same-session leak, so it defaults to a working session rather than
+// the old 15 minutes (which fired shorter than a real session and forced a
+// re-lock mid-task). Operators tighten or loosen it via the gateway's
+// -ticket-ttl flag / PPG_TICKET_TTL env.
+var DefaultTTL = 8 * time.Hour
 
 // Scope is the least-privilege contract derived from the locked plan.
 type Scope struct {
@@ -64,8 +72,18 @@ func DeriveScope(p *plan.Plan) Scope {
 	return scope
 }
 
-// Issue signs a capability ticket for a validated plan.
+// Issue signs a capability ticket for a validated plan using DefaultTTL.
 func Issue(p *plan.Plan) (string, error) {
+	return IssueWithTTL(p, DefaultTTL)
+}
+
+// IssueWithTTL signs a capability ticket for a validated plan with an explicit
+// wall-clock lifetime. A ttl <= 0 falls back to DefaultTTL. The session purge
+// (ADR-100) remains the primary bound regardless of ttl.
+func IssueWithTTL(p *plan.Plan, ttl time.Duration) (string, error) {
+	if ttl <= 0 {
+		ttl = DefaultTTL
+	}
 	now := time.Now()
 	claims := Claims{
 		SessionID: p.SessionID,
@@ -73,7 +91,7 @@ func Issue(p *plan.Plan) (string, error) {
 		Scope:     DeriveScope(p),
 		RegisteredClaims: jwt.RegisteredClaims{
 			IssuedAt:  jwt.NewNumericDate(now),
-			ExpiresAt: jwt.NewNumericDate(now.Add(TTL)),
+			ExpiresAt: jwt.NewNumericDate(now.Add(ttl)),
 		},
 	}
 	return jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(secret)

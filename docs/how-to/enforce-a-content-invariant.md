@@ -1,4 +1,4 @@
-# How to enforce a content invariant with a PreToolUse hook
+# How to enforce a content invariant
 
 > Solves one problem: preventing specific *values* — not specific files
 > — from ever being written by an agent. Brand colors outside a
@@ -7,7 +7,30 @@
 > the invariant lives in the emitted bytes.
 >
 > Worked example: [tutorial 8](../tutorials/08-design-system-end-to-end.md)
-> ships this pattern as a design-system enforcer.
+> ships this pattern as the design-system enforcer, backed by
+> `adr/ADR-090.rego`.
+
+## The canonical way: an ADR with an artifact-view rule
+
+A content invariant is just a policy that reads the edited bytes instead
+of the plan. Author it the same way as any other invariant — a
+dual-representation ADR (Markdown body + paired `.rego`) — and add a
+`violation` rule guarded by `input.view == "artifact"` that reads
+`input.artifact` (`{path, content, op}`). The platform enforces it for
+free, at two altitudes:
+
+- **In-loop** — the standard `ppg-guard` / `ppg-copilot-guard` sends
+  every edit's content to the gateway's `/verify_artifact`, which runs
+  your rule. On a violation the edit is blocked before the bytes hit
+  disk, with your message fed back to the model.
+- **Apply-time** — `ppg-verify` sends the whole working-tree diff to
+  `/verify_changeset`, which runs the same corpus (changeset view). This
+  covers the surfaces with no in-loop hook (`gh copilot` CLI, Cursor, a
+  human, CI). See [Gate changes at apply time](gate-changes-at-apply-time.md).
+
+No per-project hook to register, no shell script to ship: the workstation
+guard (tutorial 0) already wires both endpoints. You write Rego; the
+platform runs it at every altitude.
 
 ## When to use this vs. the alternatives
 
@@ -16,220 +39,151 @@ Pick the right layer:
 | The invariant is about… | Use |
 |---|---|
 | Which **files** may be modified in this task | Capability ticket + `ppg-*-guard` (path scope) — [tutorial 7](../tutorials/07-copilot-end-to-end.md) |
-| The **structure** of the plan (must have a test step, must include a migration) | Rego plan-linter policy at `lock_in_plan` — [Rego survival kit](rego-survival-kit.md) |
-| The **values** written to a file (raw colors, secrets, forbidden strings, missing headers) | **This how-to.** Content-scope PreToolUse hook. |
+| The **structure** of the plan (must have a test step, must include a migration) | Rego plan-linter policy (`input.view == "plan"`) at `lock_in_plan` — [Rego survival kit](rego-survival-kit.md) |
+| The **values** written to a file (raw colors, secrets, forbidden strings, missing headers) | **This how-to.** An artifact-view Rego rule. |
 | The **runtime behavior** of the code after it's written (type errors, syntax, semantic checks) | Smart tool at `/tools/{name}` returning `remediation_guidance` — [Add a smart tool](add-a-smart-tool.md) |
 
-Content-scope hooks are cheap and composable — you can register several
-on the same event, and the most restrictive `deny` wins.
+## Worked example — ADR-090's content rules
 
-## Anatomy of a content-scope hook
+`adr/ADR-090.rego` is the reference. Its plan-altitude rule requires a
+`design/tokens.css` read step; its **content** rules unify the artifact
+and changeset views so one rule set covers both altitudes:
 
-A hook is any executable that:
+```rego
+package ppg.linter
 
-1. Reads a JSON payload on **stdin**.
-2. Writes a JSON decision on **stdout**.
-3. Exits 0.
+import rego.v1
 
-That's the entire contract. The language is a distribution choice, not
-an architectural one — bash + `jq`, Python, Deno, a compiled Go binary
-all work. The design system's `design-guard.sh` is ~60 lines of shell;
-`ppg-copilot-guard` is Go because it needed unit tests and reuse of the
-JWT verification code. Pick what fits the check.
-
-### The payload you receive on stdin
-
-For a Copilot `Edit` action:
-
-```json
-{
-  "hook_event_name": "PreToolUse",
-  "tool_name": "Edit",
-  "session_id": "…",
-  "cwd": "/absolute/project/path",
-  "tool_input": {
-    "path": "/absolute/project/path/style.css",
-    "old_str": "…",
-    "new_str": "…"
-  }
+# governed_files unifies the two content views: one edit (artifact) and a
+# whole diff (changeset). A single rule set then covers both altitudes.
+governed_files contains f if {
+    input.view == "artifact"
+    f := input.artifact
 }
-```
 
-For `Write` and `editFiles` (VS Code Copilot Chat), the shape is very
-similar — `tool_input.file_path` is used instead of `path` in some
-cases. Extract both to be safe:
-
-```bash
-FILE_PATH=$(printf '%s' "$PAYLOAD" | jq -r '.tool_input.path // .tool_input.file_path // empty')
-NEW_STR=$(printf '%s' "$PAYLOAD" | jq -r '.tool_input.new_str // .tool_input.content // empty')
-```
-
-### The decision you emit on stdout
-
-Pass through (do not interfere):
-
-```json
-{"continue":true}
-```
-
-Deny (block the edit; the reason is surfaced to the model and the user):
-
-```json
-{
-  "hookSpecificOutput": {
-    "hookEventName": "PreToolUse",
-    "permissionDecision": "deny",
-    "permissionDecisionReason": "SEMANTIC_CODE: one-line reason. Enough for the model to fix precisely that."
-  }
+governed_files contains f if {
+    input.view == "changeset"
+    some file in input.changeset.files
+    f := file
 }
-```
 
-Rules of thumb for the reason string:
-
-- Prefix with a stable error code (`DESIGN_SYSTEM_VIOLATION`,
-  `MISSING_LICENSE_HEADER`, `FORBIDDEN_API`). The model will pattern-match on it.
-- Name what was seen (`"#F0F"`, `console.log`, the missing key).
-- Name the paved path (`use var(--color-primary)`, `add the header from
-  scripts/license-header.txt`, `use the wrapper in internal/log`).
-- End with a stance about state (`Nothing was modified.`) so the model
-  knows it isn't looking at a partial write.
-
-## A minimal template
-
-Save as `hooks/my-guard.sh`, `chmod +x`, register in
-`.github/hooks/*.json`:
-
-```bash
-#!/bin/bash
-set -u
-PAYLOAD="$(cat)"
-
-emit_allow() { printf '%s\n' '{"continue":true}'; exit 0; }
-emit_deny() {
-  printf '%s' "$1" | jq -Rs '{
-    hookSpecificOutput: {
-      hookEventName: "PreToolUse",
-      permissionDecision: "deny",
-      permissionDecisionReason: .
+# The invariant: no raw color value in a UI file (except design/tokens.css).
+violation contains v if {
+    some f in governed_files
+    governed_ui_file(f)
+    raw_color_present(lower(f.content))
+    v := {
+        "policy_id": "design_tokens_referenced",
+        "message":   sprintf("Design-system invariant (%s): raw color value found. Reach colors through design tokens (var(--color-*)) or a CSS keyword; raw hex, rgb()/hsl(), and named colors are forbidden outside design/tokens.css.", [f.path]),
+        "nature":    "amplifier",
     }
-  }'
-  exit 0
 }
 
-command -v jq >/dev/null 2>&1 || emit_allow  # broken harness → stay out of the way
-
-TOOL_NAME=$(printf '%s' "$PAYLOAD" | jq -r '.tool_name // empty')
-FILE_PATH=$(printf '%s' "$PAYLOAD" | jq -r '.tool_input.path // .tool_input.file_path // empty')
-NEW_STR=$(printf '%s'   "$PAYLOAD" | jq -r '.tool_input.new_str // .tool_input.content // empty')
-
-case "$TOOL_NAME" in Edit|Write|editFiles) ;; *) emit_allow ;; esac
-[ -z "$FILE_PATH" ] || [ -z "$NEW_STR" ] && emit_allow
-
-# --- your check goes here ---------------------------------------------
-# Example: forbid `console.log` in JS/TS source
-case "$FILE_PATH" in *.js|*.ts|*.tsx|*.jsx) ;; *) emit_allow ;; esac
-if printf '%s' "$NEW_STR" | grep -qE 'console\.(log|debug)\('; then
-  emit_deny "FORBIDDEN_API: console.log/debug is banned in shipped code. Use the wrapper in internal/log (log.Debug / log.Info). Nothing was modified."
-fi
-# ----------------------------------------------------------------------
-
-emit_allow
-```
-
-Register it:
-
-```json
-// .github/hooks/no-console.json
-{
-  "hooks": {
-    "PreToolUse": [
-      { "type": "command",
-        "command": "./hooks/my-guard.sh",
-        "timeoutSec": 5 }
-    ]
-  }
+governed_ui_file(f) if {
+    is_ui_path(f.path)
+    f.path != "design/tokens.css"   # the tokens file is where raw values live
 }
 ```
 
-## Test it — with fixtures, no framework
+The key moves, all reusable for your own invariant:
 
-Trust nothing until you've fed hand-crafted payloads to the hook and
-seen the exact decision. This is the same pattern
-`demo/skills/design-system/hooks/design-guard-test.sh` uses:
+1. **Read the content, not the plan.** `input.artifact.content` (one
+   edit) or `input.changeset.files[_].content` (the diff). The
+   `governed_files` helper above lets one `violation` rule serve both.
+2. **Scope by path.** `governed_ui_file` restricts the check to the file
+   types the invariant applies to, and exempts the one file where the
+   raw values legitimately live.
+3. **Write the message for the model.** Name what was seen, name the
+   paved path, and make it a single actionable line — it is what the
+   guard feeds back on a block.
+4. **Match robustly.** ADR-090 does not strip `var()` before checking, so
+   a raw color hidden in a `var(--x, #F0F)` fallback is still caught; its
+   button rule matches `button:hover`, `button > span`, `.btn`, and
+   `[role="button"]`. Regex is not a parser (see limits) — but a careful
+   rule closes the obvious bypasses.
 
-```bash
-#!/bin/bash
-set -eu
-GUARD=./hooks/my-guard.sh
+Declare the altitudes your `.rego` implements in the ADR front matter so
+the catalog documents them:
 
-assert_deny() {  # name, want_reason_fragment, payload
-  out=$(printf '%s' "$3" | "$GUARD")
-  d=$(printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecision // "?"')
-  r=$(printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecisionReason // ""')
-  [ "$d" = "deny" ] && printf '%s' "$r" | grep -qF "$2" && echo "PASS $1" || echo "FAIL $1"
-}
-
-assert_pass() {  # name, payload
-  out=$(printf '%s' "$2" | "$GUARD")
-  d=$(printf '%s' "$out" | jq -r '.continue // .hookSpecificOutput.permissionDecision // "?"')
-  [ "$d" = "true" ] && echo "PASS $1" || echo "FAIL $1"
-}
-
-assert_deny "console.log denied" "FORBIDDEN_API" \
-  '{"hook_event_name":"PreToolUse","tool_name":"Edit","cwd":"/p",
-    "tool_input":{"path":"/p/x.ts","new_str":"console.log(x);"}}'
-
-assert_pass "log.Debug allowed" \
-  '{"hook_event_name":"PreToolUse","tool_name":"Edit","cwd":"/p",
-    "tool_input":{"path":"/p/x.ts","new_str":"log.Debug(x);"}}'
+```yaml
+enforcement:
+  mode: programmatic
+  policy_id: design_tokens_referenced
+  rego: ADR-090.rego
+  altitudes: [plan, artifact]
 ```
 
-Fixture tests double as documentation: reading them tells another
-maintainer exactly what the hook does and doesn't gate.
+`altitudes` defaults to `[plan]` when omitted; list `artifact` and/or
+`changeset` when your `.rego` has rules for those views. See
+[ADR front matter](../reference/adr-front-matter.md) and the
+[policy catalog](../reference/policy-catalog.md).
 
-## Compose with other hooks
+## Ship it
 
-Multiple hooks per event are supported. The Copilot / VS Code runtime
-runs them in parallel and applies the **most restrictive** decision
-(`deny` beats `ask` beats `allow`). Tutorial 8 combines two hooks on
-`PreToolUse`:
+1. Drop `adr/ADR-XXX-your-invariant.md` (front matter + invariant prose)
+   and `adr/ADR-XXX.rego` (package `ppg.linter`, your `input.view ==
+   "artifact"` rule) next to the existing ADRs.
+2. Restart the gateway — it compiles every `adr/*.rego` into the corpus
+   at startup. Confirm with the `Plan linter ready: N policies` line.
+3. That's it. `ppg-guard` / `ppg-copilot-guard` now block violating edits
+   in-loop via `/verify_artifact`; `ppg-verify` catches them at apply
+   time via `/verify_changeset`.
 
-- `ppg-copilot-guard` — path scope (ticket-driven)
-- `design-guard.sh` — content scope (design-system)
+Full procedure for adding an ADR (tests included) is in
+[Add an ADR invariant](add-an-adr-invariant.md); the Rego primitives are
+in the [Rego survival kit](rego-survival-kit.md).
 
-Neither knows about the other. If either denies, the edit is refused.
+## Verifying your rule
 
-## When to escalate from shell to a compiled binary
+Trust nothing until you've fed the policy hand-crafted content and seen
+the decision. Two ways:
 
-Move the check out of shell into `adapters/copilot/<name>/` (Go, or
-whatever the platform team already builds) when any of these are true:
+- **Unit-test the Rego** with fixtures for each view — a clean artifact,
+  a violating artifact, and a changeset with one bad file. This is how
+  the platform's own policies are tested (`internal/linter`).
+- **Exercise the endpoints** against a running gateway:
 
-- The check needs a **real parser** (CSS AST, TS type-checker, semantic
-  diff, JSON Schema validation) — regex won't cut it.
-- The check needs to **query external state** (a Rego policy in the
-  gateway, a rules server, a schema registry) with retries, timeouts,
-  and error handling.
-- The check is used by **multiple projects** and duplicating a shell
-  script across them creates drift risk.
-- You want **robust unit tests** that run in CI on every PR.
+  ```bash
+  # An in-loop artifact check (ticket from a locked plan)
+  curl -s -X POST localhost:8765/verify_artifact \
+    -H 'Content-Type: application/json' \
+    -d '{"ticket":"<jwt>","path":"style.css","content":"a{color:#f0f}"}'
+  # → {"status":"ARTIFACT_REJECTED","violations":[...],"guidance":"..."}
+  ```
 
-The mechanism is the same either way — JSON in, JSON out. Only the
-language changes. `adapters/copilot/guard/main.go` is a working
-reference for the Go shape.
+## The escape hatch: a standalone shell hook for non-Rego cases
+
+The Rego route is the paved road: one rule, enforced at every altitude,
+tested and versioned with the ADR corpus. Reach for a bespoke
+`PreToolUse` hook only when the check genuinely cannot be expressed
+against the corpus — e.g. it needs a real parser (CSS AST, TS
+type-checker), or must query external state the gateway does not see.
+
+The contract of such a hook is the platform's own hook contract: read a
+JSON payload on **stdin**, decide, and either exit 2 with a stderr
+message (Claude Code) or print a `{"permissionDecision":"deny",…}` JSON
+on **stdout** (Copilot). `adapters/copilot/guard/main.go` is the working
+Go reference for both shapes; a shell script works too. Extract the path
+from `tool_input.file_path` / `path` / `notebook_path` and the content
+from `tool_input.new_string` / `new_str` / `content`, gate on the
+write-tool set, and — like the platform guard — **fail closed** if the
+check cannot run. Register it in `.github/hooks/*.json` (Copilot) or
+`.claude/settings.json` (Claude Code); multiple hooks per event compose,
+most-restrictive `deny` wins.
+
+This is the exception, not the pattern. If the invariant lives in the
+bytes and a regex or string match can express it, put it in an ADR's
+`.rego` and let the platform enforce it everywhere.
 
 ## Known limits
 
-- **Regex is not a parser.** The design guard treats `#F0F` inside a
-  string literal (`const label = "#F0F5FA is the primary hue";`) as a
-  color literal. For code contexts where this matters, escalate.
-- **`old_str` is not checked.** Only `new_str` (the incoming content)
-  matters — the delete side of an Edit is unrestricted. If you need to
-  gate deletes too, inspect `old_str` as well.
-- **Hooks are Preview.** The Copilot hooks format is marked preview in
-  the VS Code docs; the payload shape may change. Pin the docs URL in
-  a comment at the top of your hook.
-- **Hooks are per-repo unless registered globally.** Content-scope
-  guards live in `.github/hooks/*.json` — that's a per-project
-  registration. To enforce the same invariant across every project,
-  ship the hook inside a skill that projects `apm install` (design-system
-  does this), or a plugin that registers itself on install.
+- **Regex is not a parser.** An artifact rule that matches `#F0F` will
+  also flag it inside a string literal (`const label = "#F0F5FA is the
+  primary hue";`). Where the surrounding syntax matters, escalate to a
+  real parser via a smart tool or a bespoke hook.
+- **Only the incoming content is seen.** The artifact view carries the
+  proposed `content`; the delete side of an edit is not inspected.
+- **The in-loop check needs the content field.** The guard only calls
+  `/verify_artifact` when the tool payload actually carries the new
+  content; a tool that writes without exposing its bytes is caught at
+  apply time by `ppg-verify` instead.

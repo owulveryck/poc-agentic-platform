@@ -29,108 +29,63 @@ cd poc-agentic-platform
 
 ## Step 2 — Build the binaries onto your `PATH`
 
-Four binaries, one `PATH` directory. `~/.local/bin` is the convention;
-substitute what your shell already has on `PATH`.
+Five binaries, one `PATH` directory. The Makefile builds and installs
+them in one shot. `~/.local/bin` is the default; override with
+`BINDIR=/usr/local/bin make install` for a system-wide install.
 
 ```bash
-mkdir -p ~/.local/bin
-
-# The gateway itself
-go build -o ~/.local/bin/ppg               ./cmd/ppg
-
-# MCP server: bridges the gateway's HTTP API to agents that speak MCP
-# (Claude Code, Copilot CLI/desktop, VS Code Copilot Chat)
-go build -o ~/.local/bin/ppg-mcp-server    ./adapters/claudecode/mcpserver
-
-# PreToolUse hook for the GitHub Copilot surfaces
-go build -o ~/.local/bin/ppg-copilot-guard ./adapters/copilot/guard
-
-# PreToolUse hook for Claude Code (skip if you don't use Claude Code)
-go build -o ~/.local/bin/ppg-guard         ./adapters/claudecode/guard
+make install
 ```
+
+That produces:
+
+- `ppg` — the gateway.
+- `ppg-mcp-server` — bridges the gateway's HTTP API to agents that
+  speak MCP (Claude Code, Copilot CLI/desktop, VS Code Copilot Chat).
+- `ppg-guard` — PreToolUse hook for Claude Code.
+- `ppg-copilot-guard` — PreToolUse hook for the GitHub Copilot surfaces.
+- `ppg-preflight` — pre-flight adapter for black-box agents (see
+  [tutorial 3](03-github-copilot-preflight.md)).
 
 Verify each is on `PATH`:
 
 ```bash
-which ppg ppg-mcp-server ppg-copilot-guard ppg-guard
+which ppg ppg-mcp-server ppg-guard ppg-copilot-guard ppg-preflight
 ```
 
-## Step 3 — Register the MCP server (per agent surface)
+## Step 3 — Register the MCP server + hooks (per agent surface)
 
-The MCP config location depends on which surface you use. Register once
-per surface you plan to use; the entry is user-scoped so it applies to
-every project on this machine.
-
-### Copilot desktop app or `gh copilot` CLI
-
-Both surfaces read `~/.copilot/mcp-config.json`. Two equivalent ways
-to write it:
-
-> ⚠️ **macOS GUI PATH gotcha** — the Copilot desktop app is a GUI
-> process, and macOS GUI processes **do not inherit your shell's
-> `PATH`**. `~/.local/bin` (and often `~/.local/bin` even after
-> `.zshrc` edits) is *not* on the PATH the app sees when it spawns
-> the MCP subprocess. Config values like `"command": "ppg-mcp-server"`
-> silently fail with a "connecting…" loop. **Use a fully-expanded
-> absolute path** (`$HOME/.local/bin/ppg-mcp-server`, expanded by
-> the shell before it lands in the JSON) or install the binaries
-> under `/usr/local/bin/` (macOS GUI PATH includes it by default).
-
-**A. With the `copilot` CLI** (shortest, if it is installed):
-
-```bash
-copilot mcp add ppg --env PPG_URL=http://localhost:8765 \
-  -- "$HOME/.local/bin/ppg-mcp-server"
-copilot mcp list       # → ppg  connected
-```
-
-**B. Without the CLI** — hand-edit the file (the desktop app reads it
-directly, no CLI required). Note the `<<EOF` (no quotes) so `$HOME`
-expands to your literal absolute path before landing in the JSON:
-
-```bash
-mkdir -p ~/.copilot
-
-if [ -f ~/.copilot/mcp-config.json ]; then
-  echo "⚠️  ~/.copilot/mcp-config.json already exists — NOT overwriting." >&2
-  echo "   Merge this block into its 'mcpServers' object by hand:" >&2
-  cat >&2 <<EOF
-    "ppg": {
-      "type": "stdio",
-      "command": "$HOME/.local/bin/ppg-mcp-server",
-      "env": { "PPG_URL": "http://localhost:8765" },
-      "tools": ["*"]
-    }
-EOF
-else
-  cat > ~/.copilot/mcp-config.json <<EOF
-{
-  "mcpServers": {
-    "ppg": {
-      "type": "stdio",
-      "command": "$HOME/.local/bin/ppg-mcp-server",
-      "env": { "PPG_URL": "http://localhost:8765" },
-      "tools": ["*"]
-    }
-  }
-}
-EOF
-fi
-
-cat ~/.copilot/mcp-config.json    # verify — you should see /Users/<you>/.local/bin/... in "command"
-```
+One Make target per surface writes the MCP registration AND the
+`SessionStart` / `PreToolUse` hooks user-scope. Idempotent, backs up
+what it modifies, never clobbers non-ppg entries. Preview with
+`DRY_RUN=1`, force overwrite with `FORCE=1`.
 
 ### Claude Code
 
 ```bash
-claude mcp add ppg --scope user --env PPG_URL=http://localhost:8765 \
-  -- "$HOME/.local/bin/ppg-mcp-server"
+make setup-claude-code
 claude mcp list        # → ppg  connected
 ```
 
-(Absolute path recommended for consistency with the Copilot case above
-and because Claude Code as a launchd agent would face the same GUI-
-PATH restriction if launched from Finder rather than a terminal.)
+Writes `mcpServers.ppg` in `~/.claude.json` and merges the ppg hooks
+into `~/.claude/settings.json`.
+
+### Copilot desktop app or `gh copilot` CLI
+
+```bash
+make setup-github-copilot
+```
+
+Writes `mcpServers.ppg` in `~/.copilot/mcp-config.json` and the
+dedicated `~/.copilot/hooks/ppg.json`.
+
+> ⚠️ **macOS GUI PATH gotcha (already handled)** — the Copilot desktop
+> app is a GUI process, and macOS GUI processes do not inherit your
+> shell's `PATH`. `~/.local/bin` is invisible; a bare
+> `"command": "ppg-mcp-server"` silently fails with a "connecting…"
+> loop. The setup script resolves the binary via `command -v` and
+> writes the fully-expanded absolute path into the JSON — no manual
+> path fiddling needed on your side.
 
 ### VS Code Copilot Chat
 
@@ -141,6 +96,39 @@ file itself. See
 [tutorial 7](07-copilot-end-to-end.md#vs-code-copilot-chat-workspace-mcp)
 for the schema.
 
+### Manual alternative (what the Make targets do)
+
+Read `scripts/setup-claude-code.sh` and `scripts/setup-github-copilot.sh`
+if you want to see the exact JSON writes, or run
+`DRY_RUN=1 make setup-claude-code` to print them without touching the
+disk. Rollback with `make remove-claude-code` /
+`make remove-github-copilot`.
+
+### About `PPG_PROJECT_DIR`
+
+The MCP server keys its state (tickets, active session id) by the
+absolute path of the project directory. Resolution order:
+
+    --project-dir flag  >  PPG_PROJECT_DIR env  >  os.Getwd() at spawn
+
+For the common case — Claude Code and Copilot desktop spawn an MCP
+subprocess per session, with cwd = project root — **the `os.Getwd()`
+fallback is enough and no configuration is needed**. The snippets above
+omit `PPG_PROJECT_DIR` on purpose.
+
+Set the env var explicitly only when the fallback is wrong:
+
+- **VS Code Copilot Chat** does substitute `${workspaceFolder}` in
+  `.vscode/mcp.json` — the downstream VS Code tutorials wire
+  `"PPG_PROJECT_DIR": "${workspaceFolder}"` for extra safety.
+- **A persistent MCP daemon** that survives project switches must be
+  passed the project via `--project-dir` per invocation, because its
+  spawn-time cwd is stale.
+
+Note: Claude Code does NOT expand `${cwd}` in user-scope MCP env values
+— the string is stored and passed literally. Don't put `"${cwd}"` in
+`--env` there; rely on the cwd fallback instead.
+
 ## Step 4 — Start the gateway (one terminal, leave it running)
 
 ```bash
@@ -150,8 +138,8 @@ ppg -addr :8765
 You should see:
 
 ```
-ADR store loaded: 5 invariants
-Plan linter ready: 5 policies
+ADR store loaded: 6 invariants
+Plan linter ready: 6 policies
 Skill governance linter ready
 Platform Planning Gateway listening on :8765
 ```
@@ -183,7 +171,7 @@ apologetic refusal).
 Then chat:
 
 > Call the ppg MCP tool `get_platform_guidelines_for_intent` with intent
-> "test bootstrap" and repository_context `{"name":"bootstrap-check",
+> "add an external payment provider to legacy checkout" and repository_context `{"name":"bootstrap-check",
 > "tech_stack":["Go"]}`. Show me the JSON result.
 
 Expected: a JSON blob containing `architectural_invariants` with at
@@ -198,7 +186,7 @@ Same prompt in a `claude` session:
 
 ```
 > Call the ppg MCP tool get_platform_guidelines_for_intent with intent
-> "test bootstrap" and repository_context {"name":"bootstrap-check",
+> "add an external payment provider to legacy checkout" and repository_context {"name":"bootstrap-check",
 > "tech_stack":["Go"]}. Show me the JSON result.
 ```
 
@@ -223,7 +211,7 @@ Ships three skills: `ppg-tutorial`, `add-payment-method`, and
 | Per-machine (this tutorial) | Per-project (each tutorial you run) |
 |---|---|
 | Clone `poc-agentic-platform` | `git init` a target project |
-| Build the four binaries onto `PATH` | Enable hooks in `.github/hooks/` (Copilot) or `.claude/settings.json` (Claude) |
+| Build the five binaries onto `PATH` | Enable hooks in `.github/hooks/` (Copilot) or `.claude/settings.json` (Claude) |
 | Register the MCP server (user scope) | Preflight `.github/copilot-instructions.md` for the current intent |
 | Start `ppg -addr :8765` | (Optionally) `apm install` a skill |
 
@@ -294,8 +282,8 @@ Common failure modes we've hit while shipping the tutorials:
   but returns nothing. Re-register the MCP server with the correct
   `--env PPG_URL=…`, or restart the gateway on the expected port.
 
-- **Gateway startup shows `4 invariants` instead of `5`.** You are on
-  a checkout that predates ADR-090. `git pull`.
+- **Gateway startup shows fewer than `6 invariants`.** You are on a
+  checkout that predates the latest ADRs (ADR-090, ADR-100). `git pull`.
 
 ## Appendix — running the gateway as a service
 

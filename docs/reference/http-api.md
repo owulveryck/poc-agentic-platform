@@ -10,6 +10,8 @@
 | `POST` | `/enrich` | `{intent, repository_context}` | `200` + amplifier context | `400` malformed body |
 | `POST` | `/lock_in_plan` | plan (see [plan contract](plan-contract.md)) | `200` `{status: PLAN_LOCKED, plan_hash, execution_ticket}` | `400` `PLAN_MALFORMED` · `422` `PLAN_REJECTED` + `violations[]` |
 | `POST` | `/tools/{name}` | `{ticket, targets, payload}` | `200` tool result | `403` `REFUSED` (`TOOL_NOT_IN_PLAN` \| `OUT_OF_PLAN_SCOPE`) · `401` invalid/expired ticket |
+| `POST` | `/verify_artifact` | `{ticket, path, content, op?}` | `200` `{status: ARTIFACT_OK}` | `422` `ARTIFACT_REJECTED` + `violations[]` · `403` `REFUSED` (path out of scope) · `401` invalid/expired ticket · `400` malformed body |
+| `POST` | `/verify_changeset` | `{ticket, files[], plan_hash?}` | `200` `{status: CHANGESET_OK}` | `422` `CHANGESET_REJECTED` + `violations[]` · `409` `PLAN_SUBSTITUTION` · `403` `REFUSED` · `401` invalid/expired ticket · `400` malformed body |
 | `GET` | `/debt_report` | — | `200` debt report | — |
 | `POST` | `/validate_skill` | skill (see [skill governance](skill-governance.md)) | `200` `{status: SKILL_VALID, tier}` | `400` malformed body · `422` `SKILL_REJECTED` + `violations[]` |
 
@@ -67,6 +69,78 @@ Request:
 
 Refusal (`403 REFUSED`) carries `code` (`TOOL_NOT_IN_PLAN` \|
 `OUT_OF_PLAN_SCOPE`), `attempted`, `allowed`, and `guidance`.
+
+The Smart Tool also evaluates the artifact-view policy over the payload content
+(`content` or `statement`): if the content breaks an invariant, it returns
+`200` with `{status: EXECUTION_FAILED, exit_code: 1, error_category:
+ARCHITECTURAL_INVARIANT_VIOLATION, message, remediation_guidance:{violations[],
+allowed_actions[]}}` and does **not** run the tool.
+
+## Policy at three altitudes
+
+The same Rego corpus (`data.ppg.linter.violation`) is evaluated at three
+altitudes, discriminated by the `input.view` field:
+
+| View | Endpoint | Input the rules read | When |
+|---|---|---|---|
+| `plan` | `/lock_in_plan` | `input.steps` (the proposed plan) | lock time |
+| `artifact` | `/verify_artifact` | `input.artifact` — `{path, content, op}` | in-loop, one edit |
+| `changeset` | `/verify_changeset` | `input.changeset.files` — a list of `{path, content, op}` | apply time, the whole diff |
+
+An ADR's `.rego` opts into an altitude with a `violation` rule guarded by
+`input.view == "…"`; the altitudes it implements are declared in its
+[front matter](adr-front-matter.md) (`enforcement.altitudes`).
+
+## `POST /verify_artifact`
+
+The in-loop check the guards (`ppg-guard`, `ppg-copilot-guard`) and Smart Tools
+call: it evaluates the artifact-view policy against one edited file's actual
+content. The ticket and path scope are verified first, then the content policy.
+
+Request:
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `ticket` | string | ✅ | The capability ticket from `lock_in_plan` |
+| `path` | string | ✅ | Project-relative path of the edited file |
+| `content` | string | ✅ | The proposed content to write |
+| `op` | string | ❌ | Operation hint (e.g. `write`), passed to the rules as `input.artifact.op` |
+
+Responses:
+
+| Status | Body |
+|---|---|
+| `200` | `{status: ARTIFACT_OK}` |
+| `422` | `{status: ARTIFACT_REJECTED, violations[], guidance}` — the file scope is allowed but the content breaks an invariant |
+| `403` | `{status: REFUSED, code, attempted, allowed, guidance}` — the path is outside the ticket scope |
+| `401` | `{error}` — invalid or expired ticket |
+| `400` | `{error}` — malformed body |
+
+## `POST /verify_changeset`
+
+The apply-time backstop (`ppg-verify`, CI): it evaluates the changeset-view
+policy against a whole diff. It verifies the ticket, that every changed path is
+in scope, and — when `plan_hash` is supplied — that the plan being executed
+still matches the one the ticket was issued for.
+
+Request:
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `ticket` | string | ✅ | The capability ticket from `lock_in_plan` |
+| `files` | object[] | ✅ | The changed files, each `{path, content, op?}` |
+| `plan_hash` | sha256 hex | ❌ | When set, checked against the ticket's `plan_hash` claim |
+
+Responses:
+
+| Status | Body |
+|---|---|
+| `200` | `{status: CHANGESET_OK}` |
+| `422` | `{status: CHANGESET_REJECTED, violations[], guidance}` |
+| `409` | `{status: PLAN_SUBSTITUTION, expected, got, guidance}` — supplied `plan_hash` ≠ the ticket's `plan_hash` claim |
+| `403` | `{status: REFUSED, code, attempted, allowed, guidance}` — a changed path is outside the ticket scope |
+| `401` | `{error}` — invalid or expired ticket |
+| `400` | `{error}` — malformed body |
 
 ## `GET /debt_report`
 

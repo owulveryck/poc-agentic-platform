@@ -422,15 +422,22 @@ Le contrat `PreToolUse` d'un agent supporte plusieurs hooks enregistrés
 sur le même événement. Ils sont exécutés en parallèle par le runtime et
 **la décision la plus restrictive gagne** (`deny > ask > allow`).
 
-Cette propriété permet de composer plusieurs politiques indépendantes :
+Le garde `ppg-copilot-guard` (ou `ppg-guard`) applique désormais **deux**
+politiques dans un même hook :
 
-- `ppg-copilot-guard` gère le *path-scope* (est-ce que ce fichier est
-  dans le scope du ticket ?),
-- `design-guard.sh` (livré par le skill `design-system`) gère le
-  *content-scope* (est-ce que le contenu écrit contient une couleur
-  brute hors palette ?),
-- rien n'empêche d'en ajouter d'autres (voix éditoriale, clés i18n,
-  en-têtes de licence...).
+- le *path-scope* (est-ce que ce fichier est dans le scope du ticket ?),
+- le *content-scope* (est-ce que le contenu écrit respecte les
+  invariants ?) : le garde envoie le contenu de l'édition à la gateway
+  (`POST /verify_artifact`), qui évalue le même corpus Rego à
+  l'**altitude artifact**. C'est ainsi que le skill `design-system` fait
+  respecter sa palette — via `adr/ADR-090.rego`, et non plus via un
+  script shell dédié. (Les mêmes règles sont rejouées à l'application du
+  diff par `ppg-verify`, `POST /verify_changeset`.)
+
+Si un besoin ne peut pas s'exprimer en Rego, la composition de plusieurs
+hooks sur `PreToolUse` reste possible (voix éditoriale, clés i18n,
+en-têtes de licence…) : le runtime applique la décision la plus
+restrictive.
 
 ![Deux couches de garde en parallèle](diagrams/deux-couches-hook.svg)
 
@@ -473,10 +480,11 @@ livrés dans `demo/skills/` :
 - `add-payment-method` — workflow *classique* : le skill exécute les
   trois moves et ne suppose rien de plus.
 - `design-system` — workflow *étendu* : sa première étape est un
-  bootstrap qui matérialise ses propres ressources (`tokens.css`) et
-  enregistre son propre hook (`design-guard.sh`) dans
-  `.github/hooks/design.json`. À partir de la deuxième étape, chaque
-  édition passe donc par deux gardes (tickets + palette).
+  bootstrap qui matérialise ses propres ressources (`tokens.css`). Il
+  n'installe **aucun** hook dédié : l'invariant de palette est porté par
+  `adr/ADR-090.rego` (altitude artifact) et appliqué par le garde
+  standard via `POST /verify_artifact`. Chaque édition est ainsi
+  vérifiée à la fois sur le scope (ticket) et sur le contenu (palette).
 
 ### 5.2 Le compagnon Rego
 

@@ -23,20 +23,16 @@ That file is honored by:
 - **The `gh copilot` CLI extension** — **does not** read the file. Use the
   fallbacks in step 4 instead.
 
-## Step 1 — Build the pre-flight binary (once)
+## Step 1 — Install the binaries (once)
 
-`go run` requires a Go module in the current directory, so shipping the
-binary is friendlier when the target project is not a Go module (or uses a
-different toolchain):
+From the poc-agentic-platform checkout:
 
 ```bash
-# In the poc-agentic-platform checkout
-go build -o /usr/local/bin/ppg-preflight ./adapters/preflight
+make install                        # → ~/.local/bin/{ppg,ppg-preflight,...}
 ```
 
-If your target project *is* a Go module, you can substitute
-`go run /path/to/poc-agentic-platform/adapters/preflight ...` for
-`ppg-preflight ...` in every step below.
+Override with `BINDIR=/usr/local/bin make install` for a system-wide
+install.
 
 ## Step 2 — Run the pre-flight in your project
 
@@ -134,8 +130,10 @@ Two surfaces now offer the hard half (in-loop gating) as well:
   the Claude Code adapter emits, now running inside Copilot. The full
   walkthrough is [tutorial 7](07-copilot-end-to-end.md).
 - **The `gh copilot` CLI** stays truly black-box (no hook surface). For
-  it, the compensating control is a locked-plan check at apply time —
-  a pre-push platform CLI or the CI gate.
+  it, the compensating control is a locked-plan check at apply time:
+  `ppg-verify` evaluates the whole diff against the locked plan
+  (`/verify_changeset`) as a pre-commit / pre-push hook or a CI gate. See
+  [Gate changes at apply time](../how-to/gate-changes-at-apply-time.md).
 
 The trade-off is explained in
 [capability-tickets-and-in-tool-guards.md](../explanation/capability-tickets-and-in-tool-guards.md).

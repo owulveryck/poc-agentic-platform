@@ -9,6 +9,7 @@ from which the MCP tool schema is auto-generated.
 |---|---|---|---|
 | `session_id` | uuid | ✅ | Session identifier |
 | `intent` | string (≥5) | ✅ | Natural-language intent |
+| `stream_aligned_team` | string | ❌ | Owning team; used for audit and routing |
 | `repository_context.name` | string | ✅ | Repository name |
 | `repository_context.tech_stack` | string[] | ✅ | Detected stacks |
 | `repository_context.current_branch` | string | ❌ | Branch being worked on |
@@ -16,7 +17,7 @@ from which the MCP tool schema is auto-generated.
 | `steps[].action` | string | ✅ | Human-readable action |
 | `steps[].tool` | string | ✅ | Platform tool invoked |
 | `steps[].targets` | string[] | ✅ | Files/resources touched |
-| `steps[].depends_on` | string[] | ❌ | Graph dependencies |
+| `steps[].depends_on` | string[] | ❌ | Graph dependencies; each entry must name another step's `id`, and the graph must be acyclic (validated at `lock_in_plan`) |
 
 Structural validation (`ValidateStructure`) rejects with `400 PLAN_MALFORMED`;
 policy validation (the OPA linter) rejects with `422 PLAN_REJECTED`. See

@@ -1,67 +1,110 @@
 // Command ppg-guard is a Claude Code hook binary serving two events:
 //
-//   - SessionStart: records the real session id into .ppg-session (where the
-//     lock_in_plan MCP tool picks it up) and purges any leftover .ppg-ticket,
-//     so a capability never survives the session that locked it.
-//   - PreToolUse: verifies every Edit/Write against the capability ticket
-//     locked through the Platform Planning Gateway — signature, TTL, scope,
-//     and session binding.
+//   - SessionStart: records the real session id in the SessionStore and
+//     purges any leftover tickets in the TokenStore, so a capability never
+//     survives the session that locked it.
+//   - PreToolUse: verifies every file-mutating tool call against the
+//     capability ticket locked through the Platform Planning Gateway —
+//     signature, TTL, path scope, session binding — AND the actual edited
+//     content against the artifact-view policy corpus (via POST
+//     /verify_artifact on the gateway).
 //
 // Contract (see https://code.claude.com/docs/en/hooks): the hook receives a
 // JSON payload on stdin; exit code 2 blocks the tool call and stderr is fed
 // back to the model — which turns this hook into the deterministic in-tool
 // guard of the amplified loop, running inside an off-the-shelf agent.
 //
-// The ticket is read from the .ppg-ticket file at the project root (written
-// by the lock_in_plan MCP tool, or by hand after a curl to /lock_in_plan).
+// The guard fails CLOSED: if it cannot evaluate an edit (unreadable payload,
+// unopenable store, unreachable gateway), it blocks rather than letting the
+// edit through. SessionStart, which is not a security gate, never blocks.
+//
+// Storage lives per-machine under $XDG_STATE_HOME/ppg/projects/<slug>/
+// (see internal/store). The project is resolved from --project-dir >
+// PPG_PROJECT_DIR > the hook payload's cwd > os.Getwd(). The gateway base URL
+// is PPG_URL (default http://localhost:8765).
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/owulveryck/poc-agentic-platform/internal/smarttools"
+	"github.com/owulveryck/poc-agentic-platform/internal/store"
 )
 
-// ticketFile is where the locked plan's ticket lives, relative to the
-// project root (the hook's cwd).
-const ticketFile = ".ppg-ticket"
-
-// sessionFile is where the current session id lives, written at
-// SessionStart and read by the lock_in_plan MCP tool so the issued ticket
-// is bound to the real session.
-const sessionFile = ".ppg-session"
-
-// hookInput is the subset of the hook payloads the guard needs.
+// hookInput is the subset of the hook payloads the guard needs. Content and
+// path may arrive under several field names depending on the tool.
 type hookInput struct {
 	HookEventName string `json:"hook_event_name"`
 	ToolName      string `json:"tool_name"`
 	SessionID     string `json:"session_id"`
 	CWD           string `json:"cwd"`
 	ToolInput     struct {
-		FilePath string `json:"file_path"`
+		FilePath     string `json:"file_path"`
+		Path         string `json:"path"`
+		NotebookPath string `json:"notebook_path"`
+		NewString    string `json:"new_string"`
+		NewStr       string `json:"new_str"`
+		Content      string `json:"content"`
 	} `json:"tool_input"`
 }
 
+// artifactVerifier reports the architectural-invariant violation messages of a
+// file's proposed content, or an error when the check could not run (which the
+// caller treats as fail-closed). Injected so decide stays offline-testable.
+type artifactVerifier func(ticket, path, content string) (violations []string, err error)
+
 func main() {
+	projectDirFlag := flag.String("project-dir", "",
+		"absolute project directory (overrides "+store.EnvProjectDir+" and payload cwd)")
+	storeRootFlag := flag.String("store-root", "",
+		"per-machine state root (overrides "+store.EnvStoreRoot+"); defaults to $XDG_STATE_HOME/ppg")
+	flag.Parse()
+
 	payload, err := os.ReadFile("/dev/stdin")
 	if err != nil {
+		// Without a payload we cannot even tell PreToolUse from SessionStart;
+		// this is an OS-level failure, not an agent edit slipping through.
 		fmt.Fprintf(os.Stderr, "ppg-guard: cannot read hook payload: %v\n", err)
-		os.Exit(1) // non-blocking: broken harness must not lock the session
+		os.Exit(1)
 	}
 	var in hookInput
 	_ = json.Unmarshal(payload, &in)
+	// Some harnesses omit hook_event_name on PreToolUse; a write tool implies it.
+	isPreTool := in.HookEventName == "PreToolUse" || (in.HookEventName != "SessionStart" && isWriteTool(in.ToolName))
+
+	root, err := store.ResolveRoot(*storeRootFlag)
+	if err != nil {
+		failInfra(isPreTool, "cannot resolve state root: "+err.Error())
+	}
+	projectDir, err := store.ResolveProjectDir(*projectDirFlag, projectDirFallback(in))
+	if err != nil {
+		failInfra(isPreTool, "cannot resolve project dir: "+err.Error())
+	}
+	st, err := store.NewFilesystem(root, projectDir)
+	if err != nil {
+		failInfra(isPreTool, "cannot open store: "+err.Error())
+	}
+
 	if in.HookEventName == "SessionStart" {
-		if err := recordSession(in); err != nil {
+		if err := recordSession(in, st, st); err != nil {
 			fmt.Fprintf(os.Stderr, "ppg-guard: cannot record session: %v\n", err)
 		}
 		os.Exit(0) // SessionStart never blocks
 	}
-	block, msg := decide(payload, readTicket(payload))
+
+	verify := func(ticket, path, content string) ([]string, error) {
+		return verifyArtifactRemote(gatewayURL(), ticket, path, content)
+	}
+	block, msg := decide(payload, readTicket(in, st, st), verify)
 	if block {
 		fmt.Fprintln(os.Stderr, msg)
 		os.Exit(2) // blocking: stderr goes back to the model
@@ -69,55 +112,138 @@ func main() {
 	os.Exit(0) // no decision: normal permission flow applies
 }
 
-// recordSession persists the session id for the MCP server and purges any
-// ticket inherited from a previous session: the capability dies with the
-// session that locked it, not only with its 15-minute TTL.
-func recordSession(in hookInput) error {
-	if in.SessionID == "" {
-		return nil
+// failInfra blocks (fail-closed) when the guard cannot evaluate a PreToolUse
+// edit; for other events an infrastructure error is logged but not blocking.
+func failInfra(isPreTool bool, msg string) {
+	if isPreTool {
+		fmt.Fprintln(os.Stderr, "PPG_GUARD_ERROR: "+msg+
+			" — blocking (fail-closed): the guard cannot verify this edit. "+
+			"Fix the gateway/state setup, or re-lock your plan, and retry.")
+		os.Exit(2)
 	}
-	dir := in.CWD
-	if dir == "" {
-		dir = "."
-	}
-	_ = os.Remove(filepath.Join(dir, ticketFile))
-	return os.WriteFile(filepath.Join(dir, sessionFile), []byte(in.SessionID+"\n"), 0o600)
+	fmt.Fprintln(os.Stderr, "ppg-guard: "+msg)
+	os.Exit(0)
 }
 
-// readTicket loads .ppg-ticket from the hook's cwd. Empty string if absent.
-func readTicket(payload []byte) string {
-	var in hookInput
-	_ = json.Unmarshal(payload, &in)
-	dir := in.CWD
-	if dir == "" {
-		dir = "."
+// projectDirFallback returns the payload's cwd if present, otherwise the
+// process cwd. It is only used when neither flag nor env resolves the
+// project dir; the returned value can still be "" if os.Getwd fails.
+func projectDirFallback(in hookInput) string {
+	if in.CWD != "" {
+		return in.CWD
 	}
-	raw, err := os.ReadFile(filepath.Join(dir, ticketFile))
+	wd, err := os.Getwd()
 	if err != nil {
 		return ""
 	}
-	return strings.TrimSpace(string(raw))
+	return wd
 }
 
-// decide is the pure decision function: given the hook payload and the raw
-// ticket, it returns whether to block and the semantic message for the model.
-func decide(payload []byte, rawTicket string) (bool, string) {
+// recordSession persists the session id for the MCP server and purges any
+// ticket inherited from a previous session: the capability dies with the
+// session that locked it, not only with its 15-minute TTL.
+func recordSession(in hookInput, ts store.TokenStore, ss store.SessionStore) error {
+	if in.SessionID == "" {
+		return nil
+	}
+	if err := ts.Reset(); err != nil {
+		return err
+	}
+	return ss.PutActive(in.SessionID)
+}
+
+// readTicket loads the capability ticket for the session id carried by the
+// hook payload; falls back to the store's active session when the payload
+// omits it (older harness). Returns "" when no ticket is available.
+func readTicket(in hookInput, ts store.TokenStore, ss store.SessionStore) string {
+	sid := in.SessionID
+	if sid == "" {
+		active, err := ss.GetActive()
+		if err != nil {
+			return ""
+		}
+		sid = active
+	}
+	if sid == "" {
+		return ""
+	}
+	tok, err := ts.Get(sid)
+	if err != nil {
+		return ""
+	}
+	return tok
+}
+
+// isWriteTool reports whether a tool mutates files and must therefore be
+// guarded. It covers the Claude Code write tools by name (including
+// NotebookEdit, whose path lives in notebook_path) plus a defensive superset
+// for future/variant names that advertise editing or writing.
+func isWriteTool(name string) bool {
+	switch name {
+	case "Edit", "Write", "MultiEdit", "NotebookEdit", "Update",
+		"create_file", "edit_file", "editFiles", "str_replace_editor", "apply_patch":
+		return true
+	}
+	return strings.Contains(name, "Edit") || strings.Contains(name, "Write")
+}
+
+// targetPath returns the file path from whichever field the tool used.
+func targetPath(in hookInput) string {
+	switch {
+	case in.ToolInput.FilePath != "":
+		return in.ToolInput.FilePath
+	case in.ToolInput.Path != "":
+		return in.ToolInput.Path
+	case in.ToolInput.NotebookPath != "":
+		return in.ToolInput.NotebookPath
+	}
+	return ""
+}
+
+// editedContent returns the proposed content from whichever field the tool used.
+func editedContent(in hookInput) string {
+	switch {
+	case in.ToolInput.NewString != "":
+		return in.ToolInput.NewString
+	case in.ToolInput.NewStr != "":
+		return in.ToolInput.NewStr
+	case in.ToolInput.Content != "":
+		return in.ToolInput.Content
+	}
+	return ""
+}
+
+// decide is the decision function: given the hook payload, the raw ticket, and
+// an artifact verifier, it returns whether to block and the semantic message
+// for the model. It gates on the tool name (not merely the presence of a path),
+// checks path scope and session binding locally, then verifies the edited
+// content against the artifact-view policy through verify. A nil verifier skips
+// the content step (used by offline tests).
+func decide(payload []byte, rawTicket string, verify artifactVerifier) (bool, string) {
 	var in hookInput
 	if err := json.Unmarshal(payload, &in); err != nil {
-		return false, "" // unparseable payload: stay out of the way
+		return true, "PPG_GUARD_ERROR: unreadable hook payload; blocking (fail-closed)."
 	}
-	if in.ToolInput.FilePath == "" {
-		return false, "" // not a file edition: nothing to guard
+	if !isWriteTool(in.ToolName) {
+		return false, "" // not a file-mutating tool: nothing to guard
+	}
+	target := targetPath(in)
+	if target == "" {
+		return true, "PPG_GUARD_ERROR: " + in.ToolName +
+			" is a file-mutating tool but no target path was found in tool_input; blocking (fail-closed)."
+	}
+	if smarttools.IsHarnessMetadata(target) {
+		return false, "" // harness plan-file bookkeeping, never in ticket scope
 	}
 
 	if rawTicket == "" {
-		return true, "No capability ticket found (" + ticketFile + "). " +
+		return true, "No capability ticket for this session. " +
 			"Lock a plan first: call the lock_in_plan tool (or POST /lock_in_plan on the " +
-			"Platform Planning Gateway) and save the execution_ticket to " + ticketFile + "."
+			"Platform Planning Gateway) — the returned execution_ticket is persisted for you."
 	}
 
-	target := relativeTarget(in.ToolInput.FilePath, in.CWD)
-	claims, err := smarttools.GuardTargets(rawTicket, []string{target})
+	rel := relativeTarget(target, in.CWD)
+	claims, err := smarttools.GuardTargets(rawTicket, []string{rel})
 	if err != nil {
 		var oos *smarttools.OutOfScopeError
 		if errors.As(err, &oos) {
@@ -135,18 +261,85 @@ func decide(payload []byte, rawTicket string) (bool, string) {
 				"A ticket dies with the session that locked it. Nothing was modified: re-plan through lock_in_plan.",
 			claims.SessionID, in.SessionID)
 	}
+
+	// Content policy (artifact view): the path is in scope, but the bytes must
+	// also satisfy the invariants. Fail closed if the check cannot run.
+	if verify != nil {
+		if content := editedContent(in); content != "" {
+			violations, err := verify(rawTicket, rel, content)
+			if err != nil {
+				return true, "PPG_GUARD_ERROR: cannot verify content against policy: " + err.Error() +
+					" — blocking (fail-closed). Nothing was modified."
+			}
+			if len(violations) > 0 {
+				return true, "ARCHITECTURAL_INVARIANT_VIOLATION: " + strings.Join(violations, " | ") +
+					" Nothing was modified; fix the content to satisfy the invariant and resubmit."
+			}
+		}
+	}
 	return false, ""
 }
 
 // relativeTarget converts the absolute file path Claude Code passes into the
-// project-relative path the plan scope is expressed in.
+// project-relative path the plan scope is expressed in. It cleans the result so
+// a "../" cannot escape scope through the fallback branch.
 func relativeTarget(filePath, cwd string) string {
 	if cwd == "" || !filepath.IsAbs(filePath) {
-		return filepath.ToSlash(filePath)
+		return filepath.ToSlash(filepath.Clean(filePath))
 	}
 	rel, err := filepath.Rel(cwd, filePath)
 	if err != nil || strings.HasPrefix(rel, "..") {
-		return filepath.ToSlash(filePath)
+		return filepath.ToSlash(filepath.Clean(filePath))
 	}
 	return filepath.ToSlash(rel)
+}
+
+// gatewayURL is the Platform Planning Gateway base URL (PPG_URL, default
+// http://localhost:8765) — the same convention as the MCP server.
+func gatewayURL() string {
+	if u := os.Getenv("PPG_URL"); u != "" {
+		return u
+	}
+	return "http://localhost:8765"
+}
+
+var httpClient = &http.Client{Timeout: 5 * time.Second}
+
+// verifyArtifactRemote asks the gateway to evaluate the artifact-view policy
+// against the edited content. A transport error is returned (fail-closed);
+// a policy rejection is returned as violation messages.
+func verifyArtifactRemote(gateway, ticket, path, content string) ([]string, error) {
+	body, _ := json.Marshal(map[string]string{"ticket": ticket, "path": path, "content": content})
+	resp, err := httpClient.Post(strings.TrimRight(gateway, "/")+"/verify_artifact",
+		"application/json", bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	var out struct {
+		Status     string `json:"status"`
+		Violations []struct {
+			Message string `json:"message"`
+		} `json:"violations"`
+		Guidance string `json:"guidance"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, fmt.Errorf("decoding gateway response: %w", err)
+	}
+	switch out.Status {
+	case "ARTIFACT_OK":
+		return nil, nil
+	case "ARTIFACT_REJECTED", "REFUSED":
+		var msgs []string
+		for _, v := range out.Violations {
+			msgs = append(msgs, v.Message)
+		}
+		if len(msgs) == 0 && out.Guidance != "" {
+			msgs = append(msgs, out.Guidance)
+		}
+		return msgs, nil
+	default:
+		return nil, fmt.Errorf("unexpected gateway status %q (HTTP %d)", out.Status, resp.StatusCode)
+	}
 }

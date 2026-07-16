@@ -4,11 +4,10 @@
 > inside their loop. For the full worked example, see the
 > [GitHub Copilot tutorial](../tutorials/03-github-copilot-preflight.md).
 
-1. Start the gateway (default `:8000`, or `-addr :8765` to match the
-   tutorials), then run the pre-flight with your intent — either as
-   `go run ./adapters/preflight` from inside the poc-agentic-platform
-   checkout, or after `go build -o /usr/local/bin/ppg-preflight
-   ./adapters/preflight` from anywhere:
+1. Install the binaries (`make install` from the repo — puts `ppg`,
+   `ppg-preflight`, and the guards under `~/.local/bin`). Start the
+   gateway (`ppg -addr :8765`, default `:8765`). Run the pre-flight
+   with your intent:
 
    ```bash
    PPG_URL=http://localhost:8765 ppg-preflight \
@@ -17,7 +16,7 @@
    ```
 
    `-repo` and `-stack` populate the `repository_context`; `PPG_URL` defaults
-   to `http://localhost:8000` (same convention as the MCP server) — set it
+   to `http://localhost:8765` (same convention as the MCP server) — set it
    explicitly if you started the gateway on a different port.
 
 2. Check the generated `.github/copilot-instructions.md` (and `.cursorrules`).
@@ -38,6 +37,10 @@
 
 3. From there, Copilot's black-box planning is steered by the same invariants
    the gateway serves to every other agent.
-4. ⚠ Limit: hard gating is **not** guaranteed with black boxes: no hook can
-   intercept their edits. The locked-plan check must then happen at apply
-   time (pre-push platform CLI) instead of in-loop.
+4. ⚠ Limit: hard gating is layered by surface, not absent. Copilot desktop and
+   VS Code Copilot Chat expose a `PreToolUse` hook, so `ppg-copilot-guard`
+   intercepts edits in-loop — checking both path scope and content, tutorials 7
+   and 9. Surfaces with no hook API (the `gh copilot` CLI, Cursor) get the
+   apply-time half instead: `ppg-verify` evaluates the whole diff against the
+   locked plan (`/verify_changeset`) as a pre-commit / pre-push / CI step. See
+   [Gate changes at apply time](gate-changes-at-apply-time.md).

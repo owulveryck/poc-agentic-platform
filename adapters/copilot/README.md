@@ -3,31 +3,36 @@
 This adapter wires **GitHub Copilot** (desktop app or VS Code) to the
 Platform Planning Gateway with the same in-tool gating pattern used for
 Claude Code. It closes the "soft half only" gap of the pre-flight adapter:
-Copilot's edits are now blocked in-loop against the locked plan's
-capability ticket, not just at apply time.
+Copilot's edits are now blocked in-loop against the locked plan — both the
+**file scope** (the capability ticket) and the **content** (the
+artifact-view policy corpus, via the gateway's `/verify_artifact`), not
+just at apply time.
 
 | Pillar | Mechanism | Component |
 |---|---|---|
 | 1 — Amplified planning | pre-flight (writes `.github/copilot-instructions.md`) *or* the Claude-Code MCP server (Copilot supports MCP) | [`adapters/preflight/`](../preflight/) / [`adapters/claudecode/mcpserver/`](../claudecode/mcpserver/) |
-| 2 — In-tool gating | `PreToolUse` hook: JSON-in/JSON-out decision `{"permissionDecision":"deny",…}` (deny > ask > allow) | [`guard/`](guard/) |
+| 2 — In-tool gating | `PreToolUse` hook: JSON-in/JSON-out decision `{"permissionDecision":"deny",…}` (deny > ask > allow); gates path scope **and** content | [`guard/`](guard/) |
 
 The two are connected — as with the Claude Code adapter — by the
-`.ppg-ticket` file: a successful `lock_in_plan` writes the capability
-ticket there, and the guard verifies every subsequent `Edit`/`Write`
-against its scope.
+per-machine **TokenStore** (default
+`$XDG_STATE_HOME/ppg/projects/<slug>/tickets/<session_id>`): a
+successful `lock_in_plan` persists the capability ticket there, and the
+guard reads it back to verify every subsequent `Edit`/`Write` against
+its scope.
 
 ## Setup
 
-1. **Start the gateway** (from the poc-agentic-platform checkout):
+1. **Install all binaries** (from the poc-agentic-platform checkout —
+   one command builds and installs into `~/.local/bin`):
 
    ```bash
-   go run ./cmd/ppg
+   make install
    ```
 
-2. **Build the guard** somewhere on your `PATH`:
+2. **Start the gateway**:
 
    ```bash
-   go build -o ~/.local/bin/ppg-copilot-guard ./adapters/copilot/guard
+   ppg -addr :8765
    ```
 
 3. **Register the hook** in the target project — copy
@@ -48,8 +53,8 @@ against its scope.
    ```
 
    The same binary serves both events: at `SessionStart` it records the
-   real session id into `.ppg-session` and purges any leftover
-   `.ppg-ticket`; at `PreToolUse` it verifies each `Edit`/`Write`
+   real session id via the SessionStore and purges any leftover tickets
+   from the TokenStore; at `PreToolUse` it verifies each `Edit`/`Write`
    against the ticket.
 
 4. **(Optional) Amplify with invariants** — run the pre-flight to seed
@@ -66,13 +71,8 @@ against its scope.
    `get_platform_guidelines_for_intent` and `lock_in_plan` under the
    standard protocol; both are usable by Copilot verbatim.
 
-   Build it once:
-
-   ```bash
-   go build -o ~/.local/bin/ppg-mcp-server ./adapters/claudecode/mcpserver
-   ```
-
-   Then register it. The config location depends on the surface:
+   `ppg-mcp-server` was already installed by `make install` in step 1.
+   Register it. The config location depends on the surface:
 
    - **Copilot CLI / desktop app** — `~/.copilot/mcp-config.json`
      (`mcpServers` map, `type: "local"` or `"stdio"`), or the
@@ -90,12 +90,21 @@ against its scope.
          "ppg": {
            "type": "stdio",
            "command": "ppg-mcp-server",
-           "env": { "PPG_URL": "http://localhost:8765" },
+           "env": {
+             "PPG_URL": "http://localhost:8765",
+             "PPG_PROJECT_DIR": "/abs/path/to/project"
+           },
            "tools": ["*"]
          }
        }
      }
      ```
+
+     `PPG_PROJECT_DIR` is required: the MCP server is long-lived, its
+     cwd is stale as soon as you switch project. Copilot desktop's
+     user-scope config does not expand `${workspaceFolder}` — see the
+     workaround note in
+     [capability-ticket.md](../../docs/reference/capability-ticket.md#known-limitation-copilot-desktop-user-scope-mcp-config).
 
    - **VS Code Copilot Chat** — `.vscode/mcp.json` at the workspace
      root, `servers` map, otherwise the same schema.
@@ -105,8 +114,8 @@ against its scope.
 
    Once registered, `get_platform_guidelines_for_intent` and
    `lock_in_plan` become native tool calls. On a successful lock the
-   MCP server also auto-writes the capability ticket to `.ppg-ticket`
-   in its cwd (the guard then picks it up).
+   MCP server persists the capability ticket through the per-machine
+   TokenStore (the guard then reads it back via the same store).
 
 ## What happens in a session
 
@@ -114,11 +123,14 @@ against its scope.
   session start, or calls `get_platform_guidelines_for_intent` via MCP,
   and receives the ADR invariants for the task.
 - (Locking path) Copilot proposes a structured plan; `lock_in_plan`
-  either returns semantic violations or issues a ticket into
-  `.ppg-ticket`.
-- Every `Edit`/`Write` passes through `ppg-copilot-guard`. In scope:
-  the hook emits `{"continue": true}` and the tool call proceeds.
-  Out of scope, the hook returns:
+  either returns semantic violations or persists a ticket through the
+  TokenStore.
+- Every `Edit`/`Write` passes through `ppg-copilot-guard`. It first
+  checks the target path against the ticket scope, then — when the path
+  is allowed — sends the edited content to the gateway's
+  `/verify_artifact` for the content policy. In scope and clean: the
+  hook emits `{"continue": true}` and the tool call proceeds. Out of
+  scope, the hook returns:
 
   ```json
   {
@@ -132,21 +144,31 @@ against its scope.
 
   Copilot surfaces the reason to the user and stops the edit.
   Deterministic refusal, semantic guidance, zero damage — pillar 2,
-  running inside Copilot.
+  running inside Copilot. A path that is in scope but whose content
+  breaks an invariant is denied the same way, with reason prefixed
+  `ARCHITECTURAL_INVARIANT_VIOLATION` (the messages from
+  `/verify_artifact`). The guard **fails closed**: if it cannot evaluate
+  an edit (unreadable payload, unopenable store, unreachable gateway) it
+  denies with `PPG_GUARD_ERROR: … (fail-closed)` rather than letting the
+  edit through.
 
-## Composability with other PreToolUse hooks
+## Content policy and composability
 
-Multiple hooks per `PreToolUse` event compose: the runtime fires them in
-parallel and applies the most-restrictive decision (`deny` > `ask` >
-`allow`). `ppg-copilot-guard` enforces **path scope** (ticket-driven).
-It composes with any other content-scope policy — for example, the
+`ppg-copilot-guard` enforces **both** path scope (ticket-driven) and
+content: after the path check it sends the edited bytes to the gateway's
+`/verify_artifact`, which runs the artifact-view Rego corpus. A content
+invariant is therefore authored once as an ADR's `.rego` (see
+[docs/how-to/enforce-a-content-invariant.md](../../docs/how-to/enforce-a-content-invariant.md))
+and enforced by this same guard — no separate hook to ship. The
 `design-system` skill in
-[`demo/skills/design-system/`](../../demo/skills/design-system/) ships
-a shell-script hook (`hooks/design-guard.sh`) that denies raw color
-literals and button re-styling outside `design/tokens.css`. Both hooks
-fire together; neither knows about the other. The pattern for building
-your own content-scope hook is documented in
-[docs/how-to/enforce-a-content-invariant.md](../../docs/how-to/enforce-a-content-invariant.md).
+[`demo/skills/design-system/`](../../demo/skills/design-system/) relies on
+exactly this: its rules live in `adr/ADR-090.rego` (artifact altitude),
+not in a bespoke script.
+
+If you still need a check that cannot be expressed against the corpus,
+multiple hooks per `PreToolUse` event compose: the runtime fires them in
+parallel and applies the most-restrictive decision (`deny` > `ask` >
+`allow`), so a standalone content-scope hook can run alongside this one.
 
 ## Notes and known limits
 
@@ -155,9 +177,10 @@ your own content-scope hook is documented in
   `tool_input.file_path`. The guard accepts both.
 - **Worktree model**. The Copilot desktop app runs each session in a
   git worktree of the folder you open (`cwd` is the worktree, not the
-  main checkout). `.ppg-ticket` and `.ppg-session` therefore live in
-  the worktree root — call `lock_in_plan` from inside the session (via
-  MCP), or from a terminal opened in the worktree.
+  main checkout). The TokenStore keys tickets on the absolute path of
+  the project (base64-encoded), so each worktree gets its own slug
+  under `$XDG_STATE_HOME/ppg/projects/` and there is no cross-worktree
+  contamination.
 - **Config discovery**. VS Code / Copilot look for hooks in
   `.github/hooks/*.json` (workspace, native GitHub location) or
   `.claude/settings.json` (workspace, Claude-compatible). Workspace
@@ -171,6 +194,6 @@ your own content-scope hook is documented in
   `chat.agent.sandbox.fileSystem.*` and
   `chat.tools.terminal.autoApprove` settings). Read gating is out of
   scope for a plan-scope guard.
-- **PPG_URL** overrides the gateway address for the guard when the
-  smarttools helpers need to reach it (default
-  `http://localhost:8000`).
+- **PPG_URL** is the gateway base URL the guard POSTs the edited content
+  to for the `/verify_artifact` content check (default
+  `http://localhost:8765`) — the same convention as the MCP server.

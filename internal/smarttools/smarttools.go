@@ -10,10 +10,30 @@ package smarttools
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
+	"github.com/owulveryck/poc-agentic-platform/internal/smarttools/translate"
 	"github.com/owulveryck/poc-agentic-platform/internal/ticket"
 )
+
+// ArtifactEvaluator reports the architectural-invariant violations of a file's
+// proposed content (the artifact-view policy). It is injected by the gateway to
+// keep this package decoupled from the linter; an empty return means the content
+// is clean. When nil (unwired), Run skips the content check.
+type ArtifactEvaluator func(path, content string) []string
+
+var artifactEvaluator ArtifactEvaluator
+
+// SetArtifactEvaluator wires the artifact-view policy evaluator used by Run so a
+// Smart Tool refuses content that breaks an invariant, not just out-of-scope
+// paths. Wired once at startup.
+func SetArtifactEvaluator(fn ArtifactEvaluator) { artifactEvaluator = fn }
+
+// contentKeys are the payload fields a Smart Tool may carry file/artifact
+// content under, in priority order.
+var contentKeys = []string{"content", "statement"}
 
 // OutOfScopeError is the deterministic refusal returned when the agent drifts
 // from its locked plan. Nothing has been executed when it is raised.
@@ -109,12 +129,88 @@ func Run(rawTicket, toolID string, targets []string, payload map[string]any) (ma
 	if _, err := Guard(rawTicket, toolID, targets); err != nil {
 		return nil, err
 	}
+	// Artifact-view policy: the tool holds the actual content, so it enforces
+	// the invariant against what will be written, not just the path scope.
+	if msgs := evaluateArtifactPolicy(targets, payload); len(msgs) > 0 {
+		return translate.PolicyViolation(translate.Generic(1, "content violates architectural invariants"), msgs), nil
+	}
 	return meta.Tool.Run(targets, payload), nil
 }
 
+// evaluateArtifactPolicy runs the injected artifact evaluator over the content
+// carried in payload, attributed to the first target. Returns nil when no
+// evaluator is wired, no content is present, or the content is clean.
+func evaluateArtifactPolicy(targets []string, payload map[string]any) []string {
+	if artifactEvaluator == nil || len(targets) == 0 {
+		return nil
+	}
+	var content string
+	for _, k := range contentKeys {
+		if s, ok := payload[k].(string); ok && s != "" {
+			content = s
+			break
+		}
+	}
+	if content == "" {
+		return nil
+	}
+	return artifactEvaluator(targets[0], content)
+}
+
+// harnessMetadataSubdirs lists the home-relative directories an agent
+// harness uses for its own bookkeeping — never product code. Currently just
+// the plan files a harness writes during plan mode (~/.claude/plans/). Add
+// new harness scratch locations here as they appear.
+var harnessMetadataSubdirs = []string{filepath.Join(".claude", "plans")}
+
+// IsHarnessMetadata reports whether filePath is agent-harness bookkeeping the
+// guard must never govern — e.g. the plan files a harness writes under
+// ~/.claude/plans/ during plan mode. These are harness scratch, not product
+// edits, so they fall outside any capability ticket. The check is deliberately
+// narrow: sibling files such as ~/.claude/settings.json stay guarded so an
+// agent cannot disable the guard by editing its own hook config.
+func IsHarnessMetadata(filePath string) bool {
+	if filePath == "" {
+		return false
+	}
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return false
+	}
+	clean := filepath.Clean(filePath)
+	for _, sub := range harnessMetadataSubdirs {
+		root := filepath.Join(home, sub)
+		rel, err := filepath.Rel(root, clean)
+		if err != nil {
+			continue
+		}
+		if rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return true
+		}
+	}
+	return false
+}
+
+// targetAllowed reports whether target falls within one of the allowed scope
+// entries. Matching is path-segment aware, not a raw string prefix: an entry
+// "internal/payment" grants "internal/payment" and anything under
+// "internal/payment/", but NOT the sibling "internal/payment_backdoor.go". A
+// trailing "*" entry ("internal/payment/*") behaves the same as the bare
+// directory. Both sides are filepath.Clean'd first, so "..\/" traversal in the
+// target cannot escape its cleaned form (e.g. "internal/payment/../../etc" is
+// normalized before comparison).
 func targetAllowed(target string, allowed []string) bool {
+	ct := filepath.Clean(target)
 	for _, a := range allowed {
-		if strings.HasPrefix(target, strings.TrimSuffix(a, "*")) {
+		base := filepath.Clean(strings.TrimSuffix(a, "*"))
+		if base == "." {
+			// Entry was "*" (or "./*"): an explicit allow-all scope.
+			return true
+		}
+		if ct == base {
+			return true
+		}
+		if strings.HasPrefix(ct, base+string(filepath.Separator)) {
 			return true
 		}
 	}

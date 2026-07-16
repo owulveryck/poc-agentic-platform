@@ -3,6 +3,7 @@ package ppg.linter
 import rego.v1
 
 violation contains v if {
+	input.view == "plan"
 	input.repository_context.tech_stack[_] == "Go"
 	not plan_has_go_test
 	v := {

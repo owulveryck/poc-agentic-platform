@@ -44,7 +44,7 @@
    non-default directory) and verify with curl:
 
    ```bash
-   curl -s -X POST localhost:8000/validate_skill \
+   curl -s -X POST localhost:8765/validate_skill \
      -H "Content-Type: application/json" \
      -d '{"name":"demo-skill","description":"do things","version":"1.0.0","body":"Read the files."}'
    ```
@@ -52,5 +52,7 @@
    The response must list your new violation.
 
 5. Add a test case in `internal/skill/linter_test.go`, mirroring the rule in
-   `internal/skill/testdata/governance.rego` (mind the drift: the testdata
-   file is a condensed copy of the production policies).
+   `internal/skill/testdata/structure.rego` or
+   `internal/skill/testdata/security.rego` (mind the drift: these testdata
+   files are copies of the production `skill-governance/*.rego` policies and
+   must be kept in sync by hand).

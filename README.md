@@ -21,17 +21,21 @@ Capabilities*.
 |---|---|---|
 | `POST /enrich` | Retrieves **architectural invariants** from the ADR store for an intent (no hard-coded business pattern) | amplifier / declarative |
 | `POST /lock_in_plan` | **Deterministic plan linter** (OPA/Rego, not an LLM): rejects with semantic violations, or issues a **capability ticket** (ephemeral JWT: plan hash + least-privilege scope) | amplifier / programmatic |
-| `POST /tools/{name}` | **Smart Platform Tools**: verify the ticket in-tool (`OUT_OF_PLAN_SCOPE` refusal), execute in a sandbox, return **semantic feedback** (`remediation_guidance`) | amplifier (+ one tagged compensatory translator) |
+| `POST /verify_artifact` · `POST /verify_changeset` | **Policy at every altitude**: the *same* Rego corpus, evaluated at three altitudes (`input.view`) — `plan` at lock time, `artifact` on one edit's content (in-loop, via the guards), `changeset` on the whole diff (apply time, via `ppg-verify`) | amplifier / programmatic |
+| `POST /tools/{name}` | **Smart Platform Tools**: verify the ticket in-tool (`OUT_OF_PLAN_SCOPE` refusal), evaluate the artifact-view policy over the content, execute in a sandbox, return **semantic feedback** (`remediation_guidance`) | amplifier (+ one tagged compensatory translator) |
 | `GET /debt_report` | **Transition-debt governance**: every artifact is tagged `amplifier` or `compensatory`; compensatory ones carry a measurable sunset condition; the ratio must trend to 0 | governance |
 | `POST /validate_skill` | **Skill governance linter** (OPA/Rego): publish gate for enterprise skills, structural rules + security tier (0/1/2) | amplifier / programmatic |
 
 ## Quick start
 
 ```bash
-go run ./cmd/ppg          # listens on :8000 (use -addr :8765 if busy)
+make install              # builds and installs into ~/.local/bin
+ppg -addr :8765           # starts the gateway (default port :8765)
 ```
 
-Then follow the [first tutorial](docs/tutorials/01-first-planning-cycle.md)
+`make help` lists all targets; `BINDIR=/usr/local/bin make install` for a
+different install location. Then follow the
+[first tutorial](docs/tutorials/01-first-planning-cycle.md)
 (full cycle with `curl`), wire a **stock Claude Code session** to the gateway
 ([tutorial 2](docs/tutorials/02-claude-code-end-to-end.md)), steer **GitHub
 Copilot** through the pre-flight adapter
@@ -56,20 +60,25 @@ Index: [docs/README.md](docs/README.md)
 ## Layout
 
 ```
-cmd/ppg/                 HTTP gateway (enrich, lock_in_plan, tools, debt_report, validate_skill)
+cmd/ppg/                 HTTP gateway (enrich, lock_in_plan, tools, verify_artifact, verify_changeset, debt_report, validate_skill)
+cmd/ppg-verify/          apply-time / CI backstop: verifies the working-tree diff via /verify_changeset
 internal/adr/            ADR store loading + invariant retrieval
 internal/enrich/         amplifier context builder
 internal/plan/           structured plan contract (see schemas/plan.schema.json)
 internal/linter/         OPA/Rego plan linter, policies tagged amplifier|compensatory
-internal/ticket/         capability ticket (JWT: plan_hash + scope, 15 min TTL)
+internal/ticket/         capability ticket (JWT: plan_hash + scope, session-bound + configurable TTL)
 internal/smarttools/     ticket guard + sandbox + semantic analyzers
 internal/skill/          skill parsing + OPA/Rego governance linter + security tiers
 internal/debt/           transition-debt report
+internal/store/          per-machine ticket/session storage (TokenStore/SessionStore, see ADR-100)
 adr/                     the ADR corpus (YAML front matter + invariant text + paired .rego)
 skill-governance/        skill governance policies (structure.rego, security.rego)
 schemas/                 language-neutral JSON Schema of the plan contract
 adapters/preflight/      black-box adapter (writes .cursorrules / copilot-instructions.md)
 adapters/claudecode/     Claude Code adapter: MCP server (planning) + PreToolUse hook (gating)
-demo/                    APM package: the ppg-tutorial skill (apm install .../demo --target claude|copilot)
+adapters/copilot/        GitHub Copilot adapter: PreToolUse guard (ppg-copilot-guard)
+scripts/                 setup/remove scripts for the governed workstation
+Makefile                 build, install, and setup/remove targets
+demo/                    APM package: three skills (ppg-tutorial, add-payment-method, design-system)
 docs/                    Diátaxis documentation + PlantUML diagrams
 ```

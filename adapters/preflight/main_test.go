@@ -4,8 +4,8 @@ import "testing"
 
 func TestGatewayURLDefault(t *testing.T) {
 	t.Setenv("PPG_URL", "")
-	if got := gatewayURL(); got != "http://localhost:8000" {
-		t.Fatalf("default gateway URL = %q, want http://localhost:8000", got)
+	if got := gatewayURL(); got != "http://localhost:8765" {
+		t.Fatalf("default gateway URL = %q, want http://localhost:8765", got)
 	}
 }
 

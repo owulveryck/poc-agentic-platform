@@ -1,13 +1,11 @@
 package skill
 
 import (
-	"context"
-	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"strings"
 
-	"github.com/open-policy-agent/opa/v1/rego"
+	"github.com/owulveryck/poc-agentic-platform/internal/policy"
 )
 
 // Violation is a single governance finding returned when a skill fails validation.
@@ -26,7 +24,7 @@ type Violation struct {
 // embedded OPA engine. Policies live in a flat directory of .rego files all
 // sharing package ppg.skills.governance; their violation rules union automatically.
 type Linter struct {
-	prepared *rego.PreparedEvalQuery
+	eval *policy.Evaluator
 }
 
 // NewLinter builds a Linter from all .rego files in governancePolicyDir.
@@ -37,57 +35,22 @@ func NewLinter(governancePolicyDir string) (*Linter, error) {
 	if err != nil {
 		return nil, fmt.Errorf("listing Rego files in %s: %w", governancePolicyDir, err)
 	}
-	if len(files) == 0 {
-		return &Linter{}, nil
-	}
-
-	ctx := context.Background()
-	pq, err := rego.New(
-		rego.Query("data.ppg.skills.governance.violation"),
-		rego.Load(files, nil),
-	).PrepareForEval(ctx)
+	eval, err := policy.Prepare("data.ppg.skills.governance.violation", files)
 	if err != nil {
-		return nil, fmt.Errorf("preparing OPA skill governance query: %w", err)
+		return nil, err
 	}
-	l := &Linter{prepared: &pq}
-	return l, nil
+	return &Linter{eval: eval}, nil
 }
 
 // Validate runs all governance policies against the skill and returns violations.
-// An empty slice means the skill passes all checks and can be published.
+// An empty slice means the skill passes all checks and can be published. It
+// fails closed: an evaluation or decode error surfaces as a rejection.
 func (l *Linter) Validate(s *Skill) []Violation {
-	if l.prepared == nil {
-		return nil
-	}
-
-	ctx := context.Background()
-	rs, err := l.prepared.Eval(ctx, rego.EvalInput(s))
+	violations, err := policy.Eval[Violation](l.eval, s)
 	if err != nil {
 		return []Violation{{
 			Field:   "linter",
-			Message: fmt.Sprintf("OPA evaluation error: %v", err),
-			Nature:  "compensatory",
-		}}
-	}
-	if len(rs) == 0 || rs[0].Expressions[0].Value == nil {
-		return nil
-	}
-
-	// Fail closed: a skill whose evaluation result cannot be decoded must be
-	// rejected, not silently published.
-	raw, err := json.Marshal(rs[0].Expressions[0].Value)
-	if err != nil {
-		return []Violation{{
-			Field:   "linter",
-			Message: fmt.Sprintf("cannot encode OPA result: %v", err),
-			Nature:  "compensatory",
-		}}
-	}
-	var violations []Violation
-	if err := json.Unmarshal(raw, &violations); err != nil {
-		return []Violation{{
-			Field:   "linter",
-			Message: fmt.Sprintf("cannot decode OPA violations: %v", err),
+			Message: err.Error(),
 			Nature:  "compensatory",
 		}}
 	}

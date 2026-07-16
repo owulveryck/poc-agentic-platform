@@ -14,11 +14,14 @@ The governed session runs in a *separate* project, like any team repository:
 
 ```bash
 mkdir ~/ppg-demo && cd ~/ppg-demo && git init
-printf '.ppg-ticket\n.ppg-session\n' >> .gitignore
 mkdir -p internal/payment internal/auth
 printf 'package payment\n' > internal/payment/router.go
 printf 'package auth\n'    > internal/auth/login.go
 ```
+
+The platform's session state (active session id + capability ticket) is
+persisted under `$XDG_STATE_HOME/ppg/projects/<slug>/` — outside the
+project, so nothing needs to be added to `.gitignore`.
 
 `internal/auth/` is one of the frozen legacy paths of ADR-070 — we will use
 it to trigger a refusal in step 5.
@@ -51,9 +54,10 @@ Create `.claude/settings.json` in `~/ppg-demo` (content of
 ```
 
 The `SessionStart` entry binds tickets to sessions: it records the session
-id in `.ppg-session` (which the MCP server stamps into the plan at lock
-time) and purges any ticket left by a previous session. Add `.ppg-session`
-to `.gitignore` alongside `.ppg-ticket`.
+id via the SessionStore (which the MCP server reads at lock time to stamp
+the plan) and purges any ticket left by a previous session. Both the
+session id and the ticket live under `$XDG_STATE_HOME/ppg/projects/<slug>/` —
+outside the project.
 
 ## Step 3 — Add the behavioral contract
 
@@ -82,11 +86,16 @@ Start `claude` in `~/ppg-demo` and prompt:
    checks (a step whose tool is `go-test` or whose action runs `go test`).
    A rejection loop means the plan does not satisfy that criterion, however
    plausible its steps look; do not guess along other dimensions.
-3. On success the response is `PLAN_LOCKED` and the ticket lands in
-   `.ppg-ticket`. Inspect its claims:
+3. On success the response is `PLAN_LOCKED` and the ticket is persisted
+   under `$XDG_STATE_HOME/ppg/projects/<slug>/tickets/<sid>`. Inspect its
+   claims (adjust `SID` to the session id printed by Claude Code):
 
    ```bash
-   python3 -c "import base64,json; p=open('.ppg-ticket').read().strip().split('.')[1]; \
+   SLUG=$(printf '%s' "$PWD" | base64 | tr '+/' '-_' | tr -d '=')
+   SID=<your-session-id>
+   TICKET_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/ppg/projects/$SLUG/tickets"
+   python3 -c "import base64,json,sys,os; \
+   p=open(os.path.join('$TICKET_DIR','$SID')).read().strip().split('.')[1]; \
    print(json.dumps(json.loads(base64.urlsafe_b64decode(p+'='*(-len(p)%4))), indent=2))"
    ```
 
@@ -124,15 +133,16 @@ genuinely needed, re-plan through lock_in_plan.
 
 Per the `CLAUDE.md` contract, Claude does not retry the same call: it either
 stays within the plan or re-plans through `lock_in_plan`. If no plan is
-locked at all, the guard blocks with
-`No capability ticket found (.ppg-ticket)` and points to `lock_in_plan` —
-the paved road is also the only road.
+locked at all, the guard blocks with `No capability ticket for this
+session` and points to `lock_in_plan` — the paved road is also the only
+road.
 
 One more property to observe: quit and start a **new session** in the same
 directory. The `SessionStart` hook purges the previous ticket, and even a
 copy of it would be refused (`SESSION_MISMATCH`: the ticket's `session_id`
 claim no longer matches the session). A capability dies with the session
-that locked it, not only with its 15-minute TTL.
+that locked it, not only with its
+configurable wall-clock TTL.
 
 ## Step 6 — Clean up
 

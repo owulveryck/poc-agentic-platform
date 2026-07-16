@@ -57,7 +57,7 @@ actually type.
 Start the gateway on your copy and enrich an intent containing a selector:
 
 ```bash
-go run ./cmd/ppg -addr :8769 -adr /tmp/my-adr-store
+ppg -addr :8769 -adr /tmp/my-adr-store
 ```
 
 ```bash
@@ -71,7 +71,8 @@ curl -s -X POST localhost:8769/enrich \
 **What you should observe**: `ADR-080` in `architectural_invariants`, with
 your invariant text verbatim. The word "endpoint" in the intent matched your
 selectors; any agent planning this task now reasons over your rule. Note
-also the startup log: `ADR store loaded: 5 invariants`.
+also the startup log: `ADR store loaded: 7 invariants` (the 6 shipped ADRs
+plus your ADR-080).
 
 ## Step 4 — Write the executable half (Rego)
 
@@ -106,7 +107,7 @@ without guessing.
 
 ## Step 5 — See the hard half work
 
-Restart the gateway (watch `Plan linter ready: 5 policies`), then submit a
+Restart the gateway (watch `Plan linter ready: 7 policies`), then submit a
 plan that touches a handler without the spec:
 
 ```bash

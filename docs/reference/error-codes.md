@@ -8,6 +8,14 @@
 | `PLAN_LOCKED` | Plan valid, ticket issued |
 | `TOOL_NOT_IN_PLAN` | Tool absent from the ticket scope (403) |
 | `OUT_OF_PLAN_SCOPE` | Target outside the allowed files (403) |
+| `SESSION_MISMATCH` | Ticket's `session_id` claim does not match the active session; emitted by the guards to block a ticket replayed from another session |
+| `ARTIFACT_OK` | `/verify_artifact` accepted the edited content (artifact view) |
+| `ARTIFACT_REJECTED` | `/verify_artifact`: the file scope is allowed but the content breaks an invariant, `violations[]` provided (422) |
+| `CHANGESET_OK` | `/verify_changeset` accepted the whole diff (changeset view) |
+| `CHANGESET_REJECTED` | `/verify_changeset`: the diff breaks an invariant, `violations[]` provided (422) |
+| `PLAN_SUBSTITUTION` | `/verify_changeset`: the supplied `plan_hash` does not match the ticket's claim; `expected`/`got` provided (409) |
+| `ARCHITECTURAL_INVARIANT_VIOLATION` | Content broke an architectural invariant; emitted by the guards (block reason) and Smart Tools (`error_category`) after the path scope passed |
+| `PPG_GUARD_ERROR` | A guard could not evaluate an edit (unreadable payload, unopenable store, unreachable gateway) and blocked the PreToolUse edit fail-closed |
 | `EXECUTION_FAILED` | Application failure; see `error_category` |
 | `GO_SYNTAX_ERROR` | Patched content does not parse; guidance provided |
 | `DATABASE_SCHEMA_CONFLICT` | Schema conflict; staging state provided |

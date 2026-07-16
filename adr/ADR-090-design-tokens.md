@@ -9,6 +9,7 @@ enforcement:
   mode: programmatic
   policy_id: design_tokens_referenced
   rego: ADR-090.rego
+  altitudes: [plan, artifact]
 ---
 
 ## Invariant
@@ -43,11 +44,16 @@ Svelte — the tokens are the interface.
 
 ## Enforcement stack
 
-Two levers act together on this invariant:
+Two levers act together on this invariant, and — since this ADR declares
+`altitudes: [plan, artifact]` — both are now the **same** Rego policy
+(`ADR-090.rego`), evaluated by the platform at two altitudes:
 
-- Plan-linter (this ADR's `.rego`): any locked plan touching UI files
+- Plan altitude (`input.view == "plan"`): any locked plan touching UI files
   must include a step reading `design/tokens.css` — the model must
   acknowledge the tokens exist before planning changes.
-- Content-scope PreToolUse hook (`design-guard.sh` in the
-  `design-system` skill): denies the edit if the emitted bytes contain
-  raw colors or a button rule outside the tokens file.
+- Artifact altitude (`input.view == "artifact"`): the `ppg-guard` /
+  `ppg-copilot-guard` PreToolUse hook sends each edit's content to the gateway
+  (`POST /verify_artifact`), which runs this same policy against the emitted
+  bytes and denies raw colors (including inside `var()` fallbacks) or a button
+  rule outside the tokens file. This replaces the earlier bespoke
+  `design-guard.sh` shell hook, closing its bypasses.

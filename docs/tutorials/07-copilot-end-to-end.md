@@ -45,12 +45,15 @@ The governed session runs in a *separate* project, like any team repo:
 
 ```bash
 mkdir ~/ppg-copilot-demo && cd ~/ppg-copilot-demo && git init
-printf '.ppg-ticket\n.ppg-session\n' >> .gitignore
 mkdir -p internal/payment internal/auth
 printf 'package payment\n' > internal/payment/router.go
 printf 'package auth\n'    > internal/auth/login.go
 git add -A && git commit -q -m "init"
 ```
+
+Session state (active session id + capability ticket) is persisted under
+`$XDG_STATE_HOME/ppg/projects/<slug>/` outside the project — nothing to
+add to `.gitignore`.
 
 `internal/auth/` is one of the frozen legacy paths of ADR-070 — we will
 use it to trigger a refusal in step 5.
@@ -74,19 +77,20 @@ Create `~/ppg-copilot-demo/.github/hooks/ppg.json` — copy from
 ```
 
 The `SessionStart` entry binds tickets to sessions: it records the
-session id in `.ppg-session` (which the MCP server stamps into the plan
-at lock time) and purges any ticket left by a previous session. The
-`PreToolUse` entry gates every `Edit` / `Write` against the ticket
-scope.
+session id via the SessionStore (which the MCP server reads at lock
+time to stamp the plan) and purges any ticket left by a previous
+session. Both live under `$XDG_STATE_HOME/ppg/projects/<slug>/` outside
+the project. The `PreToolUse` entry gates every `Edit` / `Write`
+against the ticket scope.
 
 ## Step 3 — Add the behavioral contract (Copilot-specific)
 
 The Copilot equivalent of `CLAUDE.md` is
 `.github/copilot-instructions.md`. Seed it with the ADR invariants for
-the current intent via the pre-flight adapter (build it once from
-your `poc-agentic-platform` checkout: `go build -o
-~/.local/bin/ppg-preflight ./adapters/preflight`), then append the
-contract:
+the current intent via the pre-flight adapter (`ppg-preflight`,
+installed by `make install` — see
+[tutorial 0](00-bootstrap.md#step-2--build-the-binaries-onto-your-path)),
+then append the contract:
 
 ```bash
 # In ~/ppg-copilot-demo
@@ -140,11 +144,17 @@ Open `~/ppg-copilot-demo` as a folder in the Copilot app and prompt:
    rejection loop means the plan does not satisfy that criterion,
    however plausible its steps look; do not guess along other
    dimensions.
-3. On success the response is `PLAN_LOCKED`, and the ticket lands in
-   `.ppg-ticket` (auto-written by the MCP server). Inspect its claims:
+3. On success the response is `PLAN_LOCKED`, and the ticket is persisted
+   through the per-machine TokenStore at
+   `$XDG_STATE_HOME/ppg/projects/<slug>/tickets/<sid>` (auto-written by
+   the MCP server). Inspect its claims (adjust `SID` to the session id
+   Copilot reports):
 
    ```bash
-   python3 -c "import base64,json; p=open('.ppg-ticket').read().strip().split('.')[1]; \
+   SLUG=$(printf '%s' "$PWD" | base64 | tr '+/' '-_' | tr -d '=')
+   SID=<your-session-id>
+   TICKET="${XDG_STATE_HOME:-$HOME/.local/state}/ppg/projects/$SLUG/tickets/$SID"
+   python3 -c "import base64,json; p=open('$TICKET').read().strip().split('.')[1]; \
    print(json.dumps(json.loads(base64.urlsafe_b64decode(p+'='*(-len(p)%4))), indent=2))"
    ```
 
@@ -171,7 +181,7 @@ change is genuinely needed, re-plan through lock_in_plan.
 Per the contract in `.github/copilot-instructions.md`, Copilot does not
 retry the same call: it either stays within the plan or re-plans
 through `lock_in_plan`. If no plan is locked at all, the guard blocks
-with `No capability ticket found (.ppg-ticket)` and points to
+with `No capability ticket for this session` and points to
 `lock_in_plan` — the paved road is also the only road.
 
 One more property to observe: quit and start a **new** Copilot session
@@ -179,15 +189,16 @@ in the same directory. The `SessionStart` hook purges the previous
 ticket, and even a copy of it would be refused (`SESSION_MISMATCH`:
 the ticket's `session_id` claim no longer matches the session). A
 capability dies with the session that locked it, not only with its
-15-minute TTL.
+configurable wall-clock TTL.
 
 ## Step 6 — Copilot-specific notes
 
 - **Git-worktree model**. The Copilot desktop app runs each session in
   a git worktree of the folder you open (`cwd` is the worktree, not
-  the main checkout). `.ppg-ticket` and `.ppg-session` therefore live
-  in the worktree root, and the MCP server / hook resolve everything
-  relative to it — no configuration needed.
+  the main checkout). Because the TokenStore keys tickets on the
+  absolute project path (`base64` of the worktree root), each worktree
+  gets its own slug under `$XDG_STATE_HOME/ppg/projects/` — no
+  cross-contamination between sessions.
 - **Hooks discovery**. `.github/hooks/*.json` is the native GitHub
   location; `.claude/settings.json` also works (Claude-compatible).
   Workspace hooks take precedence over user hooks.

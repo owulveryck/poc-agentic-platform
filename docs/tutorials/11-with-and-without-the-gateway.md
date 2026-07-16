@@ -173,15 +173,14 @@ curl -sf http://localhost:8765/debt_report >/dev/null && echo "gateway OK"
 ```bash
 cd ~/demo
 mkdir with-platform && cd with-platform && git init
-printf '.ppg-ticket\n.ppg-session\n' >> .gitignore
 apm install owulveryck/poc-agentic-platform/demo --target copilot
 git add -A && git commit -q -m "install skills via APM"
 ```
 
 Same reason as Act 1 for the commit: Copilot's per-session worktree
-only reflects committed files. The extra `.gitignore` lines here
-prevent the ticket and session files (written at runtime by the
-platform) from being accidentally tracked.
+only reflects committed files. No `.gitignore` additions are needed —
+the platform writes session state under
+`$XDG_STATE_HOME/ppg/projects/<slug>/`, outside the project.
 
 Open `~/demo/with-platform` in the Copilot desktop app. **Select the
 same small model** as before.
@@ -196,9 +195,10 @@ semantic match OR explicit reference), and this time
 `get_platform_guidelines_for_intent` and `lock_in_plan` are visible
 as MCP tools (registered user-scope in `~/.copilot/mcp-config.json`
 by the how-to). The workflow runs full: enrich → read tokens →
-plan → lock → apply. Every edit passes through `ppg-copilot-guard`
-(path scope) and `design-guard.sh` (content scope). The result
-contains only `var(--color-*)` references.
+plan → lock → apply. Every edit passes through `ppg-copilot-guard`,
+which checks both the path scope and the content — it POSTs the bytes
+to the gateway's `/verify_artifact`, where ADR-090's artifact rule
+runs. The result contains only `var(--color-*)` references.
 
 Prompt 2 (identical to Act 2):
 
@@ -206,10 +206,11 @@ Prompt 2 (identical to Act 2):
 > is: white background, hot pink buttons (`#FF69B4`), black text.
 > Redo the page with this new palette.
 
-**What you should observe**: `design-guard.sh` refuses the first
+**What you should observe**: `ppg-copilot-guard` refuses the first
 `Edit` containing `#FF69B4` with the semantic message
-`DESIGN_SYSTEM_VIOLATION`. Copilot surfaces the refusal reason to
-you and stops trying — per the contract in
+`ARCHITECTURAL_INVARIANT_VIOLATION` (ADR-090's design-token rule,
+evaluated by the gateway at the artifact altitude). Copilot surfaces
+the refusal reason to you and stops trying — per the contract in
 `~/.copilot/copilot-instructions.md`, it doesn't retry.
 
 Deterministic verification (identical command, opposite outcome):
@@ -228,13 +229,12 @@ files existed under `~/.copilot/`. That single toggle activated:
   *amplified* phase (`enrich` and `lock_in_plan`), not just its
   prose. Without MCP, the model improvised; with MCP, it followed a
   gated workflow.
-- **`ppg-copilot-guard` active** — every `Edit`/`Write` was
-  path-scope-checked against the ticket derived from the locked plan.
-  Any file outside the plan was denied.
-- **`design-guard.sh` reliably enforced** — the content-scope hook
-  (shipped by the skill itself) was known to Copilot's runtime from
-  session start, not just registered mid-session. Any raw color was
-  denied at write time.
+- **`ppg-copilot-guard` active** — every `Edit`/`Write` was checked
+  against the ticket derived from the locked plan (path scope) *and*
+  its content sent to `/verify_artifact` (ADR-090's artifact rule).
+  Any file outside the plan, and any raw color, was denied at write
+  time — one guard, both invariants. (The same rules also run at apply
+  time through `ppg-verify`, covering hookless surfaces.)
 - **The contract loaded** — `~/.copilot/copilot-instructions.md`
   told the model how to behave when a hook refuses (don't retry;
   either stay in scope or re-plan). Under adversarial pressure, the
@@ -270,8 +270,8 @@ fi
   either escalate the adversarial prompt or pick a smaller model.
 - **Have a backup screencap** of both the failed Act 2 (with raw
   `#FF69B4` in the CSS) and the refused Act 3 (with the
-  `DESIGN_SYSTEM_VIOLATION` message). If the live demo hiccups at any
-  point, show the capture.
+  `ARCHITECTURAL_INVARIANT_VIOLATION` message). If the live demo
+  hiccups at any point, show the capture.
 - **The `grep` is the KPI**. It's visible, brutal, and unambiguous.
   Run it in a large-font terminal so the audience can read the
   output from the back of the room.
