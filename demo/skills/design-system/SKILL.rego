@@ -5,9 +5,9 @@ import rego.v1
 # Companion of ADR-090. Same shape, scoped to this skill's registry
 # submission: plans produced under the design-system workflow must
 # include a step reading design/tokens.css whenever they touch UI files.
-# Once the skill-companion policies are unioned into the plan linter
-# (Gate 3, tracked in the platform TODO), this rule also runs at
-# lock_in_plan time for every session that invoked /design-system.
+# Since v1.0.0 the plan linter unions skill-companion policies (Gate 3):
+# start ppg with -skills and this rule also runs at lock_in_plan time for
+# every plan that declares skill_id "design-system".
 
 violation contains v if {
 	some step in input.steps

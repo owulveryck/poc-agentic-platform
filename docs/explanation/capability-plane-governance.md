@@ -47,12 +47,12 @@ the ADR policies and the skill's companion policies.
 | Gate | Moment | Mechanism | In this PoC |
 |---|---|---|---|
 | 1 — Publish | Skill enters the registry | CI calls `POST /validate_skill` | ✅ implemented |
-| 2 — Install | Skill enters a workstation/project | Revalidation against current (possibly tightened) policies; content hashes detect tampering | ❌ not implemented |
-| 3 — Runtime | A plan carries a `skill_id` | Plan linter evaluates the skill's companion Rego alongside the ADR policies | ❌ not implemented |
+| 2 — Install | Skill enters a workstation/project | Revalidation against current (possibly tightened) policies; content hashes detect tampering | ❌ not implemented (declared out of scope for v1.0.0) |
+| 3 — Runtime | A plan carries a `skill_id` | Plan linter evaluates the skill's companion Rego alongside the ADR policies | ✅ implemented since v1.0.0 (`ppg -skills`; an unknown `skill_id` rejects the plan) |
 
-The PoC implements Gate 1 only; Gates 2 and 3 are the production path
-(see `AUDIT.md` for the full gap analysis, including the version-skew window
-between publish and runtime that content-hash pinning closes).
+Gates 1 and 3 are implemented; Gate 2 remains the registry-side production
+path (see `AUDIT.md` for the full gap analysis, including the version-skew
+window between publish and runtime that content-hash pinning closes).
 
 ## Debt applied to skills
 

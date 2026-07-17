@@ -45,7 +45,7 @@ Statuses: ✅ conforms · 🟡 partial · ❌ not implemented · 📄 article-on
 | Security tiers 0/1/2 from tool mentions, deliberately keyword-based | `skill.Linter.Tier` (Go substring match) | ✅ as described; the article itself flags paraphrase evasion (production: deny-by-default allowlist). Note: tier logic exists in Go while `privileged` re-implements it in Rego — two sources of truth |
 | Gate 1 (publish, CI) | `/validate_skill` | ✅ (recipe: `docs/how-to/gate-skill-publication-in-ci.md`) |
 | Gate 2 (install revalidation, content hashes) | — | ❌ described as registry-side production path |
-| Gate 3 (plan carries `skill_id`; plan linter unions companion Rego) | — | ❌ `plan.Plan` has no `skill_id` field; `linter.New` loads ADR regos only |
+| Gate 3 (plan carries `skill_id`; plan linter unions companion Rego) | `plan.Plan.SkillID`, `linter.LoadSkillCompanions`, `ppg -skills` | ✅ implemented 2026-07-17 (v1.0.0): unknown `skill_id` rejects the plan (`unknown_skill`, fail closed); verified live against `demo/skills` |
 | Compensatory skills carry `sunset_condition`; skills folded into debt report | — | ❌ article says "next natural extension" — consistent, but unimplemented |
 | `versioning`: version-skew window closed by hash pinning | — | 📄 production path |
 
@@ -116,3 +116,39 @@ time:
 
 Known limit inherited from the enrich plane: discovery matching is
 keyword-based (same PoC posture as ADR retrieval).
+
+## Addendum 2026-07-17 — v1.0.0 hardening and scope decisions
+
+Hardening landed for the 1.0 release (each verified by the red-team
+harness, 19/19, and the full test suite — every package now has tests):
+
+- **Ticket signing key** is no longer hardcoded: `$PPG_TICKET_SECRET` >
+  per-machine generated key file (`$XDG_STATE_HOME/ppg/ticket.key`, 0600),
+  shared by gateway and guards. The scheme stays symmetric (see limits).
+- **Scope-breadth cap** (`scope_breadth_cap`, built-in, deny by default):
+  root-scoped plans (`.`, `*`, `/`, `../x`) are rejected at lock time;
+  `-allow-wide-scope` restores the old behavior. Closes red-team B3.
+- **Gate 3** implemented (see A2 table above).
+- **HTTP hardening**: server timeouts, 16 MiB request-body cap, 400 on
+  empty-field requests (`/enrich`, `/verify_artifact`, `/discover_service`).
+- **Fail-closed fingerprint**: `plan.Hash()` returns an error instead of
+  hashing nil on marshal failure; guards reject malformed hook payloads
+  explicitly.
+- **Release engineering**: CI (build/vet/lint/race + both hermetic
+  harnesses), version stamping (`-version` on all seven binaries),
+  GoReleaser, CHANGELOG.
+
+Declared **out of scope for v1.0.0** (unchanged, still ❌ above):
+
+- Gate 2 (install-time revalidation, content hashes) — registry-side
+  production path.
+- Skill sunset conditions folded into the debt report;
+  `smarttools.ToolMeta` sunset fields consumed by the report.
+- C1 (Bash writes bypass the in-loop hook): `ppg-verify` at apply time is
+  the designed mitigation; wiring it (pre-commit/CI) remains the
+  operator's responsibility.
+- Semantic (embedding-based) ADR and service retrieval; real sandbox and
+  staging backends; asymmetric ticket keys behind a KMS; authenticated
+  gateway API (bind to localhost).
+- `documentation_french/` is frozen at the pre-catalog feature set and
+  says so; the English docs are the reference.

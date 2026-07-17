@@ -8,6 +8,7 @@
     "session_id": { "type": "string", "format": "uuid" },
     "stream_aligned_team": { "type": "string" },
     "intent": { "type": "string", "minLength": 5 },
+    "skill_id": { "type": "string", "description": "Published skill driving this plan (Gate 3: the plan linter unions the skill's companion Rego; unknown ids reject the plan)" },
     "repository_context": {
       "type": "object",
       "required": ["name", "tech_stack"],

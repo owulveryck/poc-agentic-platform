@@ -15,6 +15,7 @@ package linter
 
 import (
 	"fmt"
+	"os"
 	"path"
 	"path/filepath"
 	"strings"
@@ -74,6 +75,10 @@ type Linter struct {
 	// be allow-all and least privilege would be meaningless.
 	AllowWideScope bool
 	eval           *policy.Evaluator
+	// skillCompanions maps a published skill name to the compiled evaluator
+	// of its companion Rego (Gate 3). A nil value marks a skill published
+	// without a companion (tier 0). Populated by LoadSkillCompanions.
+	skillCompanions map[string]*policy.Evaluator
 }
 
 // Artifact is one edited file's actual content — the artifact view of the
@@ -153,7 +158,106 @@ func (l *Linter) Validate(p *plan.Plan) []Violation {
 	if !l.AllowWideScope {
 		violations = wideScopeViolations(p)
 	}
+	if p.SkillID != "" {
+		violations = append(violations, l.skillViolations(p)...)
+	}
 	return append(violations, l.evaluate(planInput{Plan: *p, View: "plan"})...)
+}
+
+// LoadSkillCompanions registers the published skills found in dir (one
+// subdirectory per skill holding SKILL.md and, for tier >= 1, SKILL.rego) and
+// compiles each companion policy — Gate 3 of skill governance: a plan that
+// declares skill_id is additionally evaluated against that skill's companion
+// Rego, and an unknown skill_id rejects the plan.
+func (l *Linter) LoadSkillCompanions(dir string) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return fmt.Errorf("reading skills directory: %w", err)
+	}
+	l.skillCompanions = make(map[string]*policy.Evaluator)
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		skillDir := filepath.Join(dir, e.Name())
+		if _, err := os.Stat(filepath.Join(skillDir, "SKILL.md")); err != nil {
+			continue // not a skill package
+		}
+		name := skillName(filepath.Join(skillDir, "SKILL.md"), e.Name())
+		regoFile := filepath.Join(skillDir, "SKILL.rego")
+		if _, err := os.Stat(regoFile); err != nil {
+			l.skillCompanions[name] = nil // published without a companion
+			continue
+		}
+		pkg, err := regoPackage(regoFile)
+		if err != nil {
+			return fmt.Errorf("skill %s: %w", name, err)
+		}
+		ev, err := policy.Prepare("data."+pkg+".violation", []string{regoFile})
+		if err != nil {
+			return fmt.Errorf("skill %s: %w", name, err)
+		}
+		l.skillCompanions[name] = ev
+	}
+	return nil
+}
+
+// SkillCount reports how many published skills are registered for Gate 3.
+func (l *Linter) SkillCount() int { return len(l.skillCompanions) }
+
+// skillViolations evaluates the plan against the declared skill's companion
+// Rego. It fails closed: an unknown skill id — including every skill id when
+// the gateway was started without -skills — is itself a violation.
+func (l *Linter) skillViolations(p *plan.Plan) []Violation {
+	ev, ok := l.skillCompanions[p.SkillID]
+	if !ok {
+		return []Violation{{
+			PolicyID: "unknown_skill",
+			Message: fmt.Sprintf("plan declares skill_id %q but no published skill with that name is registered with the gateway "+
+				"(start ppg with -skills pointing at the published skills directory, or drop skill_id)", p.SkillID),
+			Nature: Amplifier,
+		}}
+	}
+	violations, err := policy.Eval[Violation](ev, planInput{Plan: *p, View: "plan"})
+	if err != nil {
+		return []Violation{{
+			PolicyID: "linter_eval_error",
+			Message:  err.Error(),
+			Nature:   Compensatory,
+		}}
+	}
+	return violations
+}
+
+// skillName extracts the front-matter name of a SKILL.md, falling back to the
+// directory name when absent.
+func skillName(mdPath, fallback string) string {
+	raw, err := os.ReadFile(mdPath)
+	if err != nil {
+		return fallback
+	}
+	for line := range strings.SplitSeq(string(raw), "\n") {
+		if after, ok := strings.CutPrefix(line, "name:"); ok {
+			if name := strings.TrimSpace(after); name != "" {
+				return name
+			}
+		}
+	}
+	return fallback
+}
+
+// regoPackage returns the package path declared by a .rego file.
+func regoPackage(path string) (string, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	for line := range strings.SplitSeq(string(raw), "\n") {
+		if after, ok := strings.CutPrefix(strings.TrimSpace(line), "package "); ok {
+			return strings.TrimSpace(after), nil
+		}
+	}
+	return "", fmt.Errorf("%s: no package declaration", path)
 }
 
 // wideScopeViolations rejects step targets so broad that the ticket derived

@@ -45,7 +45,9 @@
        fi
    ```
 
-5. Scope note: this covers **Gate 1** (publish). Gate 2 (revalidation at
-   install against possibly-tightened policies) and Gate 3 (companion Rego
-   enforced at `lock_in_plan` via a plan `skill_id`) are described in the
-   reference article but not implemented in this PoC — see `AUDIT.md`.
+5. Scope note: this covers **Gate 1** (publish). Gate 3 (companion Rego
+   enforced at `lock_in_plan` via a plan `skill_id`) is implemented since
+   v1.0.0 — start the gateway with `-skills` pointing at the published
+   skills directory. Gate 2 (revalidation at install against
+   possibly-tightened policies) remains the registry-side production
+   path, not implemented here — see `AUDIT.md`.

@@ -14,6 +14,7 @@ by default; override with `BINDIR`).
 | `-addr` | `:8765` | Listen address |
 | `-adr` | *(none — required)* | Path to the ADR store (Markdown + paired `.rego` files). Startup fails without it, and fails if the directory contains no `*.md`. The fictional demo corpus is `examples/adr` |
 | `-skill-governance` | `skill-governance` | Path to the skill governance Rego policy directory |
+| `-skills` | *(none — Gate 3 off)* | Path to the published skills directory (one subdir per skill with `SKILL.md` [+ `SKILL.rego`]). Enables Gate 3: a plan declaring `skill_id` is additionally linted against that skill's companion Rego; with the flag unset, any `skill_id` is rejected (`unknown_skill`, fail closed) |
 | `-services` | *(none — catalog disabled)* | Path to the service catalog (`*.md` records). Omitted: `/discover_service` answers `SERVICE_CATALOG_UNAVAILABLE` |
 | `-service-policy` | *(none)* | Path to the service-catalog ranking Rego policy directory. Requires `-services`; a policy that fails to load is a startup error |
 | `-ticket-ttl` | `0` | Capability ticket wall-clock lifetime (a Go duration, e.g. `8h`, `30m`). `0` means use `$PPG_TICKET_TTL`, else the built-in default `8h`. The session still bounds the ticket regardless. |

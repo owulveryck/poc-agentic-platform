@@ -5,9 +5,10 @@ import rego.v1
 # Companion policy of the add-payment-method skill (dual-representation
 # artifact, validated at POST /validate_skill). Plans built by this skill
 # add a payment provider: they must create the schema migration before the
-# code that uses it. The rule mirrors the shape of adr/ADR-051.rego; when
-# the plan linter learns to load skill companions (Gate 3), it will union
-# with the ADR policies automatically.
+# code that uses it. The rule mirrors the shape of examples/adr/ADR-051.rego; when
+# the plan linter loads skill companions (Gate 3, since v1.0.0 via
+# ppg -skills), it unions with the ADR policies automatically for every
+# plan that declares skill_id "add-payment-method".
 
 violation contains v if {
 	some step in input.steps

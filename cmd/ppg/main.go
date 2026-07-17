@@ -41,6 +41,7 @@ func main() {
 	addr := flag.String("addr", ":8765", "listen address")
 	adrDir := flag.String("adr", "", "path to the ADR store (required; demo corpus: examples/adr)")
 	skillGovDir := flag.String("skill-governance", "skill-governance", "path to the skill governance Rego policy directory")
+	skillsDir := flag.String("skills", "", "path to the published skills directory (one subdir per skill with SKILL.md [+ SKILL.rego]); enables Gate 3 for plans that declare skill_id")
 	servicesDir := flag.String("services", "", "path to the service catalog directory (optional; omit to disable /discover_service)")
 	servicePolicyDir := flag.String("service-policy", "", "path to the service-catalog ranking Rego policy directory (required with -services for /discover_service)")
 	ticketTTLFlag := flag.Duration("ticket-ttl", 0,
@@ -83,6 +84,16 @@ func main() {
 		log.Printf("WARNING: -allow-wide-scope set; root-scoped plans yield allow-all tickets")
 	}
 	log.Printf("Plan linter ready: %d policies", len(lint.Registry))
+
+	// Gate 3: plans that declare skill_id are additionally evaluated against
+	// the published skill's companion Rego. Without -skills, any skill_id is
+	// an unknown_skill rejection (fail closed).
+	if *skillsDir != "" {
+		if err := lint.LoadSkillCompanions(*skillsDir); err != nil {
+			log.Fatalf("loading skill companions: %v", err)
+		}
+		log.Printf("Skill companions loaded (Gate 3): %d skills", lint.SkillCount())
+	}
 
 	// The ticket signing key is never hardcoded: $PPG_TICKET_SECRET wins,
 	// else a per-machine key is generated once under the state root.

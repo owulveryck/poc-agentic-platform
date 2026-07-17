@@ -53,6 +53,11 @@ type Plan struct {
 	// to achieve. Must be at least 5 characters. Used by the enrich endpoint
 	// to retrieve relevant architectural invariants.
 	Intent string `json:"intent"`
+	// SkillID names the published skill this plan executes, when the session
+	// was driven by one (e.g. "design-system"). Gate 3 of skill governance:
+	// the plan linter unions the skill's companion Rego into the evaluation,
+	// and an unknown skill id rejects the plan. Omit for skill-less sessions.
+	SkillID string `json:"skill_id,omitempty"`
 	// RepositoryContext describes the target repository.
 	RepositoryContext RepoContext `json:"repository_context"`
 	// Steps is the ordered, acyclic execution graph the agent will follow.

@@ -10,6 +10,7 @@ from which the MCP tool schema is auto-generated.
 | `session_id` | uuid | ✅ | Session identifier |
 | `intent` | string (≥5) | ✅ | Natural-language intent |
 | `stream_aligned_team` | string | ❌ | Owning team; used for audit and routing |
+| `skill_id` | string | ❌ | Published skill driving this plan. Gate 3: the linter unions the skill's companion Rego (`ppg -skills`); an unknown id rejects the plan (`unknown_skill`) |
 | `repository_context.name` | string | ✅ | Repository name |
 | `repository_context.tech_stack` | string[] | ✅ | Detected stacks |
 | `repository_context.current_branch` | string | ❌ | Branch being worked on |

@@ -8,6 +8,13 @@
 > leur forme d'origine, avec une glose française à leur première
 > apparition.
 
+> **Note de version** : ce récit est figé sur l'état antérieur à la
+> v1.0.0. Il ne couvre pas les ajouts les plus récents — le catalogue de
+> services (`/discover_service`, tutoriel 13), le harnais red-team
+> (tutoriel 12), la Gate 3 des skills, ni le durcissement 1.0 (clé de
+> signature par machine, plafond de portée des plans). La documentation
+> anglaise ([`docs/`](../docs/README.md)) fait référence.
+
 ## Table des matières
 
 - [Vocabulaire minimal](#vocabulaire-minimal) — lisez-le en diagonale avant de commencer
