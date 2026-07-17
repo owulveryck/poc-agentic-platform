@@ -162,9 +162,9 @@ content and you get `status: OK`.
 curl -s localhost:8765/debt_report | python3 -m json.tool
 ```
 
-**What you should observe**: `transition_debt_ratio` ≈ `0.29`, two
-`pending_sunsets`, and `health: OK` (this PoC ships with two of seven
-artifacts as scaffolding — just under the 0.3 `DEBT_ALERT` threshold). 👉
+**What you should observe**: `transition_debt_ratio` = `0.25`, two
+`pending_sunsets`, and `health: OK` (this PoC ships with two of eight
+artifacts as scaffolding — under the 0.3 `DEBT_ALERT` threshold). 👉
 *You just measured how much temporary scaffolding the platform maintains,
 and under which conditions it will be removed.*
 

@@ -5,7 +5,7 @@ Gateway, materializing both pillars without modifying the agent:
 
 | Pillar | Mechanism | Component |
 |---|---|---|
-| 1 — Amplified planning | MCP tools (`get_platform_guidelines_for_intent`, `lock_in_plan`) | [`mcpserver/`](mcpserver/) |
+| 1 — Amplified planning | MCP tools (`get_platform_guidelines_for_intent`, `find_platform_service`, `lock_in_plan`) | [`mcpserver/`](mcpserver/) |
 | 2 — In-tool gating | `PreToolUse` hook on `Edit\|Write` (exit 2 blocks, stderr goes to the model); gates path scope **and** content (via the gateway's `/verify_artifact`) | [`guard/`](guard/) |
 
 The two are connected by the per-machine **TokenStore** (default
@@ -20,17 +20,19 @@ A fully worked, tested session is in the
 ## Setup
 
 1. **Install all binaries** (from the repository root — one command
-   builds all six: `ppg`, `ppg-mcp-server`, `ppg-guard`,
-   `ppg-copilot-guard`, `ppg-preflight`, `ppg-verify` into `~/.local/bin`):
+   builds all seven: `ppg`, `ppg-mcp-server`, `ppg-guard`,
+   `ppg-copilot-guard`, `ppg-preflight`, `ppg-verify`, `svc-mock`
+   into `~/.local/bin`):
 
    ```bash
    make install
    ```
 
-2. **Start the gateway**:
+2. **Start the gateway** (`-adr` is required; point it at your ADR
+   corpus — here the fictional demo corpus, from the repository root):
 
    ```bash
-   ppg -addr :8765
+   ppg -addr :8765 -adr examples/adr
    ```
 
 3. **Register the MCP server** in the target project:

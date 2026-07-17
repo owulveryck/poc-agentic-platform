@@ -14,6 +14,7 @@ are compiled into a single OPA query over `data.ppg.linter.violation`.
 | `explicit_frozen_files_enumeration` | ADR-070 | `examples/adr/ADR-070.rego` | compensatory | plan | model honors `@deprecated` >95% |
 | `design_tokens_referenced` | ADR-090 | `examples/adr/ADR-090.rego` | amplifier | plan, artifact | — |
 | `per_machine_state_directory` | ADR-100 | `examples/adr/ADR-100.rego` | amplifier | plan | — |
+| `use_cataloged_services` | ADR-110 | `examples/adr/ADR-110.rego` | amplifier | plan, artifact, changeset | — |
 
 ## Enforcement altitudes
 
@@ -37,8 +38,8 @@ Each ADR declares the altitudes its `.rego` implements in its front matter
 
 The debt report additionally counts one tagged translator:
 `generic_raw_to_json_translator` (compensatory, sunset: model reads raw stack
-traces reliably >95%). That makes 2 compensatory artifacts out of 7 total
-(`transition_debt_ratio` ≈ 0.29), so the debt report reports `health: "OK"`.
+traces reliably >95%). That makes 2 compensatory artifacts out of 8 total
+(`transition_debt_ratio` = 0.25), so the debt report reports `health: "OK"`.
 
 ## Smart Tools (`internal/smarttools.Catalog`)
 

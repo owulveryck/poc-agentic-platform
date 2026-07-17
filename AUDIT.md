@@ -22,8 +22,8 @@ Statuses: ✅ conforms · 🟡 partial · ❌ not implemented · 📄 article-on
 | `lock_in_plan()` hard move: OPA/Rego linter, deterministic 422 with semantic violations | `internal/linter`, `examples/adr/*.rego` (package `ppg.linter`) | ✅ verified live (`go_tests_present` rejection, then `PLAN_LOCKED`) |
 | Capability ticket: ephemeral signed JWT, plan fingerprint + least-privilege scope | `internal/ticket` (HS256, configurable TTL (default 8h, session-bound), `plan_hash`, `scope`) | ✅ verified live (claims decoded and matched the locked plan) |
 | Smart Tools: in-tool ticket check, sandbox, semantic errors with `remediation_guidance` | `internal/smarttools/{patchcode,dbmigrate,translate}` | ✅ verified live (`OUT_OF_PLAN_SCOPE`, `GO_SYNTAX_ERROR`, `DATABASE_SCHEMA_CONFLICT`) |
-| Dual-representation ADRs; ADR-042 intentionally declarative-only | `examples/adr/` (7 ADRs, 6 paired `.rego`) | ✅ |
-| Debt report: tagged artifacts, sunset conditions, currently `health: OK` (2/7, ratio ≈ 0.29, just under the 0.3 alert threshold) | `internal/debt`, `GET /debt_report` | ✅ verified live (`transition_debt_ratio` ≈ `0.29`, 2 pending sunsets) |
+| Dual-representation ADRs; ADR-042 intentionally declarative-only | `examples/adr/` (7 ADRs, 6 paired `.rego`, incl. ADR-110) | ✅ |
+| Debt report: tagged artifacts, sunset conditions, currently `health: OK` (2/8 since ADR-110, ratio = 0.25, under the 0.3 alert threshold) | `internal/debt`, `GET /debt_report` | ✅ verified live (`transition_debt_ratio` = `0.25`, 2 pending sunsets) |
 | Claude Code adapter: stdio MCP server, 2 tools, ticket persisted via TokenStore (per-machine `$XDG_STATE_HOME/ppg/projects/<slug>/tickets/<sid>`) | `adapters/claudecode/mcpserver`, `internal/store` | ✅ |
 | `ppg-guard` PreToolUse hook on `Edit\|Write`, exit 2, semantic stderr | `adapters/claudecode/guard` | ✅ verified live (block out-of-scope, pass in-scope, block without ticket) |
 | Copilot path: pre-flight writes `.github/copilot-instructions.md` | `adapters/preflight` | ✅ verified live; gateway URL/repo-context hardcoding fixed during this audit (see below) |
@@ -97,3 +97,21 @@ governance covered in all four quadrants, and two end-to-end agent
 tutorials (Claude Code, GitHub Copilot) whose commands were executed against
 a live gateway. `docs/tutorial.md` and `docs/explanation.md` remain as
 redirect stubs because the published article links to those paths.
+
+## Addendum 2026-07-17 — Service catalog (post-article feature)
+
+The service catalog is a third plane added after the two articles; it is
+not covered by the A1/A2 conformance tables above. Scope audited at commit
+time:
+
+| Claim (docs) | Code location | Status |
+|---|---|---|
+| Catalog store: one Markdown record per service, status `recommended`/`allowed`/`sandbox`/`deprecated`/`forbidden` | `internal/catalog/catalog.go`, corpus `examples/services/` | ✅ (unit-tested, 80.5% coverage) |
+| Rego ranker (`package ppg.catalog`, `Verdict{Allow,Score,Reason}`) over the intent | `internal/catalog/ranker.go`, `examples/service-policy/ranking.rego` | ✅ |
+| Gateway endpoints `POST /discover_service`, `GET /services`, `GET /services/{id}`; `-services` / `-service-policy` flags | `cmd/ppg/main.go` | ✅ |
+| MCP tool `find_platform_service` | `adapters/claudecode/mcpserver` | ✅ |
+| Enforcement: ADR-110 `use_cataloged_services` at plan/artifact/changeset altitudes | `examples/adr/ADR-110*` | ✅ |
+| Runnable end-to-end: `cmd/svc-mock` + 13-check harness | `scripts/service-catalog-demo.sh`, tutorial 13 | ✅ (verified by the harness) |
+
+Known limit inherited from the enrich plane: discovery matching is
+keyword-based (same PoC posture as ADR retrieval).

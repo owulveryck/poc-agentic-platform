@@ -29,10 +29,11 @@ its scope.
    make install
    ```
 
-2. **Start the gateway**:
+2. **Start the gateway** (`-adr` is required; point it at your ADR
+   corpus — here the fictional demo corpus, from the checkout root):
 
    ```bash
-   ppg -addr :8765
+   ppg -addr :8765 -adr examples/adr
    ```
 
 3. **Register the hook** in the target project — copy
@@ -68,8 +69,9 @@ its scope.
 
 5. **(Optional) Add the MCP planning tools** — Copilot supports MCP
    servers. The Claude-Code MCP server exposes
-   `get_platform_guidelines_for_intent` and `lock_in_plan` under the
-   standard protocol; both are usable by Copilot verbatim.
+   `get_platform_guidelines_for_intent`, `find_platform_service` and
+   `lock_in_plan` under the standard protocol; all three are usable by
+   Copilot verbatim.
 
    `ppg-mcp-server` was already installed by `make install` in step 1.
    Register it. The config location depends on the surface:
@@ -112,8 +114,9 @@ its scope.
    `.vscode/mcp.json` is **not** picked up by the Copilot desktop app —
    don't use it there.
 
-   Once registered, `get_platform_guidelines_for_intent` and
-   `lock_in_plan` become native tool calls. On a successful lock the
+   Once registered, `get_platform_guidelines_for_intent`,
+   `find_platform_service` and `lock_in_plan` become native tool
+   calls. On a successful lock the
    MCP server persists the capability ticket through the per-machine
    TokenStore (the guard then reads it back via the same store).
 
