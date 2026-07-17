@@ -37,6 +37,7 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -45,6 +46,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/owulveryck/poc-agentic-platform/internal/plan"
 	"github.com/owulveryck/poc-agentic-platform/internal/store"
+	"github.com/owulveryck/poc-agentic-platform/internal/version"
 )
 
 func gatewayURL() string {
@@ -74,7 +76,13 @@ func main() {
 		"absolute project directory (overrides "+store.EnvProjectDir+" and cwd fallback)")
 	storeRootFlag := flag.String("store-root", "",
 		"per-machine state root (overrides "+store.EnvStoreRoot+"); defaults to $XDG_STATE_HOME/ppg")
+	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Println("ppg-mcp-server " + version.String())
+		return
+	}
 
 	root, err := store.ResolveRoot(*storeRootFlag)
 	if err != nil {
@@ -95,7 +103,7 @@ func main() {
 		log.Fatalf("ppg-mcp-server: cannot open store: %v", err)
 	}
 
-	server := mcp.NewServer(&mcp.Implementation{Name: "ppg", Version: "0.1.0"}, nil)
+	server := mcp.NewServer(&mcp.Implementation{Name: "ppg", Version: version.String()}, nil)
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name: "get_platform_guidelines_for_intent",

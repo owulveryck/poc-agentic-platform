@@ -8,11 +8,13 @@
 # Override the install location:
 #   make install BINDIR=/usr/local/bin
 
-BINDIR ?= $(HOME)/.local/bin
-GO     ?= go
+BINDIR  ?= $(HOME)/.local/bin
+GO      ?= go
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo devel)
+LDFLAGS  = -ldflags "-X github.com/owulveryck/poc-agentic-platform/internal/version.Version=$(VERSION)"
 
 .PHONY: help build quickstart install uninstall setup-claude-code remove-claude-code \
-        setup-github-copilot remove-github-copilot test tidy clean
+        setup-github-copilot remove-github-copilot test lint tidy clean
 
 ## help: Show this help.
 help:
@@ -22,14 +24,14 @@ help:
 ## build: Build all binaries into ./bin/
 build:
 	@mkdir -p bin
-	$(GO) build -o bin/ppg               ./cmd/ppg
-	$(GO) build -o bin/ppg-mcp-server    ./adapters/claudecode/mcpserver
-	$(GO) build -o bin/ppg-guard         ./adapters/claudecode/guard
-	$(GO) build -o bin/ppg-copilot-guard ./adapters/copilot/guard
-	$(GO) build -o bin/ppg-preflight     ./adapters/preflight
-	$(GO) build -o bin/ppg-verify        ./cmd/ppg-verify
-	$(GO) build -o bin/svc-mock          ./cmd/svc-mock
-	@echo "Built into ./bin/"
+	$(GO) build $(LDFLAGS) -o bin/ppg               ./cmd/ppg
+	$(GO) build $(LDFLAGS) -o bin/ppg-mcp-server    ./adapters/claudecode/mcpserver
+	$(GO) build $(LDFLAGS) -o bin/ppg-guard         ./adapters/claudecode/guard
+	$(GO) build $(LDFLAGS) -o bin/ppg-copilot-guard ./adapters/copilot/guard
+	$(GO) build $(LDFLAGS) -o bin/ppg-preflight     ./adapters/preflight
+	$(GO) build $(LDFLAGS) -o bin/ppg-verify        ./cmd/ppg-verify
+	$(GO) build $(LDFLAGS) -o bin/svc-mock          ./cmd/svc-mock
+	@echo "Built into ./bin/ ($(VERSION))"
 
 ## quickstart: Build, start a throwaway gateway on the examples/ demo corpus, and run a guided /enrich + /lock_in_plan + /discover_service tour.
 quickstart: build
@@ -38,14 +40,14 @@ quickstart: build
 ## install: Install binaries into $(BINDIR) (default ~/.local/bin).
 install:
 	@mkdir -p $(BINDIR)
-	$(GO) build -o $(BINDIR)/ppg               ./cmd/ppg
-	$(GO) build -o $(BINDIR)/ppg-mcp-server    ./adapters/claudecode/mcpserver
-	$(GO) build -o $(BINDIR)/ppg-guard         ./adapters/claudecode/guard
-	$(GO) build -o $(BINDIR)/ppg-copilot-guard ./adapters/copilot/guard
-	$(GO) build -o $(BINDIR)/ppg-preflight     ./adapters/preflight
-	$(GO) build -o $(BINDIR)/ppg-verify        ./cmd/ppg-verify
-	$(GO) build -o $(BINDIR)/svc-mock          ./cmd/svc-mock
-	@echo "Installed to $(BINDIR)"
+	$(GO) build $(LDFLAGS) -o $(BINDIR)/ppg               ./cmd/ppg
+	$(GO) build $(LDFLAGS) -o $(BINDIR)/ppg-mcp-server    ./adapters/claudecode/mcpserver
+	$(GO) build $(LDFLAGS) -o $(BINDIR)/ppg-guard         ./adapters/claudecode/guard
+	$(GO) build $(LDFLAGS) -o $(BINDIR)/ppg-copilot-guard ./adapters/copilot/guard
+	$(GO) build $(LDFLAGS) -o $(BINDIR)/ppg-preflight     ./adapters/preflight
+	$(GO) build $(LDFLAGS) -o $(BINDIR)/ppg-verify        ./cmd/ppg-verify
+	$(GO) build $(LDFLAGS) -o $(BINDIR)/svc-mock          ./cmd/svc-mock
+	@echo "Installed to $(BINDIR) ($(VERSION))"
 
 ## uninstall: Remove installed binaries from $(BINDIR).
 uninstall:
@@ -76,6 +78,13 @@ remove-github-copilot:
 ## test: Run all tests.
 test:
 	$(GO) test ./...
+
+## lint: Run go vet and golangci-lint (if installed).
+lint:
+	$(GO) vet ./...
+	@command -v golangci-lint >/dev/null 2>&1 \
+	  && golangci-lint run \
+	  || echo "golangci-lint not installed; ran go vet only"
 
 ## tidy: Run go mod tidy.
 tidy:

@@ -31,6 +31,7 @@ import (
 	"github.com/owulveryck/poc-agentic-platform/internal/smarttools/dbmigrate"
 	"github.com/owulveryck/poc-agentic-platform/internal/smarttools/patchcode"
 	"github.com/owulveryck/poc-agentic-platform/internal/ticket"
+	"github.com/owulveryck/poc-agentic-platform/internal/version"
 )
 
 func main() {
@@ -41,7 +42,13 @@ func main() {
 	servicePolicyDir := flag.String("service-policy", "", "path to the service-catalog ranking Rego policy directory (required with -services for /discover_service)")
 	ticketTTLFlag := flag.Duration("ticket-ttl", 0,
 		"capability ticket lifetime (0 = $PPG_TICKET_TTL, else the built-in default); the session still bounds it")
+	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Println("ppg " + version.String())
+		return
+	}
 
 	ttl, err := resolveTicketTTL(*ticketTTLFlag)
 	if err != nil {

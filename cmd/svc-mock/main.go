@@ -16,12 +16,20 @@ import (
 	"log"
 	"net/http"
 	"sync/atomic"
+
+	"github.com/owulveryck/poc-agentic-platform/internal/version"
 )
 
 func main() {
 	addr := flag.String("addr", ":9110", "listen address")
 	name := flag.String("name", "notify-svc", "which catalog service to impersonate")
+	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Println("svc-mock " + version.String())
+		return
+	}
 
 	log.Printf("svc-mock %q listening on %s", *name, *addr)
 	log.Fatal(http.ListenAndServe(*addr, newHandler(*name)))

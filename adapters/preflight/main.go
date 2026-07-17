@@ -21,6 +21,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/owulveryck/poc-agentic-platform/internal/version"
 )
 
 func gatewayURL() string {
@@ -33,7 +35,13 @@ func gatewayURL() string {
 func main() {
 	repo := flag.String("repo", "checkout-service", "repository name sent as repository_context.name")
 	stack := flag.String("stack", "Go", "comma-separated tech stack sent as repository_context.tech_stack")
+	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Println("ppg-preflight " + version.String())
+		return
+	}
 
 	if flag.NArg() < 1 {
 		log.Fatal(`usage: preflight [-repo <name>] [-stack Go,SQL] "<intent>"`)

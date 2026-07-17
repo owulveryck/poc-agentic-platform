@@ -38,6 +38,7 @@ import (
 
 	"github.com/owulveryck/poc-agentic-platform/internal/smarttools"
 	"github.com/owulveryck/poc-agentic-platform/internal/store"
+	"github.com/owulveryck/poc-agentic-platform/internal/version"
 )
 
 // hookInput is the subset of the hook payloads the guard needs. Content and
@@ -67,7 +68,13 @@ func main() {
 		"absolute project directory (overrides "+store.EnvProjectDir+" and payload cwd)")
 	storeRootFlag := flag.String("store-root", "",
 		"per-machine state root (overrides "+store.EnvStoreRoot+"); defaults to $XDG_STATE_HOME/ppg")
+	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Println("ppg-guard " + version.String())
+		return
+	}
 
 	payload, err := os.ReadFile("/dev/stdin")
 	if err != nil {

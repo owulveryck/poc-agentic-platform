@@ -29,6 +29,7 @@ import (
 
 	"github.com/owulveryck/poc-agentic-platform/internal/plan"
 	"github.com/owulveryck/poc-agentic-platform/internal/store"
+	"github.com/owulveryck/poc-agentic-platform/internal/version"
 )
 
 func main() {
@@ -37,7 +38,13 @@ func main() {
 	projectDirFlag := flag.String("project-dir", "", "absolute project directory (overrides "+store.EnvProjectDir+")")
 	storeRootFlag := flag.String("store-root", "", "per-machine state root (overrides "+store.EnvStoreRoot+")")
 	gateway := flag.String("gateway", gatewayURL(), "Platform Planning Gateway base URL")
+	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Println("ppg-verify " + version.String())
+		return
+	}
 
 	if err := run(*staged, *planFile, *projectDirFlag, *storeRootFlag, *gateway); err != nil {
 		fmt.Fprintln(os.Stderr, "ppg-verify: "+err.Error())

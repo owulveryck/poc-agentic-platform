@@ -1,0 +1,79 @@
+version: 2
+
+project_name: ppg
+
+before:
+  hooks:
+    - go mod verify
+
+builds:
+  - id: ppg
+    main: ./cmd/ppg
+    binary: ppg
+    env: [CGO_ENABLED=0]
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    ldflags: &ldflags
+      - -s -w -X github.com/owulveryck/poc-agentic-platform/internal/version.Version={{.Version}}
+  - id: ppg-verify
+    main: ./cmd/ppg-verify
+    binary: ppg-verify
+    env: [CGO_ENABLED=0]
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    ldflags: *ldflags
+  - id: ppg-mcp-server
+    main: ./adapters/claudecode/mcpserver
+    binary: ppg-mcp-server
+    env: [CGO_ENABLED=0]
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    ldflags: *ldflags
+  - id: ppg-guard
+    main: ./adapters/claudecode/guard
+    binary: ppg-guard
+    env: [CGO_ENABLED=0]
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    ldflags: *ldflags
+  - id: ppg-copilot-guard
+    main: ./adapters/copilot/guard
+    binary: ppg-copilot-guard
+    env: [CGO_ENABLED=0]
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    ldflags: *ldflags
+  - id: ppg-preflight
+    main: ./adapters/preflight
+    binary: ppg-preflight
+    env: [CGO_ENABLED=0]
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    ldflags: *ldflags
+  - id: svc-mock
+    main: ./cmd/svc-mock
+    binary: svc-mock
+    env: [CGO_ENABLED=0]
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    ldflags: *ldflags
+
+archives:
+  - formats: [tar.gz]
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    files:
+      - README.md
+      - LICENSE*
+      - examples/**
+      - skill-governance/**
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
