@@ -12,23 +12,48 @@ by default; override with `BINDIR`).
 | Flag | Default | Description |
 |---|---|---|
 | `-addr` | `:8765` | Listen address |
-| `-adr` | `adr` | Path to the ADR store (Markdown + paired `.rego` files) |
+| `-adr` | *(none — required)* | Path to the ADR store (Markdown + paired `.rego` files). Startup fails without it, and fails if the directory contains no `*.md`. The fictional demo corpus is `examples/adr` |
 | `-skill-governance` | `skill-governance` | Path to the skill governance Rego policy directory |
+| `-services` | *(none — catalog disabled)* | Path to the service catalog (`*.md` records). Omitted: `/discover_service` answers `SERVICE_CATALOG_UNAVAILABLE` |
+| `-service-policy` | *(none)* | Path to the service-catalog ranking Rego policy directory. Requires `-services`; a policy that fails to load is a startup error |
 | `-ticket-ttl` | `0` | Capability ticket wall-clock lifetime (a Go duration, e.g. `8h`, `30m`). `0` means use `$PPG_TICKET_TTL`, else the built-in default `8h`. The session still bounds the ticket regardless. |
 
 The ticket lifetime resolves as `-ticket-ttl` (when > 0) > `$PPG_TICKET_TTL`
 > built-in `8h`; a malformed `PPG_TICKET_TTL` is a startup error. Startup logs
 the resolved TTL.
 
-Startup logs three readiness lines: `ADR store loaded: N invariants`,
-`Plan linter ready: N policies`, `Skill governance linter ready`, then
+Startup logs the readiness lines: `ADR store loaded: N invariants`,
+`Plan linter ready: N policies`, `Skill governance linter ready`,
+`Service catalog loaded: N services`, then
 `Platform Planning Gateway listening on <addr>`.
+
+The service catalog is an optional capability with three configurations:
+
+- neither `-services` nor `-service-policy`: catalog disabled — a notice is
+  logged and `/discover_service` returns `503 SERVICE_CATALOG_UNAVAILABLE`;
+- `-services` alone: the catalog is listable (`GET /services`) but discovery
+  stays disabled (logged as a warning);
+- both flags: discovery is live. `-service-policy` without `-services`, an
+  empty catalog directory, or a ranking policy that fails to compile are all
+  startup errors.
+
+## `cmd/svc-mock` — local service stand-in
+
+```bash
+svc-mock -addr :9110 -name notify-svc        # POST /v1/messages -> 202 queued
+svc-mock -addr :9120 -name payments-gateway  # POST /v1/charges  -> 201 authorized
+```
+
+A dependency-free mock of a cataloged service so the discovery tutorial runs
+out-of-the-box (the endpoint the catalog returns actually answers). `GET
+/healthz` is always `200`; any other `-name` serves a generic echo endpoint.
 
 ## `adapters/claudecode/mcpserver` — MCP server (stdio)
 
-Exposes `get_platform_guidelines_for_intent` and `lock_in_plan` as native
-tools; persists the capability ticket through the per-machine `TokenStore`
-on a successful lock (see [capability-ticket.md](capability-ticket.md#storage-layout)).
+Exposes `get_platform_guidelines_for_intent`, `find_platform_service`, and
+`lock_in_plan` as native tools; persists the capability ticket through the
+per-machine `TokenStore` on a successful lock (see
+[capability-ticket.md](capability-ticket.md#storage-layout)).
 
 | Flag | Env var | Default | Description |
 |---|---|---|---|

@@ -7,7 +7,7 @@
 > New to Rego? Read the [Rego survival kit](rego-survival-kit.md) first
 > (5 minutes, covers everything this platform uses).
 
-1. Create `adr/ADR-0XX.rego` next to the ADR Markdown, in package
+1. Create `examples/adr/ADR-0XX.rego` next to the ADR Markdown, in package
    `ppg.linter`, using the `violation contains v if {...}` idiom:
 
    ```rego
@@ -51,7 +51,7 @@
 
 5. Add a test in `internal/linter/linter_test.go` with a copy of the policy
    in `internal/linter/testdata/` (mind the drift: testdata regos are copies
-   of the `adr/` ones), then run:
+   of the `examples/adr/` ones), then run:
 
    ```bash
    go test ./internal/linter/ ./internal/debt/

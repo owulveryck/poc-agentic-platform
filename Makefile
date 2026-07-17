@@ -1,9 +1,9 @@
 # PPG — Platform Planning Gateway
 #
 # Common workflow:
+#   make quickstart    # build + one-minute guided demo on the examples/ corpus
 #   make install       # build + install binaries into ~/.local/bin
 #   make test          # run all tests
-#   ppg -addr :8765    # run the gateway (from anywhere on your PATH)
 #
 # Override the install location:
 #   make install BINDIR=/usr/local/bin
@@ -11,7 +11,7 @@
 BINDIR ?= $(HOME)/.local/bin
 GO     ?= go
 
-.PHONY: help build install uninstall setup-claude-code remove-claude-code \
+.PHONY: help build quickstart install uninstall setup-claude-code remove-claude-code \
         setup-github-copilot remove-github-copilot test tidy clean
 
 ## help: Show this help.
@@ -28,7 +28,12 @@ build:
 	$(GO) build -o bin/ppg-copilot-guard ./adapters/copilot/guard
 	$(GO) build -o bin/ppg-preflight     ./adapters/preflight
 	$(GO) build -o bin/ppg-verify        ./cmd/ppg-verify
+	$(GO) build -o bin/svc-mock          ./cmd/svc-mock
 	@echo "Built into ./bin/"
+
+## quickstart: Build, start a throwaway gateway on the examples/ demo corpus, and run a guided /enrich + /lock_in_plan + /discover_service tour.
+quickstart: build
+	@bash scripts/quickstart.sh
 
 ## install: Install binaries into $(BINDIR) (default ~/.local/bin).
 install:
@@ -39,6 +44,7 @@ install:
 	$(GO) build -o $(BINDIR)/ppg-copilot-guard ./adapters/copilot/guard
 	$(GO) build -o $(BINDIR)/ppg-preflight     ./adapters/preflight
 	$(GO) build -o $(BINDIR)/ppg-verify        ./cmd/ppg-verify
+	$(GO) build -o $(BINDIR)/svc-mock          ./cmd/svc-mock
 	@echo "Installed to $(BINDIR)"
 
 ## uninstall: Remove installed binaries from $(BINDIR).
@@ -48,7 +54,8 @@ uninstall:
 	       $(BINDIR)/ppg-guard \
 	       $(BINDIR)/ppg-copilot-guard \
 	       $(BINDIR)/ppg-preflight \
-	       $(BINDIR)/ppg-verify
+	       $(BINDIR)/ppg-verify \
+	       $(BINDIR)/svc-mock
 
 ## setup-claude-code: Register the ppg MCP server + hooks user-scope for Claude Code (DRY_RUN=1 to preview, FORCE=1 to overwrite).
 setup-claude-code:

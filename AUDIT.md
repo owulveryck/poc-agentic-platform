@@ -19,10 +19,10 @@ Statuses: ✅ conforms · 🟡 partial · ❌ not implemented · 📄 article-on
 | Claim (article) | Code location | Status |
 |---|---|---|
 | `enrich()` soft move: ADR retrieval via scope selectors, no hard-coded business pattern | `internal/adr`, `internal/enrich`, `POST /enrich` | ✅ verified live (ADR-042 + ADR-070 returned for a payment intent) |
-| `lock_in_plan()` hard move: OPA/Rego linter, deterministic 422 with semantic violations | `internal/linter`, `adr/*.rego` (package `ppg.linter`) | ✅ verified live (`go_tests_present` rejection, then `PLAN_LOCKED`) |
+| `lock_in_plan()` hard move: OPA/Rego linter, deterministic 422 with semantic violations | `internal/linter`, `examples/adr/*.rego` (package `ppg.linter`) | ✅ verified live (`go_tests_present` rejection, then `PLAN_LOCKED`) |
 | Capability ticket: ephemeral signed JWT, plan fingerprint + least-privilege scope | `internal/ticket` (HS256, configurable TTL (default 8h, session-bound), `plan_hash`, `scope`) | ✅ verified live (claims decoded and matched the locked plan) |
 | Smart Tools: in-tool ticket check, sandbox, semantic errors with `remediation_guidance` | `internal/smarttools/{patchcode,dbmigrate,translate}` | ✅ verified live (`OUT_OF_PLAN_SCOPE`, `GO_SYNTAX_ERROR`, `DATABASE_SCHEMA_CONFLICT`) |
-| Dual-representation ADRs; ADR-042 intentionally declarative-only | `adr/` (6 ADRs, 5 paired `.rego`) | ✅ |
+| Dual-representation ADRs; ADR-042 intentionally declarative-only | `examples/adr/` (7 ADRs, 6 paired `.rego`) | ✅ |
 | Debt report: tagged artifacts, sunset conditions, currently `health: OK` (2/7, ratio ≈ 0.29, just under the 0.3 alert threshold) | `internal/debt`, `GET /debt_report` | ✅ verified live (`transition_debt_ratio` ≈ `0.29`, 2 pending sunsets) |
 | Claude Code adapter: stdio MCP server, 2 tools, ticket persisted via TokenStore (per-machine `$XDG_STATE_HOME/ppg/projects/<slug>/tickets/<sid>`) | `adapters/claudecode/mcpserver`, `internal/store` | ✅ |
 | `ppg-guard` PreToolUse hook on `Edit\|Write`, exit 2, semantic stderr | `adapters/claudecode/guard` | ✅ verified live (block out-of-scope, pass in-scope, block without ticket) |

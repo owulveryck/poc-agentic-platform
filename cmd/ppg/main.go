@@ -3,6 +3,9 @@
 //	POST /enrich           — amplifier context (ADR invariants) for an intent
 //	POST /lock_in_plan     — deterministic plan linter + capability ticket
 //	POST /tools/{name}     — Smart Platform Tools (ticket verified in-tool)
+//	POST /discover_service — policy-ranked service catalog: the sanctioned service for a capability
+//	GET  /services         — list the service catalog
+//	GET  /services/{id}    — one catalog record
 //	GET  /debt_report      — transition-debt governance report
 //	POST /validate_skill   — enterprise skill governance linter (structure + security tier)
 package main
@@ -18,6 +21,7 @@ import (
 	"time"
 
 	"github.com/owulveryck/poc-agentic-platform/internal/adr"
+	"github.com/owulveryck/poc-agentic-platform/internal/catalog"
 	"github.com/owulveryck/poc-agentic-platform/internal/debt"
 	"github.com/owulveryck/poc-agentic-platform/internal/enrich"
 	"github.com/owulveryck/poc-agentic-platform/internal/linter"
@@ -31,8 +35,10 @@ import (
 
 func main() {
 	addr := flag.String("addr", ":8765", "listen address")
-	adrDir := flag.String("adr", "adr", "path to the ADR store")
+	adrDir := flag.String("adr", "", "path to the ADR store (required; demo corpus: examples/adr)")
 	skillGovDir := flag.String("skill-governance", "skill-governance", "path to the skill governance Rego policy directory")
+	servicesDir := flag.String("services", "", "path to the service catalog directory (optional; omit to disable /discover_service)")
+	servicePolicyDir := flag.String("service-policy", "", "path to the service-catalog ranking Rego policy directory (required with -services for /discover_service)")
 	ticketTTLFlag := flag.Duration("ticket-ttl", 0,
 		"capability ticket lifetime (0 = $PPG_TICKET_TTL, else the built-in default); the session still bounds it")
 	flag.Parse()
@@ -42,9 +48,17 @@ func main() {
 		log.Fatalf("resolving ticket TTL: %v", err)
 	}
 
+	if *adrDir == "" {
+		log.Fatalf("ppg: -adr is required. Pass the path to your ADR store; for the fictional demo corpus, run from the repo root: ppg -adr examples/adr")
+	}
 	store, err := adr.Load(*adrDir)
 	if err != nil {
 		log.Fatalf("loading ADR store: %v", err)
+	}
+	// filepath.Glob succeeds silently on a missing directory, so an empty
+	// store means a typo'd -adr path, not a valid corpus.
+	if len(store.Invariants) == 0 {
+		log.Fatalf("ppg: no ADRs (*.md) found in %s — check the -adr path", *adrDir)
 	}
 	log.Printf("ADR store loaded: %d invariants", len(store.Invariants))
 
@@ -60,6 +74,34 @@ func main() {
 	}
 	log.Printf("Skill governance linter ready")
 
+	// The service catalog is an optional capability: without -services the
+	// gateway serves everything except discovery.
+	var catStore *catalog.Store
+	var ranker *catalog.Ranker
+	switch {
+	case *servicesDir == "" && *servicePolicyDir == "":
+		log.Printf("Service catalog disabled (no -services); /discover_service will answer SERVICE_CATALOG_UNAVAILABLE")
+	case *servicesDir == "":
+		log.Fatalf("ppg: -service-policy requires -services")
+	default:
+		catStore, err = catalog.Load(*servicesDir)
+		if err != nil {
+			log.Fatalf("loading service catalog: %v", err)
+		}
+		if len(catStore.All()) == 0 {
+			log.Fatalf("ppg: no service records (*.md) found in %s — check the -services path", *servicesDir)
+		}
+		log.Printf("Service catalog loaded: %d services", len(catStore.All()))
+		if *servicePolicyDir == "" {
+			log.Printf("WARNING: no -service-policy given; catalog loaded but /discover_service is disabled")
+		} else {
+			ranker, err = catalog.NewRanker(*servicePolicyDir)
+			if err != nil {
+				log.Fatalf("loading service ranking policy: %v", err)
+			}
+		}
+	}
+
 	smarttools.Register(patchcode.Tool{}, "amplifier", "")
 	smarttools.Register(dbmigrate.Tool{}, "amplifier", "")
 
@@ -73,7 +115,7 @@ func main() {
 		return msgs
 	})
 
-	mux := buildMux(store, lint, skillLint, ttl)
+	mux := buildMux(store, lint, skillLint, catStore, ranker, ttl)
 
 	log.Printf("Capability ticket TTL: %s (bounded by the session)", ttl)
 	log.Printf("Platform Planning Gateway listening on %s", *addr)
@@ -83,13 +125,16 @@ func main() {
 // buildMux wires the gateway routes. All handlers close over dependencies that
 // are read-only after construction, so the returned mux is safe to serve
 // concurrently (see cmd/ppg/main_test.go, which exercises it under -race).
-func buildMux(store *adr.Store, lint *linter.Linter, skillLint *skill.Linter, ttl time.Duration) *http.ServeMux {
+func buildMux(store *adr.Store, lint *linter.Linter, skillLint *skill.Linter, catStore *catalog.Store, ranker *catalog.Ranker, ttl time.Duration) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /enrich", handleEnrich(store))
 	mux.HandleFunc("POST /lock_in_plan", handleLockInPlan(lint, ttl))
 	mux.HandleFunc("POST /tools/{name}", handleTool)
 	mux.HandleFunc("POST /verify_artifact", handleVerifyArtifact(lint))
 	mux.HandleFunc("POST /verify_changeset", handleVerifyChangeset(lint))
+	mux.HandleFunc("POST /discover_service", handleDiscoverService(catStore, ranker))
+	mux.HandleFunc("GET /services", handleListServices(catStore))
+	mux.HandleFunc("GET /services/{id}", handleGetService(catStore))
 	mux.HandleFunc("GET /debt_report", handleDebtReport(lint.Registry))
 	mux.HandleFunc("POST /validate_skill", handleValidateSkill(skillLint))
 	return mux
@@ -307,6 +352,133 @@ func handleValidateSkill(lint *skill.Linter) http.HandlerFunc {
 func handleDebtReport(registry map[string]linter.PolicyMeta) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, debt.Compute(registry))
+	}
+}
+
+// discoveredService is the shape returned for a catalog entry. The recommended
+// service carries the full endpoint + API usage; alternatives are lighter.
+type discoveredService struct {
+	ServiceID    string `json:"service_id"`
+	Name         string `json:"name"`
+	Capability   string `json:"capability,omitempty"`
+	Status       string `json:"status"`
+	Tier         int    `json:"tier,omitempty"`
+	Endpoint     string `json:"endpoint,omitempty"`
+	OwnerTeam    string `json:"owner_team,omitempty"`
+	APIUsage     string `json:"api_usage,omitempty"`
+	SupersededBy string `json:"superseded_by,omitempty"`
+	Reason       string `json:"reason,omitempty"`
+}
+
+// handleDiscoverService answers "which sanctioned service should I use for this
+// capability?" — the discovery counterpart of /enrich. It retrieves the
+// candidates for a capability (or intent), ranks them with the policy-as-code
+// ranker, and returns the recommended service (with endpoint + API usage) plus
+// the alternatives and why each was or was not chosen.
+func handleDiscoverService(catStore *catalog.Store, ranker *catalog.Ranker) http.HandlerFunc {
+	type request struct {
+		Capability        string         `json:"capability"`
+		Intent            string         `json:"intent"`
+		RepositoryContext map[string]any `json:"repository_context"`
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		if catStore == nil || ranker == nil {
+			httpError(w, http.StatusServiceUnavailable, map[string]any{
+				"status":   "SERVICE_CATALOG_UNAVAILABLE",
+				"guidance": "The gateway was started without a service catalog and/or ranking policy (see -services / -service-policy).",
+			})
+			return
+		}
+		var req request
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			httpError(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+			return
+		}
+		candidates := catStore.Retrieve(req.Capability, req.Intent)
+		capability := req.Capability
+		if capability == "" && len(candidates) > 0 {
+			capability = candidates[0].Capability
+		}
+		if len(candidates) == 0 {
+			writeJSON(w, http.StatusOK, map[string]any{
+				"status":       "NO_SERVICE_FOR_CAPABILITY",
+				"capability":   capability,
+				"alternatives": []discoveredService{},
+				"policy_notes": []string{},
+			})
+			return
+		}
+		ranked, err := ranker.Rank(capability, req.RepositoryContext, candidates)
+		if err != nil {
+			httpError(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			return
+		}
+
+		var recommended *discoveredService
+		alternatives := []discoveredService{}
+		policyNotes := []string{}
+		for _, rk := range ranked {
+			ds := discoveredService{
+				ServiceID:    rk.Service.ServiceID,
+				Name:         rk.Service.Name,
+				Capability:   rk.Service.Capability,
+				Status:       rk.Service.Status,
+				Tier:         rk.Service.Tier,
+				Endpoint:     rk.Service.Endpoint,
+				OwnerTeam:    rk.Service.OwnerTeam,
+				SupersededBy: rk.Service.SupersededBy,
+				Reason:       rk.Verdict.Reason,
+			}
+			if recommended == nil && rk.Verdict.Allow {
+				ds.APIUsage = rk.Service.APIUsage
+				picked := ds
+				recommended = &picked
+				continue
+			}
+			alternatives = append(alternatives, ds)
+			if !rk.Verdict.Allow && rk.Verdict.Reason != "" {
+				policyNotes = append(policyNotes, rk.Verdict.Reason)
+			}
+		}
+
+		status := "SERVICE_FOUND"
+		if recommended == nil {
+			status = "NO_SERVICE_FOR_CAPABILITY"
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"status":       status,
+			"capability":   capability,
+			"recommended":  recommended,
+			"alternatives": alternatives,
+			"policy_notes": policyNotes,
+		})
+	}
+}
+
+// handleListServices returns the whole catalog (metadata + API usage).
+func handleListServices(catStore *catalog.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if catStore == nil {
+			writeJSON(w, http.StatusOK, map[string]any{"services": []catalog.Service{}})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"services": catStore.All()})
+	}
+}
+
+// handleGetService returns a single catalog record by service_id.
+func handleGetService(catStore *catalog.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		if catStore != nil {
+			if svc, ok := catStore.Get(id); ok {
+				writeJSON(w, http.StatusOK, svc)
+				return
+			}
+		}
+		httpError(w, http.StatusNotFound, map[string]any{
+			"status": "SERVICE_NOT_FOUND", "service_id": id,
+		})
 	}
 }
 

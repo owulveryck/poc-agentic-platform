@@ -166,7 +166,7 @@ thing:
 |---|---|---|
 | Enforcement lever | `ppg-copilot-guard` (path scope) | the same `ppg-copilot-guard` (content, via `/verify_artifact`) |
 | Reads from payload | `tool_input.path` | `tool_input.new_str` + `tool_input.path` |
-| Where the rule lives | the ticket's `scope.allow_modify` | `adr/ADR-090.rego`, artifact view |
+| Where the rule lives | the ticket's `scope.allow_modify` | `examples/adr/ADR-090.rego`, artifact view |
 | Denial semantics | `OUT_OF_PLAN_SCOPE` (this file isn't in the ticket) | `ARCHITECTURAL_INVARIANT_VIOLATION` (this *value* isn't allowed) |
 
 The path scope comes from the ticket; the content invariant is Rego in

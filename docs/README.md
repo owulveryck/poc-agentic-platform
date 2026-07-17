@@ -26,6 +26,7 @@ one directory each.
 10. [Claude Code on a governed workstation](tutorials/10-claude-on-governed-workstation.md) — the same demo for Claude Code
 11. [With and without the Gateway — a side-by-side demo](tutorials/11-with-and-without-the-gateway.md) — same skill, same prompts, two projects: without the platform a small model drifts under an adversarial prompt; with the platform, the drift is deterministically refused
 12. [Try to bypass the gateway (and watch it hold)](tutorials/12-bypassing-the-gateway.md) — a red-team catalogue of every trick against the Claude Code loop (no ticket, out-of-scope, traversal, sibling-prefix, forbidden content, session replay, tampered/forged ticket, gateway-down, self-disable) paired with its refusal — plus the honest limits caught only at apply time by `ppg-verify`; asserted end-to-end by `scripts/redteam-bypass.sh`
+13. [Discover and use a platform service](tutorials/13-discover-a-platform-service.md) — the service catalog: the agent asks the gateway which sanctioned service provides a capability (notifications, payments), gets the endpoint + API usage ranked by policy, and is refused when it reaches for a deprecated/forbidden provider; asserted by `scripts/service-catalog-demo.sh`
 
 ## How-to guides — task-oriented
 
@@ -41,11 +42,13 @@ one directory each.
 - [Set up a governed workstation](how-to/set-up-a-governed-workstation.md) — install the platform user-wide so every project on this machine is governed by default; tutorials 9 and 10 demonstrate the result
 - [Add a skill governance rule](how-to/add-a-skill-governance-rule.md)
 - [Gate skill publication in CI](how-to/gate-skill-publication-in-ci.md)
+- [Add a service to the catalog](how-to/add-a-service-to-the-catalog.md) — make a shared capability discoverable and, when needed, enforced
 
 ## Reference — information-oriented
 
 - [HTTP API](reference/http-api.md) · [Plan contract](reference/plan-contract.md) · [ADR front matter](reference/adr-front-matter.md)
 - [Capability ticket](reference/capability-ticket.md) · [Policy catalog](reference/policy-catalog.md) · [Skill governance](reference/skill-governance.md)
+- [Service catalog](reference/service-catalog.md) — record schema, ranking policy, `/discover_service` + `/services` endpoints
 - [Statuses and error codes](reference/error-codes.md) · [Gateway and adapter binaries](reference/gateway-cli.md)
 
 ## Explanation — understanding-oriented

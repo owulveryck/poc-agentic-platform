@@ -1,6 +1,7 @@
 # ADR front matter
 
-Every file matching `adr/*.md` is loaded at gateway startup. The YAML front
+Every `*.md` file in the ADR store (the `-adr` directory — `examples/adr/`
+for this repo's demo corpus) is loaded at gateway startup. The YAML front
 matter drives retrieval (`/enrich`) and enforcement (`/lock_in_plan`); the
 Markdown body after the front matter is the semantic invariant text injected
 into the agent's planning context.

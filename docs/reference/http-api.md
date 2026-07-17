@@ -12,6 +12,9 @@
 | `POST` | `/tools/{name}` | `{ticket, targets, payload}` | `200` tool result | `403` `REFUSED` (`TOOL_NOT_IN_PLAN` \| `OUT_OF_PLAN_SCOPE`) · `401` invalid/expired ticket |
 | `POST` | `/verify_artifact` | `{ticket, path, content, op?}` | `200` `{status: ARTIFACT_OK}` | `422` `ARTIFACT_REJECTED` + `violations[]` · `403` `REFUSED` (path out of scope) · `401` invalid/expired ticket · `400` malformed body |
 | `POST` | `/verify_changeset` | `{ticket, files[], plan_hash?}` | `200` `{status: CHANGESET_OK}` | `422` `CHANGESET_REJECTED` + `violations[]` · `409` `PLAN_SUBSTITUTION` · `403` `REFUSED` · `401` invalid/expired ticket · `400` malformed body |
+| `POST` | `/discover_service` | `{capability?, intent?, repository_context?}` | `200` `{status: SERVICE_FOUND, recommended, alternatives[], policy_notes[]}` | `200` `NO_SERVICE_FOR_CAPABILITY` · `503` `SERVICE_CATALOG_UNAVAILABLE` · `400` malformed body |
+| `GET` | `/services` | — | `200` `{services[]}` | — |
+| `GET` | `/services/{id}` | — | `200` service record | `404` `SERVICE_NOT_FOUND` |
 | `GET` | `/debt_report` | — | `200` debt report | — |
 | `POST` | `/validate_skill` | skill (see [skill governance](skill-governance.md)) | `200` `{status: SKILL_VALID, tier}` | `400` malformed body · `422` `SKILL_REJECTED` + `violations[]` |
 
@@ -141,6 +144,29 @@ Responses:
 | `403` | `{status: REFUSED, code, attempted, allowed, guidance}` — a changed path is outside the ticket scope |
 | `401` | `{error}` — invalid or expired ticket |
 | `400` | `{error}` — malformed body |
+
+## `POST /discover_service`
+
+Capability discovery over the [service catalog](service-catalog.md): retrieves
+the candidate services for a capability (or intent), ranks them with the
+policy-as-code ranker, and returns the recommended one plus alternatives. Full
+schema and examples in [service-catalog.md](service-catalog.md).
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `capability` | string | ❌\* | The capability needed (e.g. `notification`, `payment`) |
+| `intent` | string | ❌\* | Natural-language intent; resolves the capability from selectors when `capability` is absent (\*supply one of the two) |
+| `repository_context` | object | ❌ | Passed to the ranking policy for org rules (region, compliance, …) |
+
+Response (`200`): `{status, capability, recommended, alternatives[],
+policy_notes[]}`. `status` is `SERVICE_FOUND` when a service is recommended,
+else `NO_SERVICE_FOR_CAPABILITY`. `503 SERVICE_CATALOG_UNAVAILABLE` when the
+gateway was started without a catalog and/or ranking policy.
+
+## `GET /services` · `GET /services/{id}`
+
+`GET /services` returns `{services[]}` (the whole catalog). `GET /services/{id}`
+returns one record, or `404 SERVICE_NOT_FOUND`.
 
 ## `GET /debt_report`
 

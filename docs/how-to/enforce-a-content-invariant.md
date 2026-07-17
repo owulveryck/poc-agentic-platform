@@ -8,7 +8,7 @@
 >
 > Worked example: [tutorial 8](../tutorials/08-design-system-end-to-end.md)
 > ships this pattern as the design-system enforcer, backed by
-> `adr/ADR-090.rego`.
+> `examples/adr/ADR-090.rego`.
 
 ## The canonical way: an ADR with an artifact-view rule
 
@@ -45,7 +45,7 @@ Pick the right layer:
 
 ## Worked example — ADR-090's content rules
 
-`adr/ADR-090.rego` is the reference. Its plan-altitude rule requires a
+`examples/adr/ADR-090.rego` is the reference. Its plan-altitude rule requires a
 `design/tokens.css` read step; its **content** rules unify the artifact
 and changeset views so one rule set covers both altitudes:
 
@@ -120,10 +120,10 @@ enforcement:
 
 ## Ship it
 
-1. Drop `adr/ADR-XXX-your-invariant.md` (front matter + invariant prose)
-   and `adr/ADR-XXX.rego` (package `ppg.linter`, your `input.view ==
+1. Drop `examples/adr/ADR-XXX-your-invariant.md` (front matter + invariant prose)
+   and `examples/adr/ADR-XXX.rego` (package `ppg.linter`, your `input.view ==
    "artifact"` rule) next to the existing ADRs.
-2. Restart the gateway — it compiles every `adr/*.rego` into the corpus
+2. Restart the gateway — it compiles every `examples/adr/*.rego` into the corpus
    at startup. Confirm with the `Plan linter ready: N policies` line.
 3. That's it. `ppg-guard` / `ppg-copilot-guard` now block violating edits
    in-loop via `/verify_artifact`; `ppg-verify` catches them at apply

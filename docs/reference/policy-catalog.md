@@ -9,11 +9,11 @@ are compiled into a single OPA query over `data.ppg.linter.violation`.
 | `policy_id` | Source ADR | Rego file | nature | altitudes | sunset condition |
 |---|---|---|---|---|---|
 | `external_call_via_proxy` | ADR-042 | — (declarative-only) | amplifier | — | — |
-| `db_migration_precedes_code` | ADR-051 | `adr/ADR-051.rego` | amplifier | plan | — |
-| `go_tests_present` | ADR-060 | `adr/ADR-060.rego` | amplifier | plan | — |
-| `explicit_frozen_files_enumeration` | ADR-070 | `adr/ADR-070.rego` | compensatory | plan | model honors `@deprecated` >95% |
-| `design_tokens_referenced` | ADR-090 | `adr/ADR-090.rego` | amplifier | plan, artifact | — |
-| `per_machine_state_directory` | ADR-100 | `adr/ADR-100.rego` | amplifier | plan | — |
+| `db_migration_precedes_code` | ADR-051 | `examples/adr/ADR-051.rego` | amplifier | plan | — |
+| `go_tests_present` | ADR-060 | `examples/adr/ADR-060.rego` | amplifier | plan | — |
+| `explicit_frozen_files_enumeration` | ADR-070 | `examples/adr/ADR-070.rego` | compensatory | plan | model honors `@deprecated` >95% |
+| `design_tokens_referenced` | ADR-090 | `examples/adr/ADR-090.rego` | amplifier | plan, artifact | — |
+| `per_machine_state_directory` | ADR-100 | `examples/adr/ADR-100.rego` | amplifier | plan | — |
 
 ## Enforcement altitudes
 

@@ -206,7 +206,7 @@ already existed).
 
 Content invariants do not need a project hook: the user-scope guard
 already sends every edit to the gateway's `/verify_artifact`, so an ADR's
-artifact-view rule (e.g. `adr/ADR-090.rego` for the `design-system`
+artifact-view rule (e.g. `examples/adr/ADR-090.rego` for the `design-system`
 skill) is enforced machine-wide. Project-level `.github/hooks/*.json`
 still takes precedence when present, so a project can add a bespoke hook
 on top of the user-scope gates for the rare check that cannot be

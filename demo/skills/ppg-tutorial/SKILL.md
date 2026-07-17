@@ -14,7 +14,9 @@ The intent for the whole session is $ARGUMENTS; if empty, use:
 "Add Stripe as a payment method to the checkout service".
 
 1. Gateway. If nothing listens on localhost:8765, start it in the
-   background: `go run ./cmd/ppg -addr :8765`, and wait for
+   background: `go run ./cmd/ppg -addr :8765 -adr examples/adr
+   -services examples/services -service-policy examples/service-policy`,
+   and wait for
    "Platform Planning Gateway listening".
 
 2. Enrich. POST the intent to /enrich with repository_context

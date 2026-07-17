@@ -173,7 +173,7 @@ The fastest loop needs nothing but the gateway: point it at your ADR
 directory and submit a plan that should fail.
 
 ```bash
-ppg -addr :8765                       # watch: "Plan linter ready: N policies"
+ppg -addr :8765 -adr examples/adr     # watch: "Plan linter ready: N policies"
 curl -s -X POST localhost:8765/lock_in_plan -H "Content-Type: application/json" -d @bad_plan.json
 ```
 
@@ -197,6 +197,6 @@ opa eval -d ADR-0XX.rego -i plan.json 'data.ppg.linter.violation'
 
 Everything else. No `default`, no `with`, no partial evaluation, no
 functions beyond simple helpers, no data documents. The five production
-policies of this repository (`adr/*.rego`) and the two skill governance
+policies of this repository (`examples/adr/*.rego`) and the two skill governance
 files (`skill-governance/*.rego`) are all written with only the material on
 this page; read them as your reference corpus.

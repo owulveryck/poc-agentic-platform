@@ -108,7 +108,7 @@ périodiquement pour `apm install`.
 | Pièce | Où elle vit | Rôle |
 |---|---|---|
 | **Gateway PPG** | binaire `ppg`, HTTP `:8765` | expose `/enrich`, `/lock_in_plan`, `/tools/{name}`, `/validate_skill`, `/debt_report` |
-| **Corpus ADR** | fichiers `adr/*.md` + `adr/*.rego` | chaque ADR a une moitié *sémantique* (invariants prose) et une moitié *exécutable* (Rego) |
+| **Corpus ADR** | fichiers `examples/adr/*.md` + `examples/adr/*.rego` | chaque ADR a une moitié *sémantique* (invariants prose) et une moitié *exécutable* (Rego) |
 | **Adaptateurs machine** | binaires locaux (`ppg-mcp-server`, `ppg-copilot-guard`, `ppg-guard`) | génériques, installés une fois par machine ; traduisent entre l'agent et la gateway |
 | **Contrat + hooks du projet** | `.github/copilot-instructions.md` (ou `CLAUDE.md`), `.github/hooks/*.json` | soft (contrat prose lu par l'agent) + hard (subprocess qui refuse) |
 | **Skills** | `.agents/skills/*` ou `.claude/skills/*` | workflows distribués (paquet APM) ; peuvent embarquer leurs propres hooks de contenu |
@@ -430,7 +430,7 @@ politiques dans un même hook :
   invariants ?) : le garde envoie le contenu de l'édition à la gateway
   (`POST /verify_artifact`), qui évalue le même corpus Rego à
   l'**altitude artifact**. C'est ainsi que le skill `design-system` fait
-  respecter sa palette — via `adr/ADR-090.rego`, et non plus via un
+  respecter sa palette — via `examples/adr/ADR-090.rego`, et non plus via un
   script shell dédié. (Les mêmes règles sont rejouées à l'application du
   diff par `ppg-verify`, `POST /verify_changeset`.)
 
@@ -482,7 +482,7 @@ livrés dans `demo/skills/` :
 - `design-system` — workflow *étendu* : sa première étape est un
   bootstrap qui matérialise ses propres ressources (`tokens.css`). Il
   n'installe **aucun** hook dédié : l'invariant de palette est porté par
-  `adr/ADR-090.rego` (altitude artifact) et appliqué par le garde
+  `examples/adr/ADR-090.rego` (altitude artifact) et appliqué par le garde
   standard via `POST /verify_artifact`. Chaque édition est ainsi
   vérifiée à la fois sur le scope (ticket) et sur le contenu (palette).
 

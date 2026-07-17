@@ -7,7 +7,7 @@
 > [write-your-first-ADR tutorial](../tutorials/05-write-your-first-adr.md)
 > once, then come back here for the checklist.
 
-1. Create `adr/ADR-0XX-my-invariant.md` with the YAML front matter described
+1. Create `examples/adr/ADR-0XX-my-invariant.md` with the YAML front matter described
    in [adr-front-matter.md](../reference/adr-front-matter.md).
 2. Apply the **classification test**: *"more useful, or useless, when the
    model is twice as intelligent?"*

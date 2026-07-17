@@ -30,8 +30,8 @@ non-negotiable regardless of model or user prompt.
 - **Platform bootstrapped** on this machine — [tutorial 0](00-bootstrap.md)
   completed and the how-to
   [set-up-a-governed-workstation](../how-to/set-up-a-governed-workstation.md)
-  applied for the Copilot recipe. The gateway (`ppg -addr :8765`) is
-  running.
+  applied for the Copilot recipe. The gateway is running
+  ([tutorial 0, step 4](00-bootstrap.md)).
 
 > **Note on APM source**: if the `design-system` skill isn't yet
 > published to the remote `owulveryck/poc-agentic-platform/demo`

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/owulveryck/poc-agentic-platform/internal/adr"
+	"github.com/owulveryck/poc-agentic-platform/internal/catalog"
 	"github.com/owulveryck/poc-agentic-platform/internal/linter"
 	"github.com/owulveryck/poc-agentic-platform/internal/skill"
 	"github.com/owulveryck/poc-agentic-platform/internal/smarttools"
@@ -22,11 +23,11 @@ import (
 // running httptest server plus a valid execution ticket for a locked plan.
 func testServer(t *testing.T) (*httptest.Server, string) {
 	t.Helper()
-	store, err := adr.Load("../../adr")
+	store, err := adr.Load("../../examples/adr")
 	if err != nil {
 		t.Fatalf("adr.Load: %v", err)
 	}
-	lint, err := linter.New(store, "../../adr")
+	lint, err := linter.New(store, "../../examples/adr")
 	if err != nil {
 		t.Fatalf("linter.New: %v", err)
 	}
@@ -44,7 +45,16 @@ func testServer(t *testing.T) (*httptest.Server, string) {
 		return msgs
 	})
 
-	srv := httptest.NewServer(buildMux(store, lint, skillLint, time.Hour))
+	catStore, err := catalog.Load("../../examples/services")
+	if err != nil {
+		t.Fatalf("catalog.Load: %v", err)
+	}
+	ranker, err := catalog.NewRanker("../../examples/service-policy")
+	if err != nil {
+		t.Fatalf("catalog.NewRanker: %v", err)
+	}
+
+	srv := httptest.NewServer(buildMux(store, lint, skillLint, catStore, ranker, time.Hour))
 	t.Cleanup(srv.Close)
 
 	planJSON := `{"session_id":"11111111-1111-1111-1111-111111111111","intent":"build a landing page","repository_context":{"name":"web","tech_stack":["Go"]},"steps":[{"id":"s1","action":"read design tokens","tool":"Read","targets":["design/tokens.css"]},{"id":"s2","action":"write styles","tool":"Write","targets":["index.css"]},{"id":"s3","action":"go test","tool":"go-test","targets":["x_test.go"]}]}`
@@ -122,4 +132,77 @@ func TestGatewayConcurrentRequestsAreRaceFree(t *testing.T) {
 		}(i)
 	}
 	wg.Wait()
+}
+
+// TestDiscoverServiceReturnsRecommended exercises the service-catalog discovery
+// endpoint against the real seed catalog + ranking policy.
+func TestDiscoverServiceReturnsRecommended(t *testing.T) {
+	srv, _ := testServer(t)
+
+	// notification → notify-svc recommended, legacy-mailer surfaced as deprecated.
+	status, body := post(t, srv.URL+"/discover_service", `{"capability":"notification"}`)
+	if status != http.StatusOK {
+		t.Fatalf("discover_service: status %d body %s", status, body)
+	}
+	var resp struct {
+		Status      string `json:"status"`
+		Recommended *struct {
+			ServiceID string `json:"service_id"`
+			Endpoint  string `json:"endpoint"`
+			APIUsage  string `json:"api_usage"`
+		} `json:"recommended"`
+		Alternatives []struct {
+			ServiceID string `json:"service_id"`
+			Status    string `json:"status"`
+			Reason    string `json:"reason"`
+		} `json:"alternatives"`
+	}
+	if err := json.Unmarshal([]byte(body), &resp); err != nil {
+		t.Fatalf("decode: %v (%s)", err, body)
+	}
+	if resp.Status != "SERVICE_FOUND" || resp.Recommended == nil {
+		t.Fatalf("expected SERVICE_FOUND with a recommendation, got %s", body)
+	}
+	if resp.Recommended.ServiceID != "notify-svc" {
+		t.Errorf("recommended = %q, want notify-svc", resp.Recommended.ServiceID)
+	}
+	if resp.Recommended.Endpoint == "" || resp.Recommended.APIUsage == "" {
+		t.Errorf("recommendation missing endpoint/api_usage: %+v", resp.Recommended)
+	}
+	var sawDeprecated bool
+	for _, a := range resp.Alternatives {
+		if a.ServiceID == "legacy-mailer" && a.Status == "deprecated" {
+			sawDeprecated = true
+		}
+	}
+	if !sawDeprecated {
+		t.Errorf("expected legacy-mailer as a deprecated alternative, got %+v", resp.Alternatives)
+	}
+}
+
+// TestDiscoverServiceDeniesForbidden confirms a forbidden provider is never
+// recommended and is surfaced with a reason.
+func TestDiscoverServiceDeniesForbidden(t *testing.T) {
+	srv, _ := testServer(t)
+	_, body := post(t, srv.URL+"/discover_service", `{"capability":"payment"}`)
+	var resp struct {
+		Recommended *struct {
+			ServiceID string `json:"service_id"`
+		} `json:"recommended"`
+		Alternatives []struct {
+			ServiceID string `json:"service_id"`
+			Status    string `json:"status"`
+		} `json:"alternatives"`
+	}
+	if err := json.Unmarshal([]byte(body), &resp); err != nil {
+		t.Fatalf("decode: %v (%s)", err, body)
+	}
+	if resp.Recommended == nil || resp.Recommended.ServiceID != "payments-gateway" {
+		t.Fatalf("expected payments-gateway recommended, got %s", body)
+	}
+	for _, a := range resp.Alternatives {
+		if a.ServiceID == "stripe-direct" && a.Status != "forbidden" {
+			t.Errorf("stripe-direct should be forbidden, got %s", a.Status)
+		}
+	}
 }

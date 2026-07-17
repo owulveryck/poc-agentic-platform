@@ -55,7 +55,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-ppg -addr "127.0.0.1:$PORT" -adr "$REPO/adr" -skill-governance "$REPO/skill-governance" \
+ppg -addr "127.0.0.1:$PORT" -adr "$REPO/examples/adr" -skill-governance "$REPO/skill-governance" \
   >"$TMP/gateway.log" 2>&1 &
 GW_PID=$!
 for _ in $(seq 1 50); do

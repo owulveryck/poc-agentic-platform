@@ -61,6 +61,14 @@ type guidelinesArgs struct {
 	TechStack      []string `json:"tech_stack" jsonschema:"technologies of the repository, e.g. Go, Kubernetes"`
 }
 
+// discoverArgs is the input of find_platform_service.
+type discoverArgs struct {
+	Capability     string   `json:"capability" jsonschema:"the capability needed, e.g. notification, payment, storage"`
+	Intent         string   `json:"intent" jsonschema:"optional natural-language intent, used when capability is unknown"`
+	RepositoryName string   `json:"repository_name" jsonschema:"name of the repository being worked on"`
+	TechStack      []string `json:"tech_stack" jsonschema:"technologies of the repository, e.g. Go, Kubernetes"`
+}
+
 func main() {
 	projectDirFlag := flag.String("project-dir", "",
 		"absolute project directory (overrides "+store.EnvProjectDir+" and cwd fallback)")
@@ -102,6 +110,26 @@ func main() {
 			},
 		})
 		return forward(ctx, "/enrich", body, nil)
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name: "find_platform_service",
+		Description: "Discover the sanctioned platform service for a capability " +
+			"(payment, notification, storage, …). Call this in the plan phase before " +
+			"integrating any shared or external capability, and build on the returned " +
+			"service, endpoint, and API usage — do not reinvent a client or pick an " +
+			"unlisted, deprecated, or forbidden provider; the platform ranks and returns " +
+			"the recommended one.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, args discoverArgs) (*mcp.CallToolResult, any, error) {
+		body, _ := json.Marshal(map[string]any{
+			"capability": args.Capability,
+			"intent":     args.Intent,
+			"repository_context": map[string]any{
+				"name":       args.RepositoryName,
+				"tech_stack": args.TechStack,
+			},
+		})
+		return forward(ctx, "/discover_service", body, nil)
 	})
 
 	mcp.AddTool(server, &mcp.Tool{

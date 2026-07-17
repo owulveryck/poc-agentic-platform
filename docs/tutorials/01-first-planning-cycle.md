@@ -15,16 +15,21 @@
 
 ## Step 1 — Start the gateway
 
+From the repo root (`-adr` is required; `examples/` is the fictional demo
+corpus):
+
 ```bash
-ppg -addr :8765
+ppg -addr :8765 -adr examples/adr \
+    -services examples/services -service-policy examples/service-policy
 ```
 
-You should see the three readiness lines, then the listen line:
+You should see the readiness lines, then the listen line:
 
 ```
-ADR store loaded: 6 invariants
-Plan linter ready: 6 policies
+ADR store loaded: 7 invariants
+Plan linter ready: 7 policies
 Skill governance linter ready
+Service catalog loaded: 4 services
 Platform Planning Gateway listening on :8765
 ```
 

@@ -6,7 +6,8 @@
 
 1. Install the binaries (`make install` from the repo — puts `ppg`,
    `ppg-preflight`, and the guards under `~/.local/bin`). Start the
-   gateway (`ppg -addr :8765`, default `:8765`). Run the pre-flight
+   gateway (`ppg -addr :8765 -adr examples/adr` from the repo root,
+   default port `:8765`). Run the pre-flight
    with your intent:
 
    ```bash

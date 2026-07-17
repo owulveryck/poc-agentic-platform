@@ -162,7 +162,7 @@ invariant is therefore authored once as an ADR's `.rego` (see
 and enforced by this same guard — no separate hook to ship. The
 `design-system` skill in
 [`demo/skills/design-system/`](../../demo/skills/design-system/) relies on
-exactly this: its rules live in `adr/ADR-090.rego` (artifact altitude),
+exactly this: its rules live in `examples/adr/ADR-090.rego` (artifact altitude),
 not in a bespoke script.
 
 If you still need a check that cannot be expressed against the corpus,

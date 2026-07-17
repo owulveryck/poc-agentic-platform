@@ -15,7 +15,7 @@ dual-representation pattern.
 ## Step 1 — Work on a copy of the ADR store
 
 ```bash
-cp -r adr /tmp/my-adr-store
+cp -r examples/adr /tmp/my-adr-store
 ```
 
 The gateway takes the store as a flag, so you can experiment without
@@ -137,7 +137,7 @@ the gateway sees, deterministically.
 
 ## Step 6 — Ship it
 
-When the rule is ready for the real corpus: move the two files into `adr/`,
+When the rule is ready for the real corpus: move the two files into `examples/adr/`,
 add a paired test (copy the policy into `internal/linter/testdata/` and
 follow [write-a-rego-plan-policy.md](../how-to/write-a-rego-plan-policy.md),
 step 5), and restart the gateway. If your invariant is compensatory instead

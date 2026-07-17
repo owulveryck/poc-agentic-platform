@@ -131,16 +131,21 @@ Note: Claude Code does NOT expand `${cwd}` in user-scope MCP env values
 
 ## Step 4 — Start the gateway (one terminal, leave it running)
 
+From the repo root (`-adr` is required; `examples/` is the fictional demo
+corpus — point the flags at your own directories once you have them):
+
 ```bash
-ppg -addr :8765
+ppg -addr :8765 -adr examples/adr \
+    -services examples/services -service-policy examples/service-policy
 ```
 
 You should see:
 
 ```
-ADR store loaded: 6 invariants
-Plan linter ready: 6 policies
+ADR store loaded: 7 invariants
+Plan linter ready: 7 policies
 Skill governance linter ready
+Service catalog loaded: 4 services
 Platform Planning Gateway listening on :8765
 ```
 
@@ -213,7 +218,7 @@ Ships three skills: `ppg-tutorial`, `add-payment-method`, and
 | Clone `poc-agentic-platform` | `git init` a target project |
 | Build the five binaries onto `PATH` | Enable hooks in `.github/hooks/` (Copilot) or `.claude/settings.json` (Claude) |
 | Register the MCP server (user scope) | Preflight `.github/copilot-instructions.md` for the current intent |
-| Start `ppg -addr :8765` | (Optionally) `apm install` a skill |
+| Start the gateway (`ppg -addr :8765 -adr …`, step 4) | (Optionally) `apm install` a skill |
 
 ## Troubleshooting
 

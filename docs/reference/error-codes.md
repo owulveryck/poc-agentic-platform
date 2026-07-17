@@ -9,6 +9,10 @@
 | `TOOL_NOT_IN_PLAN` | Tool absent from the ticket scope (403) |
 | `OUT_OF_PLAN_SCOPE` | Target outside the allowed files (403) |
 | `SESSION_MISMATCH` | Ticket's `session_id` claim does not match the active session; emitted by the guards to block a ticket replayed from another session |
+| `SERVICE_FOUND` | `/discover_service` returned a recommended service for the capability |
+| `NO_SERVICE_FOR_CAPABILITY` | `/discover_service` found no candidate (or all were denied) for the capability |
+| `SERVICE_CATALOG_UNAVAILABLE` | `/discover_service` called on a gateway started without a catalog and/or ranking policy (503) |
+| `SERVICE_NOT_FOUND` | `GET /services/{id}` for an unknown service id (404) |
 | `ARTIFACT_OK` | `/verify_artifact` accepted the edited content (artifact view) |
 | `ARTIFACT_REJECTED` | `/verify_artifact`: the file scope is allowed but the content breaks an invariant, `violations[]` provided (422) |
 | `CHANGESET_OK` | `/verify_changeset` accepted the whole diff (changeset view) |

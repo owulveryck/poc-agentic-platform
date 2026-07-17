@@ -54,6 +54,16 @@ func testStore() *adr.Store {
 					RegoFile: "ADR-090.rego",
 				},
 			},
+			{
+				ADRID:  "ADR-110",
+				Title:  "Integrate shared capabilities through the cataloged service",
+				Nature: "amplifier",
+				Enforcement: adr.Enforcement{
+					Mode:     "programmatic",
+					PolicyID: "use_cataloged_services",
+					RegoFile: "ADR-110.rego",
+				},
+			},
 		},
 	}
 }
@@ -361,5 +371,70 @@ func TestDBChangeRequiresMigration(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("expected db_migration_precedes_code violation, got %v", violations)
+	}
+}
+
+// TestADR110ArtifactRejectsForbiddenProvider verifies the content-altitude
+// enforcement of ADR-110: a forbidden provider marker in written code is denied.
+func TestADR110ArtifactRejectsForbiddenProvider(t *testing.T) {
+	lint, err := New(testStore(), "testdata")
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	cases := map[string]string{
+		"stripe sdk import":  "package pay\nimport \"github.com/stripe/stripe-go/v76\"\n",
+		"stripe api host":    "package pay\nconst url = \"https://api.stripe.com/v1/charges\"\n",
+		"legacy mailer host": "package notif\nconst host = \"legacy-mailer.internal:25\"\n",
+	}
+	for name, content := range cases {
+		t.Run(name, func(t *testing.T) {
+			vs := lint.EvaluateArtifact(Artifact{Path: "internal/pay/client.go", Content: content})
+			if !hasPolicy(vs, "use_cataloged_services") {
+				t.Fatalf("expected use_cataloged_services violation, got %v", vs)
+			}
+		})
+	}
+}
+
+// TestADR110ArtifactAllowsSanctionedService confirms code calling the
+// recommended gateway endpoint passes.
+func TestADR110ArtifactAllowsSanctionedService(t *testing.T) {
+	lint, err := New(testStore(), "testdata")
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	content := "package pay\nconst gateway = \"http://localhost:9120/v1/charges\"\n"
+	vs := lint.EvaluateArtifact(Artifact{Path: "internal/pay/client.go", Content: content})
+	if hasPolicy(vs, "use_cataloged_services") {
+		t.Fatalf("sanctioned gateway call should pass, got %v", vs)
+	}
+}
+
+// TestADR110ChangesetRejectsForbiddenProvider covers the apply-time altitude.
+func TestADR110ChangesetRejectsForbiddenProvider(t *testing.T) {
+	lint, err := New(testStore(), "testdata")
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	cs := Changeset{Files: []Artifact{
+		{Path: "internal/pay/client.go", Content: "import \"github.com/stripe/stripe-go/v76\""},
+	}}
+	if !hasPolicy(lint.EvaluateChangeset(cs), "use_cataloged_services") {
+		t.Fatalf("expected changeset rejection for stripe SDK")
+	}
+}
+
+// TestADR110PlanRejectsNamingStripe covers the plan-view nudge.
+func TestADR110PlanRejectsNamingStripe(t *testing.T) {
+	lint, err := New(testStore(), "testdata")
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	p := basePlan([]plan.Step{
+		{ID: "s1", Action: "integrate Stripe SDK for checkout", Tool: "patch_code", Targets: []string{"internal/pay/client.go"}},
+		{ID: "s2", Action: "go test ./...", Tool: "go-test", Targets: []string{"internal/pay/client_test.go"}},
+	})
+	if !hasPolicy(lint.Validate(p), "use_cataloged_services") {
+		t.Fatalf("expected plan naming Stripe to be flagged")
 	}
 }

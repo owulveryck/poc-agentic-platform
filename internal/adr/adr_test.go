@@ -6,7 +6,7 @@ import (
 )
 
 func TestRetrievePaymentIntentReturnsProxyInvariant(t *testing.T) {
-	store, err := Load(filepath.Join("..", "..", "adr"))
+	store, err := Load(filepath.Join("..", "..", "examples", "adr"))
 	if err != nil {
 		t.Fatal(err)
 	}
