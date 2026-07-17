@@ -6,10 +6,10 @@ versions follow [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 
-## [1.0.0] - 2026-07-17
+## [1.0.0-alpha] - 2026-07-17
 
-First stable release: the PoC hardened into a reproducible reference
-implementation of the amplified agentic loop. The simulated engines
+Pre-release of 1.0.0, published for testing: the PoC hardened into a
+reproducible reference implementation of the amplified agentic loop. The simulated engines
 (keyword ADR retrieval, staging-schema mock, go/parser sandbox) remain
 PoC-scoped by design and are documented as such in `AUDIT.md`.
 
@@ -60,8 +60,8 @@ PoC-scoped by design and are documented as such in `AUDIT.md`.
   debt report, skill governance), Claude Code and Copilot adapters,
   capability tickets, MIT license.
 
-[Unreleased]: https://github.com/owulveryck/poc-agentic-platform/compare/v1.0.0...HEAD
-[1.0.0]: https://github.com/owulveryck/poc-agentic-platform/compare/v0.0.3...v1.0.0
+[Unreleased]: https://github.com/owulveryck/poc-agentic-platform/compare/v1.0.0-alpha...HEAD
+[1.0.0-alpha]: https://github.com/owulveryck/poc-agentic-platform/compare/v0.0.3...v1.0.0-alpha
 [0.0.3]: https://github.com/owulveryck/poc-agentic-platform/compare/v0.0.2...v0.0.3
 [0.0.2]: https://github.com/owulveryck/poc-agentic-platform/compare/v0.0.1...v0.0.2
 [0.0.1]: https://github.com/owulveryck/poc-agentic-platform/releases/tag/v0.0.1
