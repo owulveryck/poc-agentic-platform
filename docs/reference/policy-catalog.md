@@ -16,6 +16,10 @@ are compiled into a single OPA query over `data.ppg.linter.violation`.
 | `per_machine_state_directory` | ADR-100 | `examples/adr/ADR-100.rego` | amplifier | plan | — |
 | `use_cataloged_services` | ADR-110 | `examples/adr/ADR-110.rego` | amplifier | plan, artifact, changeset | — |
 
+One built-in product rule sits outside the registry (so it never skews the
+debt ratio): `scope_breadth_cap` rejects plan targets like `.` or `*` whose
+derived ticket would be allow-all. Disable it with `ppg -allow-wide-scope`.
+
 ## Enforcement altitudes
 
 The same corpus is evaluated at three altitudes, keyed by `input.view` (see

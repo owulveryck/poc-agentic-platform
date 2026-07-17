@@ -18,6 +18,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/owulveryck/poc-agentic-platform/internal/adr"
@@ -30,6 +32,7 @@ import (
 	"github.com/owulveryck/poc-agentic-platform/internal/smarttools"
 	"github.com/owulveryck/poc-agentic-platform/internal/smarttools/dbmigrate"
 	"github.com/owulveryck/poc-agentic-platform/internal/smarttools/patchcode"
+	storepkg "github.com/owulveryck/poc-agentic-platform/internal/store"
 	"github.com/owulveryck/poc-agentic-platform/internal/ticket"
 	"github.com/owulveryck/poc-agentic-platform/internal/version"
 )
@@ -42,6 +45,8 @@ func main() {
 	servicePolicyDir := flag.String("service-policy", "", "path to the service-catalog ranking Rego policy directory (required with -services for /discover_service)")
 	ticketTTLFlag := flag.Duration("ticket-ttl", 0,
 		"capability ticket lifetime (0 = $PPG_TICKET_TTL, else the built-in default); the session still bounds it")
+	allowWideScope := flag.Bool("allow-wide-scope", false,
+		"accept plan targets like \".\" or \"*\" whose derived ticket would be allow-all (pre-1.0 behavior)")
 	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
 
@@ -73,7 +78,27 @@ func main() {
 	if err != nil {
 		log.Fatalf("loading plan linter: %v", err)
 	}
+	lint.AllowWideScope = *allowWideScope
+	if *allowWideScope {
+		log.Printf("WARNING: -allow-wide-scope set; root-scoped plans yield allow-all tickets")
+	}
 	log.Printf("Plan linter ready: %d policies", len(lint.Registry))
+
+	// The ticket signing key is never hardcoded: $PPG_TICKET_SECRET wins,
+	// else a per-machine key is generated once under the state root.
+	if os.Getenv(ticket.EnvSecret) == "" {
+		stateRoot, err := storepkg.ResolveRoot("")
+		if err != nil {
+			log.Fatalf("resolving state root for the ticket signing key: %v", err)
+		}
+		keyFile := filepath.Join(stateRoot, "ticket.key")
+		if err := ticket.UseKeyFile(keyFile); err != nil {
+			log.Fatalf("loading ticket signing key: %v", err)
+		}
+		log.Printf("Ticket signing key: %s", keyFile)
+	} else {
+		log.Printf("Ticket signing key: $%s", ticket.EnvSecret)
+	}
 
 	skillLint, err := skill.NewLinter(*skillGovDir)
 	if err != nil {
@@ -126,8 +151,22 @@ func main() {
 
 	log.Printf("Capability ticket TTL: %s (bounded by the session)", ttl)
 	log.Printf("Platform Planning Gateway listening on %s", *addr)
-	log.Fatal(http.ListenAndServe(*addr, mux))
+	// The gateway accepts untrusted POSTed plans/artifacts: bound both the
+	// request body size and the connection lifetimes.
+	srv := &http.Server{
+		Addr:              *addr,
+		Handler:           http.MaxBytesHandler(mux, maxRequestBody),
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       time.Minute,
+		WriteTimeout:      time.Minute,
+		IdleTimeout:       2 * time.Minute,
+	}
+	log.Fatal(srv.ListenAndServe())
 }
+
+// maxRequestBody caps any request body: /verify_changeset carries the full
+// content of every changed file, so the cap is generous but finite.
+const maxRequestBody = 16 << 20 // 16 MiB
 
 // buildMux wires the gateway routes. All handlers close over dependencies that
 // are read-only after construction, so the returned mux is safe to serve
@@ -179,6 +218,10 @@ func handleEnrich(store *adr.Store) http.HandlerFunc {
 			httpError(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 			return
 		}
+		if strings.TrimSpace(req.Intent) == "" {
+			httpError(w, http.StatusBadRequest, map[string]any{"error": "intent is required"})
+			return
+		}
 		writeJSON(w, http.StatusOK, enrich.Enrich(store, req.Intent, req.RepositoryContext))
 	}
 }
@@ -205,6 +248,11 @@ func handleLockInPlan(lint *linter.Linter, ttl time.Duration) http.HandlerFunc {
 			})
 			return
 		}
+		planHash, err := p.Hash()
+		if err != nil {
+			httpError(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			return
+		}
 		tok, err := ticket.IssueWithTTL(&p, ttl)
 		if err != nil {
 			httpError(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
@@ -212,7 +260,7 @@ func handleLockInPlan(lint *linter.Linter, ttl time.Duration) http.HandlerFunc {
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"status":           "PLAN_LOCKED",
-			"plan_hash":        p.Hash(),
+			"plan_hash":        planHash,
 			"execution_ticket": tok,
 		})
 	}
@@ -232,6 +280,10 @@ func handleVerifyArtifact(lint *linter.Linter) http.HandlerFunc {
 		var req request
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			httpError(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+			return
+		}
+		if strings.TrimSpace(req.Path) == "" {
+			httpError(w, http.StatusBadRequest, map[string]any{"error": "path is required"})
 			return
 		}
 		if _, err := smarttools.GuardTargets(req.Ticket, []string{req.Path}); err != nil {
@@ -399,6 +451,10 @@ func handleDiscoverService(catStore *catalog.Store, ranker *catalog.Ranker) http
 		var req request
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			httpError(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+			return
+		}
+		if strings.TrimSpace(req.Capability) == "" && strings.TrimSpace(req.Intent) == "" {
+			httpError(w, http.StatusBadRequest, map[string]any{"error": "capability or intent is required"})
 			return
 		}
 		candidates := catStore.Retrieve(req.Capability, req.Intent)

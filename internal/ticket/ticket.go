@@ -8,16 +8,76 @@
 package ticket
 
 import (
+	"crypto/rand"
+	"encoding/hex"
+	"errors"
 	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/owulveryck/poc-agentic-platform/internal/plan"
 )
 
-// secret is the PoC signing key. Production: asymmetric keys behind a KMS,
-// with rotation. Never ship a symmetric hard-coded secret.
-var secret = []byte("poc-secret-rotate-me")
+// EnvSecret names the environment variable that, when set, becomes the HS256
+// signing key verbatim. It takes precedence over UseKeyFile.
+const EnvSecret = "PPG_TICKET_SECRET"
+
+// secret is the HS256 signing key. It is never hardcoded: it comes from
+// EnvSecret, from the per-machine key file (UseKeyFile), or — for processes
+// that configure neither, such as tests — from a random per-process key.
+// A per-process key still verifies everything this process signed, and a
+// gateway restart simply invalidates outstanding tickets (fail closed).
+// Production posture remains asymmetric keys behind a KMS, with rotation.
+var secret = initialSecret()
+
+func initialSecret() []byte {
+	if v := os.Getenv(EnvSecret); v != "" {
+		return []byte(v)
+	}
+	b := make([]byte, 32)
+	rand.Read(b) //nolint:errcheck // never fails (crypto/rand panics instead since Go 1.24)
+	return b
+}
+
+// UseKeyFile installs the hex-encoded key stored at path as the signing key,
+// generating and persisting a fresh 32-byte key (0600, parent 0700) on first
+// run. When EnvSecret is set it wins and the file is neither read nor written.
+// The gateway calls this at startup so tickets survive restarts on the same
+// machine.
+func UseKeyFile(path string) error {
+	if os.Getenv(EnvSecret) != "" {
+		return nil
+	}
+	raw, err := os.ReadFile(path)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		key := make([]byte, 32)
+		rand.Read(key) //nolint:errcheck // see initialSecret
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			return fmt.Errorf("creating key directory: %w", err)
+		}
+		if err := os.WriteFile(path, []byte(hex.EncodeToString(key)+"\n"), 0o600); err != nil {
+			return fmt.Errorf("persisting signing key: %w", err)
+		}
+		secret = key
+		return nil
+	case err != nil:
+		return fmt.Errorf("reading signing key %s: %w", path, err)
+	}
+	key, err := hex.DecodeString(strings.TrimSpace(string(raw)))
+	if err != nil {
+		return fmt.Errorf("signing key %s is not hex: %w", path, err)
+	}
+	if len(key) < 32 {
+		return fmt.Errorf("signing key %s is too short (%d bytes, need 32)", path, len(key))
+	}
+	secret = key
+	return nil
+}
 
 // DefaultTTL is the wall-clock lifetime stamped on a ticket when the caller
 // does not specify one. It is a defense-in-depth CAP, not the primary bound:
@@ -84,10 +144,14 @@ func IssueWithTTL(p *plan.Plan, ttl time.Duration) (string, error) {
 	if ttl <= 0 {
 		ttl = DefaultTTL
 	}
+	planHash, err := p.Hash()
+	if err != nil {
+		return "", err
+	}
 	now := time.Now()
 	claims := Claims{
 		SessionID: p.SessionID,
-		PlanHash:  p.Hash(),
+		PlanHash:  planHash,
 		Scope:     DeriveScope(p),
 		RegisteredClaims: jwt.RegisteredClaims{
 			IssuedAt:  jwt.NewNumericDate(now),

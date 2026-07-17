@@ -32,7 +32,9 @@ atomic-rename writes, so concurrent sessions cannot corrupt or half-purge state
 ## Known limits of the PoC
 
 - Keyword-based invariant retrieval (production: embeddings + reranking).
-- Symmetric hard-coded JWT secret (production: KMS, asymmetric keys).
+- Symmetric JWT key. Since v1.0.0 it is no longer hard-coded — it comes
+  from `$PPG_TICKET_SECRET` or a per-machine key file generated on first
+  run — but it remains symmetric (production: KMS, asymmetric keys).
 - Simulated sandbox (in-memory parse / staging state): no real workspace.
 - Hard gating is layered by surface, not absent anywhere. Claude Code
   (`ppg-guard`), Copilot desktop and VS Code Copilot Chat (`ppg-copilot-guard`)

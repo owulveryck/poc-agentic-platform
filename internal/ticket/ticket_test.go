@@ -32,8 +32,12 @@ func TestIssueAndVerifyRoundtrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if claims.PlanHash != p.Hash() {
-		t.Errorf("plan hash mismatch: %s vs %s", claims.PlanHash, p.Hash())
+	wantHash, err := p.Hash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if claims.PlanHash != wantHash {
+		t.Errorf("plan hash mismatch: %s vs %s", claims.PlanHash, wantHash)
 	}
 	if claims.SessionID != p.SessionID {
 		t.Errorf("session mismatch")

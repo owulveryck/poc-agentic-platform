@@ -197,16 +197,16 @@ A Go plan with no test step is refused by ADR-060 (`go_tests_present`):
 add a step whose tool is `go-test`, or whose action runs `go test`, and
 resubmit. The paved road is the only road to a ticket.
 
-### B3 — an over-broad root scope (an honest limit)
+### B3 — an over-broad root scope (capped since v1.0.0)
 
-What about a plan whose step targets `"."` (or `"*"`)? The linter checks
-frozen paths, required tests, and content invariants — but it does **not**
-currently cap scope breadth, so such a plan *locks*, and the derived ticket
-is effectively allow-all. This is a documented proof-of-concept limit:
-least privilege depends on the agent proposing narrow targets. The harness
-asserts this outcome explicitly and labels it `KNOWN LIMIT` rather than
-pretending it is refused. In production this is where a deny-by-default
-scope cap (and human review of wide plans) belongs.
+What about a plan whose step targets `"."` (or `"*"`, `"/"`, `"../x"`)?
+Since v1.0.0 the linter carries a built-in **scope-breadth cap**
+(`scope_breadth_cap`, deny by default): such a plan is rejected at lock
+time with a 422 `PLAN_REJECTED`, because the derived ticket would be
+allow-all and least privilege would be meaningless. The harness asserts
+the rejection. Operators who really want the old allow-all behavior must
+opt in explicitly with `ppg -allow-wide-scope` — the gap is now a choice,
+not a default.
 
 ## Group C — escapes the in-loop hook, caught at apply time
 
@@ -254,18 +254,17 @@ directory only), which is exactly why A10 above still blocks
 
 ## Honest limits (the parts a demo shouldn't hide)
 
-- **Wide plans are not capped** (B3): the linter enforces *what* you may
-  touch (frozen paths, tests, content invariants), not *how much*. A `"."`
-  scope locks.
 - **The in-loop hook only covers `Edit`/`Write`** (C1): everything else is
   a write-time blind spot closed only at apply time by `ppg-verify` — a
   *window*, not an open door, and only on surfaces where `ppg-verify` is
   wired.
-- **The JWT secret is symmetric and hard-coded**
-  (`internal/ticket/ticket.go`): a PoC convenience. Production means
-  asymmetric keys behind a KMS with rotation. Session binding and the
-  apply-time check still bound a forged ticket, but the signing key itself
-  is not a security boundary here.
+- **The JWT key is still symmetric** (`internal/ticket/ticket.go`): since
+  v1.0.0 it is no longer hard-coded — it comes from `$PPG_TICKET_SECRET`
+  or a per-machine key file generated on first run
+  (`$XDG_STATE_HOME/ppg/ticket.key`, 0600) — but any process that can read
+  that file can mint tickets. Production means asymmetric keys behind a
+  KMS with rotation. Session binding and the apply-time check still bound
+  a forged ticket.
 
 These are the same limits `AUDIT.md` and
 [design-decisions-and-limits](../explanation/design-decisions-and-limits.md)

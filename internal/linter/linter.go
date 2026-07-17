@@ -14,7 +14,10 @@
 package linter
 
 import (
+	"fmt"
+	"path"
 	"path/filepath"
+	"strings"
 
 	"github.com/owulveryck/poc-agentic-platform/internal/adr"
 	"github.com/owulveryck/poc-agentic-platform/internal/plan"
@@ -65,7 +68,12 @@ type Linter struct {
 	// Registry is the governance catalog of all tracked policies, keyed by
 	// policy_id. Used by the debt report to measure the compensatory ratio.
 	Registry map[string]PolicyMeta
-	eval     *policy.Evaluator
+	// AllowWideScope disables the built-in scope-breadth cap: when false (the
+	// default), a plan step targeting the repository root ("." / "/" / "*")
+	// is rejected at lock time, because the derived capability ticket would
+	// be allow-all and least privilege would be meaningless.
+	AllowWideScope bool
+	eval           *policy.Evaluator
 }
 
 // Artifact is one edited file's actual content — the artifact view of the
@@ -137,9 +145,54 @@ func New(store *adr.Store, adrDir string) (*Linter, error) {
 }
 
 // Validate evaluates all Rego policies against the plan (plan view) and returns
-// the violations. An empty slice means the plan can be locked.
+// the violations. An empty slice means the plan can be locked. Unless
+// AllowWideScope is set, it also enforces the built-in scope-breadth cap —
+// a product rule rather than an ADR policy, so it is not part of Registry.
 func (l *Linter) Validate(p *plan.Plan) []Violation {
-	return l.evaluate(planInput{Plan: *p, View: "plan"})
+	var violations []Violation
+	if !l.AllowWideScope {
+		violations = wideScopeViolations(p)
+	}
+	return append(violations, l.evaluate(planInput{Plan: *p, View: "plan"})...)
+}
+
+// wideScopeViolations rejects step targets so broad that the ticket derived
+// from them would be allow-all (deny-by-default cap on scope breadth).
+func wideScopeViolations(p *plan.Plan) []Violation {
+	var violations []Violation
+	for _, s := range p.Steps {
+		for _, t := range s.Targets {
+			if isWideTarget(t) {
+				violations = append(violations, Violation{
+					PolicyID: "scope_breadth_cap",
+					Message: fmt.Sprintf("step %q: target %q is too broad — the derived ticket would allow modifying the whole repository. "+
+						"Enumerate the files or directories the step actually touches (operators can restore the old behavior with ppg -allow-wide-scope).",
+						s.ID, t),
+					Nature: Amplifier,
+				})
+			}
+		}
+	}
+	return violations
+}
+
+// isWideTarget reports whether a target grants an effectively unlimited file
+// scope. A trailing "*" is a prefix pattern in the ticket scope, so the check
+// applies to the prefix that remains once wildcards are stripped.
+func isWideTarget(target string) bool {
+	t := strings.TrimSpace(target)
+	if t == "" {
+		return true
+	}
+	prefix := strings.TrimRight(t, "*")
+	if prefix == "" { // "*", "**"
+		return true
+	}
+	clean := path.Clean(prefix)
+	if clean == "." || clean == ".." || clean == "/" {
+		return true
+	}
+	return strings.HasPrefix(clean, "../")
 }
 
 // EvaluateArtifact evaluates the corpus against a single edited file's content

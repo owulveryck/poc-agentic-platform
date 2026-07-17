@@ -10,10 +10,12 @@ Companion repository of the blog articles
 and *The Governed Skills Registry: Policy-as-Code for Enterprise Agent
 Capabilities*.
 
-> **Status**: proof of concept, not production-ready by design
-> (symmetric hard-coded JWT secret, keyword-based ADR retrieval, simulated
-> staging state). `AUDIT.md` tracks the conformance of the code against the
-> articles.
+> **Status**: hardened reference implementation. The engines stay
+> PoC-scoped by design (keyword-based ADR retrieval, simulated staging
+> state, symmetric per-machine ticket key rather than a KMS), and the
+> gateway API is unauthenticated — bind it to localhost. `AUDIT.md`
+> tracks the conformance of the code against the articles and the 1.0
+> hardening.
 
 ## What it demonstrates
 

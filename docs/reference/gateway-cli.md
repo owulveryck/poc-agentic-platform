@@ -17,10 +17,19 @@ by default; override with `BINDIR`).
 | `-services` | *(none — catalog disabled)* | Path to the service catalog (`*.md` records). Omitted: `/discover_service` answers `SERVICE_CATALOG_UNAVAILABLE` |
 | `-service-policy` | *(none)* | Path to the service-catalog ranking Rego policy directory. Requires `-services`; a policy that fails to load is a startup error |
 | `-ticket-ttl` | `0` | Capability ticket wall-clock lifetime (a Go duration, e.g. `8h`, `30m`). `0` means use `$PPG_TICKET_TTL`, else the built-in default `8h`. The session still bounds the ticket regardless. |
+| `-allow-wide-scope` | `false` | Accept plan targets like `.` or `*` whose derived ticket would be allow-all. Off by default: the built-in `scope_breadth_cap` rejects them at lock time |
+| `-version` | `false` | Print the version and exit (all seven binaries accept it) |
 
 The ticket lifetime resolves as `-ticket-ttl` (when > 0) > `$PPG_TICKET_TTL`
 > built-in `8h`; a malformed `PPG_TICKET_TTL` is a startup error. Startup logs
 the resolved TTL.
+
+The ticket signing key resolves as `$PPG_TICKET_SECRET` (used verbatim) >
+the per-machine key file `$XDG_STATE_HOME/ppg/ticket.key` (hex, generated
+0600 on first run). The guards load the same key to verify tickets locally.
+
+The HTTP server bounds request bodies to 16 MiB and applies read/write
+timeouts; the API itself is unauthenticated — bind it to localhost.
 
 Startup logs the readiness lines: `ADR store loaded: N invariants`,
 `Plan linter ready: N policies`, `Skill governance linter ready`,

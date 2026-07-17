@@ -179,7 +179,7 @@ func hashPlan(planFile string) (string, error) {
 	if err := json.Unmarshal(raw, &p); err != nil {
 		return "", fmt.Errorf("parsing plan %s: %w", planFile, err)
 	}
-	return p.Hash(), nil
+	return p.Hash()
 }
 
 func gatewayURL() string {

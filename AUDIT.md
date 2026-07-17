@@ -62,8 +62,9 @@ Statuses: ✅ conforms · 🟡 partial · ❌ not implemented · 📄 article-on
 
 ## Known limits kept as-is (assumed PoC posture, documented)
 
-- Symmetric hard-coded JWT secret (`internal/ticket`); production: KMS,
-  asymmetric keys.
+- Symmetric JWT key (`internal/ticket`); production: KMS, asymmetric keys.
+  (Since v1.0.0 the key is no longer hard-coded: `$PPG_TICKET_SECRET` or a
+  per-machine generated key file; the symmetric scheme itself remains.)
 - Keyword-based ADR retrieval; production: embeddings + reranking.
 - Simulated sandbox and staging state (`patchcode`, `dbmigrate`).
 - Tier derivation by substring match (see A2 table).

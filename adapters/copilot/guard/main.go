@@ -41,6 +41,7 @@ import (
 
 	"github.com/owulveryck/poc-agentic-platform/internal/smarttools"
 	"github.com/owulveryck/poc-agentic-platform/internal/store"
+	"github.com/owulveryck/poc-agentic-platform/internal/ticket"
 	"github.com/owulveryck/poc-agentic-platform/internal/version"
 )
 
@@ -125,12 +126,21 @@ func main() {
 		os.Exit(1)
 	}
 	var in hookInput
-	_ = json.Unmarshal(payload, &in)
+	if err := json.Unmarshal(payload, &in); err != nil {
+		// A payload we cannot parse could be a write about to happen: treat it
+		// as PreToolUse and fail closed rather than proceeding on zero values.
+		failInfra(true, "malformed hook payload: "+err.Error())
+	}
 	isPreTool := in.HookEventName == "PreToolUse" || (in.HookEventName != "SessionStart" && isWriteTool(in.ToolName))
 
 	root, err := store.ResolveRoot(*storeRootFlag)
 	if err != nil {
 		failInfra(isPreTool, "cannot resolve state root: "+err.Error())
+	}
+	// The guard verifies the ticket signature locally: it needs the same
+	// per-machine signing key as the gateway ($PPG_TICKET_SECRET wins).
+	if err := ticket.UseKeyFile(filepath.Join(root, "ticket.key")); err != nil {
+		failInfra(isPreTool, "cannot load ticket signing key: "+err.Error())
 	}
 	projectDir, err := store.ResolveProjectDir(*projectDirFlag, projectDirFallback(in))
 	if err != nil {

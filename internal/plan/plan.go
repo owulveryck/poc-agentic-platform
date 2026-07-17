@@ -150,10 +150,15 @@ func (p *Plan) findDependencyCycle() string {
 
 // Hash returns the canonical SHA-256 fingerprint of the plan. It is embedded
 // in the capability ticket so execution tools can detect plan substitution.
-func (p *Plan) Hash() string {
-	canonical, _ := json.Marshal(p)
+// A marshal failure is returned rather than swallowed: a fingerprint used as
+// a security claim must never silently degrade to the hash of nil.
+func (p *Plan) Hash() (string, error) {
+	canonical, err := json.Marshal(p)
+	if err != nil {
+		return "", fmt.Errorf("canonicalizing plan for hashing: %w", err)
+	}
 	sum := sha256.Sum256(canonical)
-	return hex.EncodeToString(sum[:])
+	return hex.EncodeToString(sum[:]), nil
 }
 
 // HasTech reports whether the repository declares the given technology.

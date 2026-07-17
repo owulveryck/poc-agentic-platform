@@ -1,7 +1,10 @@
 # Capability ticket
 
-An ephemeral signed JWT (HS256, symmetric secret — PoC only) issued by
-`POST /lock_in_plan` on a valid plan. The Claude Code adapter persists it
+An ephemeral signed JWT (HS256) issued by `POST /lock_in_plan` on a valid
+plan. The signing key is `$PPG_TICKET_SECRET` when set, else a per-machine
+key generated on first run at `$XDG_STATE_HOME/ppg/ticket.key` (0600) and
+shared by the gateway and the guards; it is symmetric — production means
+asymmetric keys behind a KMS. The Claude Code adapter persists it
 through the per-machine **TokenStore** (default
 `$XDG_STATE_HOME/ppg/projects/<slug>/tickets/<session_id>`); the Smart
 Tools and the `ppg-guard` hook verify it before acting.
