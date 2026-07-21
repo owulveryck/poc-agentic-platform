@@ -102,8 +102,9 @@ its scope.
      }
      ```
 
-     `PPG_PROJECT_DIR` is required: the MCP server is long-lived, its
-     cwd is stale as soon as you switch project. Copilot desktop's
+     `PPG_PROJECT_DIR` is recommended here: on surfaces that keep the
+     MCP server long-lived across workspace switches, its cwd goes
+     stale as soon as you change project. Copilot desktop's
      user-scope config does not expand `${workspaceFolder}` — see the
      workaround note in
      [capability-ticket.md](../../docs/reference/capability-ticket.md#known-limitation-copilot-desktop-user-scope-mcp-config).

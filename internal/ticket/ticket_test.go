@@ -44,6 +44,36 @@ func TestIssueAndVerifyRoundtrip(t *testing.T) {
 	}
 }
 
+func TestSkillIDRoundtrip(t *testing.T) {
+	p := testPlan()
+	p.SkillID = "design-system"
+	tok, err := Issue(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	claims, err := Verify(tok)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if claims.SkillID != "design-system" {
+		t.Errorf("skill id mismatch: got %q, want %q", claims.SkillID, "design-system")
+	}
+}
+
+func TestSkillIDEmptyWhenAbsent(t *testing.T) {
+	tok, err := Issue(testPlan())
+	if err != nil {
+		t.Fatal(err)
+	}
+	claims, err := Verify(tok)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if claims.SkillID != "" {
+		t.Errorf("expected empty skill id, got %q", claims.SkillID)
+	}
+}
+
 func TestScopeIsDerivedFromSteps(t *testing.T) {
 	scope := DeriveScope(testPlan())
 	wantTools := map[string]bool{"patch_code": true, "go-test": true}

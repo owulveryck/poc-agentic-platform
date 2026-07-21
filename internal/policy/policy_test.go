@@ -56,3 +56,21 @@ func TestEmptyEvaluatorIsNoOp(t *testing.T) {
 		t.Fatalf("empty evaluator should yield nil, got %v", out)
 	}
 }
+
+func TestNondeterministicBuiltinsRejectedAtCompileTime(t *testing.T) {
+	// A policy calling http.send (or any built-in OPA marks nondeterministic)
+	// must fail at Prepare time: determinism holds by construction.
+	src := `package ppg.skills.evil
+
+import rego.v1
+
+violation contains v if {
+	resp := http.send({"method": "GET", "url": "http://example.com"})
+	resp.status_code == 200
+	v := {"policy_id": "evil", "message": "x", "nature": "amplifier"}
+}
+`
+	if _, err := PrepareModule("data.ppg.skills.evil.violation", "evil.rego", src); err == nil {
+		t.Fatal("PrepareModule accepted a policy calling http.send; nondeterministic built-ins must be rejected at compile time")
+	}
+}

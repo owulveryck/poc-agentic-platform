@@ -45,10 +45,48 @@ atomic-rename writes, so concurrent sessions cannot corrupt or half-purge state
   (`/verify_changeset`) as a pre-commit / pre-push / CI step. Content invariants
   are therefore enforced deterministically, not left to prose — the residual gap
   is only the *window* before an apply-time check runs on the hookless surfaces.
-- Skill governance covers Gate 1 only (publish): no install-time
-  revalidation, no runtime enforcement of companion policies. The security
+- Skill governance covers Gate 1 (publish) and Gate 3 (plan-time
+  companion Rego, since v1.0.0). At the content altitudes (artifact +
+  changeset) companion policies apply with **union semantics**: every
+  registered skill applicable to the session is evaluated against every
+  edit, whether or not the plan declared a `skill_id` — only a skill's
+  plan-view *workflow requirements* stay declaration-scoped. The security
   tier and the verb/secret checks are substring and pattern matches, open
   to paraphrase evasion — see
   [capability-plane-governance.md](capability-plane-governance.md).
+- **No conflict detection between validations.** Two policies that can
+  never both pass — e.g. a skill companion *requiring* a plan step that
+  an ADR *forbids* — surface as an ordinary `PLAN_REJECTED` carrying the
+  union of both violation lists. The linter does not diagnose that the
+  rule set itself is unsatisfiable: the agent is told to "fix the
+  violations above and resubmit" although no legal plan exists, and only
+  a human reading the loop notices. The shipped corpus avoids the one
+  known near-conflict (ADR-090 requires a Read of `design/tokens.css`,
+  ADR-120 forbids writes to it) by rule design plus a dedicated test —
+  i.e. by policy-author discipline, not by mechanism. General
+  unsatisfiability checking is undecidable; the implemented mitigation is
+  the deterministic *livelock* escalation: 3 consecutive rejections of a
+  session with a byte-identical violation set flip the response to a
+  hard-blocking `409 POLICY_CONFLICT` naming the clashing policies and
+  their sources (adr / skill / built-in), and append a record to
+  `$XDG_STATE_HOME/ppg/escalations.jsonl` for the humans who own the
+  rules — see [error codes](../reference/error-codes.md). This detects
+  the livelock *symptom*, not unsatisfiability in general.
+- **Session-scoped skill registration is memory-only and single-tenant.**
+  The `POST /register_skill` endpoint stores companion Rego per session in
+  a process-local map (`internal/linter/linter.go` — `sessionSkills`); a
+  gateway restart drops every uploaded skill. The MCP server self-heals
+  the resulting `unknown_skill` on the next `/lock_in_plan` with a
+  one-shot retry (`lockWithRegistrationRetry`), but longer-lived
+  persistence (Bolt/SQLite/Redis) is not implemented. The endpoint also
+  trusts `session_id` from the client — the same posture as the JWT
+  ticket key — so isolation between users relies on session ids being
+  unguessable UUIDs (`ppg-guard`'s `SessionStart` emits UUIDv4, which is
+  sufficient for a trusted-team deployment on a private network). A
+  hostile-multi-tenant deployment needs mTLS on `/register_skill` and
+  signed skill manifests, in the same "enterprise-grade" bucket as
+  asymmetric ticket keys. See the
+  [/register_skill reference](../reference/http-api.md#post-register_skill)
+  for the concrete lifetime & auth paragraphs.
 - No persistence or telemetry yet: that is the third pillar (*observation*),
   intentionally out of scope here.

@@ -81,6 +81,17 @@ Statuses: ✅ conforms · 🟡 partial · ❌ not implemented · 📄 article-on
   `internal/debt`).
 - `schemas/plan.schema.json` declares `session_id` as `format: uuid`; the Go
   structural validation only checks non-emptiness.
+- **No conflict detection between validations** (2026-07-21 audit
+  finding): mutually unsatisfiable policies (skill companion vs ADR
+  corpus, or ADR vs ADR) produce an ordinary `PLAN_REJECTED` union with
+  "fix and resubmit" guidance — nothing distinguishes "the plan is
+  wrong" from "the rules contradict each other and a human must fix
+  them". The ADR-090/ADR-120 near-conflict is defused by hand-tuned rule
+  design and a regression test, not by mechanism. Mitigated 2026-07-21:
+  deterministic livelock escalation — 3 consecutive rejections with an
+  identical violation set → hard-blocking `409 POLICY_CONFLICT` with
+  policy sources + append-only escalation log (detects the livelock
+  symptom; general unsatisfiability remains undecidable and unclaimed).
 
 ## Documentation
 

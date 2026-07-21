@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/owulveryck/poc-agentic-platform/internal/smarttools/translate"
@@ -21,8 +22,11 @@ import (
 // ArtifactEvaluator reports the architectural-invariant violations of a file's
 // proposed content (the artifact-view policy). It is injected by the gateway to
 // keep this package decoupled from the linter; an empty return means the content
-// is clean. When nil (unwired), Run skips the content check.
-type ArtifactEvaluator func(path, content string) []string
+// is clean. When nil (unwired), Run skips the content check. The skillID and
+// sessionID are taken from the ticket claims: skillID selects the skill
+// companion, sessionID selects the session-scoped tier (client-uploaded skills)
+// when the operator-provided tier has no entry for that name.
+type ArtifactEvaluator func(path, content, skillID, sessionID string) []string
 
 var artifactEvaluator ArtifactEvaluator
 
@@ -126,35 +130,62 @@ func Run(rawTicket, toolID string, targets []string, payload map[string]any) (ma
 	if !ok {
 		return nil, fmt.Errorf("unknown tool %q", toolID)
 	}
-	if _, err := Guard(rawTicket, toolID, targets); err != nil {
+	claims, err := Guard(rawTicket, toolID, targets)
+	if err != nil {
 		return nil, err
 	}
 	// Artifact-view policy: the tool holds the actual content, so it enforces
 	// the invariant against what will be written, not just the path scope.
-	if msgs := evaluateArtifactPolicy(targets, payload); len(msgs) > 0 {
+	if msgs := evaluateArtifactPolicy(targets, payload, claims.SkillID, claims.SessionID); len(msgs) > 0 {
 		return translate.PolicyViolation(translate.Generic(1, "content violates architectural invariants"), msgs), nil
 	}
 	return meta.Tool.Run(targets, payload), nil
 }
 
-// evaluateArtifactPolicy runs the injected artifact evaluator over the content
-// carried in payload, attributed to the first target. Returns nil when no
-// evaluator is wired, no content is present, or the content is clean.
-func evaluateArtifactPolicy(targets []string, payload map[string]any) []string {
+// evaluateArtifactPolicy runs the injected artifact evaluator over every
+// string field of the payload, attributed to every target: content must
+// satisfy the invariants whichever key it travels under and whichever
+// target it lands on — a payload key the tool contract didn't anticipate is
+// not a policy exemption. The preferred contentKeys are evaluated first,
+// then the remaining string fields in sorted-key order, so verdict order is
+// deterministic. Returns nil when no evaluator is wired or all clean.
+func evaluateArtifactPolicy(targets []string, payload map[string]any, skillID, sessionID string) []string {
 	if artifactEvaluator == nil || len(targets) == 0 {
 		return nil
 	}
-	var content string
+	var contents []string
+	seen := make(map[string]bool, len(contentKeys))
 	for _, k := range contentKeys {
 		if s, ok := payload[k].(string); ok && s != "" {
-			content = s
-			break
+			contents = append(contents, s)
+		}
+		seen[k] = true
+	}
+	extra := make([]string, 0, len(payload))
+	for k := range payload {
+		if !seen[k] {
+			extra = append(extra, k)
 		}
 	}
-	if content == "" {
-		return nil
+	sort.Strings(extra)
+	for _, k := range extra {
+		if s, ok := payload[k].(string); ok && s != "" {
+			contents = append(contents, s)
+		}
 	}
-	return artifactEvaluator(targets[0], content)
+	var msgs []string
+	dedupe := map[string]bool{}
+	for _, target := range targets {
+		for _, content := range contents {
+			for _, m := range artifactEvaluator(target, content, skillID, sessionID) {
+				if !dedupe[m] {
+					dedupe[m] = true
+					msgs = append(msgs, m)
+				}
+			}
+		}
+	}
+	return msgs
 }
 
 // harnessMetadataSubdirs lists the home-relative directories an agent

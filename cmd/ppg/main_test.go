@@ -6,6 +6,9 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -37,9 +40,9 @@ func testServer(t *testing.T) (*httptest.Server, string) {
 	}
 	smarttools.Register(patchcode.Tool{}, "amplifier", "")
 	smarttools.Register(dbmigrate.Tool{}, "amplifier", "")
-	smarttools.SetArtifactEvaluator(func(path, content string) []string {
+	smarttools.SetArtifactEvaluator(func(path, content, skillID, sessionID string) []string {
 		var msgs []string
-		for _, v := range lint.EvaluateArtifact(linter.Artifact{Path: path, Content: content}) {
+		for _, v := range lint.EvaluateArtifact(sessionID, skillID, linter.Artifact{Path: path, Content: content}) {
 			msgs = append(msgs, v.Message)
 		}
 		return msgs
@@ -54,7 +57,7 @@ func testServer(t *testing.T) (*httptest.Server, string) {
 		t.Fatalf("catalog.NewRanker: %v", err)
 	}
 
-	srv := httptest.NewServer(buildMux(store, lint, skillLint, catStore, ranker, time.Hour))
+	srv := httptest.NewServer(buildMux(store, lint, skillLint, catStore, ranker, time.Hour, filepath.Join(t.TempDir(), "escalations.jsonl")))
 	t.Cleanup(srv.Close)
 
 	planJSON := `{"session_id":"11111111-1111-1111-1111-111111111111","intent":"build a landing page","repository_context":{"name":"web","tech_stack":["Go"]},"steps":[{"id":"s1","action":"read design tokens","tool":"Read","targets":["design/tokens.css"]},{"id":"s2","action":"write styles","tool":"Write","targets":["index.css"]},{"id":"s3","action":"go test","tool":"go-test","targets":["x_test.go"]}]}`
@@ -134,6 +137,198 @@ func TestGatewayConcurrentRequestsAreRaceFree(t *testing.T) {
 	wg.Wait()
 }
 
+// TestVerifyArtifactRejectsSkillCompanionViolation locks a plan with skill_id
+// "design-system" and posts a raw-hex .tsx artifact to /verify_artifact,
+// proving the skill's artifact-view rule fires end-to-end through the ticket.
+func TestVerifyArtifactRejectsSkillCompanionViolation(t *testing.T) {
+	store, err := adr.Load("../../examples/adr")
+	if err != nil {
+		t.Fatalf("adr.Load: %v", err)
+	}
+	lint, err := linter.New(store, "../../examples/adr")
+	if err != nil {
+		t.Fatalf("linter.New: %v", err)
+	}
+	if err := lint.LoadSkillCompanions("../../demo/skills"); err != nil {
+		t.Fatalf("LoadSkillCompanions: %v", err)
+	}
+	skillLint, err := skill.NewLinter("../../skill-governance")
+	if err != nil {
+		t.Fatalf("skill.NewLinter: %v", err)
+	}
+	catStore, err := catalog.Load("../../examples/services")
+	if err != nil {
+		t.Fatalf("catalog.Load: %v", err)
+	}
+	ranker, err := catalog.NewRanker("../../examples/service-policy")
+	if err != nil {
+		t.Fatalf("catalog.NewRanker: %v", err)
+	}
+	srv := httptest.NewServer(buildMux(store, lint, skillLint, catStore, ranker, time.Hour, filepath.Join(t.TempDir(), "escalations.jsonl")))
+	t.Cleanup(srv.Close)
+
+	// Plan reads design/tokens.css (ADR-090 plan rule) and writes a .tsx
+	// under a skill_id the gateway knows about.
+	planJSON := `{"session_id":"22222222-2222-2222-2222-222222222222","intent":"tweak the CTA","skill_id":"design-system","repository_context":{"name":"web","tech_stack":["TypeScript"]},"steps":[{"id":"s1","action":"read design tokens","tool":"Read","targets":["design/tokens.css"]},{"id":"s2","action":"write component","tool":"Write","targets":["src/Button.tsx"]}]}`
+	status, body := post(t, srv.URL+"/lock_in_plan", planJSON)
+	if status != http.StatusOK {
+		t.Fatalf("lock_in_plan: status %d body %s", status, body)
+	}
+	var locked struct {
+		ExecutionTicket string `json:"execution_ticket"`
+	}
+	if err := json.Unmarshal([]byte(body), &locked); err != nil || locked.ExecutionTicket == "" {
+		t.Fatalf("no ticket in lock response: %s", body)
+	}
+
+	req, _ := json.Marshal(map[string]string{
+		"ticket":  locked.ExecutionTicket,
+		"path":    "src/Button.tsx",
+		"content": "export const c = '#ff0000'",
+	})
+	status, body = post(t, srv.URL+"/verify_artifact", string(req))
+	if status != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422 ARTIFACT_REJECTED, got %d %s", status, body)
+	}
+	var resp struct {
+		Status     string `json:"status"`
+		Violations []struct {
+			PolicyID string `json:"policy_id"`
+		} `json:"violations"`
+	}
+	if err := json.Unmarshal([]byte(body), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.Status != "ARTIFACT_REJECTED" {
+		t.Fatalf("expected ARTIFACT_REJECTED, got %s", resp.Status)
+	}
+	foundSkill := false
+	for _, v := range resp.Violations {
+		if v.PolicyID == "design_tokens_referenced" {
+			foundSkill = true
+		}
+	}
+	if !foundSkill {
+		t.Fatalf("expected design_tokens_referenced violation, got %v", resp.Violations)
+	}
+}
+
+// TestRegisterSkillThenVerifyArtifact drives the full client-upload path:
+// POST /register_skill with a fresh SKILL.rego, then lock a plan under that
+// skill id, then post an artifact that the freshly-registered rule rejects.
+// This proves a skill installed at runtime (via APM, in the target scenario)
+// is enforced end-to-end without any gateway restart.
+func TestRegisterSkillThenVerifyArtifact(t *testing.T) {
+	store, err := adr.Load("../../examples/adr")
+	if err != nil {
+		t.Fatalf("adr.Load: %v", err)
+	}
+	lint, err := linter.New(store, "../../examples/adr")
+	if err != nil {
+		t.Fatalf("linter.New: %v", err)
+	}
+	skillLint, err := skill.NewLinter("../../skill-governance")
+	if err != nil {
+		t.Fatalf("skill.NewLinter: %v", err)
+	}
+	catStore, err := catalog.Load("../../examples/services")
+	if err != nil {
+		t.Fatalf("catalog.Load: %v", err)
+	}
+	ranker, err := catalog.NewRanker("../../examples/service-policy")
+	if err != nil {
+		t.Fatalf("catalog.NewRanker: %v", err)
+	}
+	srv := httptest.NewServer(buildMux(store, lint, skillLint, catStore, ranker, time.Hour, filepath.Join(t.TempDir(), "escalations.jsonl")))
+	t.Cleanup(srv.Close)
+
+	const session = "33333333-3333-3333-3333-333333333333"
+	rego := `package ppg.skills.uploaded
+import rego.v1
+
+violation contains v if {
+	input.view == "artifact"
+	endswith(input.artifact.path, ".tsx")
+	contains(input.artifact.content, "BAD")
+	v := {
+		"policy_id": "uploaded_no_bad_in_tsx",
+		"message":   "uploaded skill rejects BAD in .tsx",
+		"nature":    "amplifier",
+	}
+}
+`
+	regReq, _ := json.Marshal(map[string]string{
+		"session_id": session,
+		"name":       "uploaded",
+		"skill_md":   "---\nname: uploaded\ndescription: test\n---\n",
+		"skill_rego": rego,
+	})
+	status, body := post(t, srv.URL+"/register_skill", string(regReq))
+	if status != http.StatusOK {
+		t.Fatalf("register_skill: status %d body %s", status, body)
+	}
+
+	// Lock a plan under this session + skill.
+	planJSON := `{"session_id":"` + session + `","intent":"tweak the CTA","skill_id":"uploaded","repository_context":{"name":"web","tech_stack":["TypeScript"]},"steps":[{"id":"s1","action":"read design tokens","tool":"Read","targets":["design/tokens.css"]},{"id":"s2","action":"write component","tool":"Write","targets":["src/Button.tsx"]}]}`
+	status, body = post(t, srv.URL+"/lock_in_plan", planJSON)
+	if status != http.StatusOK {
+		t.Fatalf("lock_in_plan: status %d body %s", status, body)
+	}
+	var locked struct {
+		ExecutionTicket string `json:"execution_ticket"`
+	}
+	if err := json.Unmarshal([]byte(body), &locked); err != nil || locked.ExecutionTicket == "" {
+		t.Fatalf("no ticket in lock response: %s", body)
+	}
+
+	// Post an artifact the uploaded skill rejects.
+	verifyReq, _ := json.Marshal(map[string]string{
+		"ticket":  locked.ExecutionTicket,
+		"path":    "src/Button.tsx",
+		"content": "// BAD content the uploaded skill rejects",
+	})
+	status, body = post(t, srv.URL+"/verify_artifact", string(verifyReq))
+	if status != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422 ARTIFACT_REJECTED, got %d %s", status, body)
+	}
+	var resp struct {
+		Violations []struct {
+			PolicyID string `json:"policy_id"`
+		} `json:"violations"`
+	}
+	if err := json.Unmarshal([]byte(body), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	found := false
+	for _, v := range resp.Violations {
+		if v.PolicyID == "uploaded_no_bad_in_tsx" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected uploaded_no_bad_in_tsx in violations, got %v", resp.Violations)
+	}
+}
+
+// TestRegisterSkillRejectsMalformedRego proves the 422 SKILL_COMPILE_ERROR
+// contract: bad rego surfaces synchronously to the caller so the client can
+// warn the user rather than silently no-op at every subsequent verify.
+func TestRegisterSkillRejectsMalformedRego(t *testing.T) {
+	srv, _ := testServer(t)
+	req, _ := json.Marshal(map[string]string{
+		"session_id": "sess-x",
+		"name":       "broken",
+		"skill_rego": "package broken\nviolation contains v if { v := }\n",
+	})
+	status, body := post(t, srv.URL+"/register_skill", string(req))
+	if status != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422 for malformed rego, got %d %s", status, body)
+	}
+	if !strings.Contains(body, "SKILL_COMPILE_ERROR") {
+		t.Fatalf("expected SKILL_COMPILE_ERROR in body, got %s", body)
+	}
+}
+
 // TestDiscoverServiceReturnsRecommended exercises the service-catalog discovery
 // endpoint against the real seed catalog + ranking policy.
 func TestDiscoverServiceReturnsRecommended(t *testing.T) {
@@ -204,5 +399,90 @@ func TestDiscoverServiceDeniesForbidden(t *testing.T) {
 		if a.ServiceID == "stripe-direct" && a.Status != "forbidden" {
 			t.Errorf("stripe-direct should be forbidden, got %s", a.Status)
 		}
+	}
+}
+
+// TestPolicyConflictLivelockEscalation drives the livelock detector end to
+// end: the same rejected plan submitted conflictThreshold times flips the
+// response from 422 PLAN_REJECTED ("fix and resubmit") to 409
+// POLICY_CONFLICT (a hard block naming the policies and their sources),
+// appends an escalation record, and keeps answering 409 for the same
+// violation set. A different violation set — or a successful lock — resets
+// the streak.
+func TestPolicyConflictLivelockEscalation(t *testing.T) {
+	store, err := adr.Load("../../examples/adr")
+	if err != nil {
+		t.Fatalf("adr.Load: %v", err)
+	}
+	lint, err := linter.New(store, "../../examples/adr")
+	if err != nil {
+		t.Fatalf("linter.New: %v", err)
+	}
+	skillLint, err := skill.NewLinter("../../skill-governance")
+	if err != nil {
+		t.Fatalf("skill.NewLinter: %v", err)
+	}
+	escLog := filepath.Join(t.TempDir(), "escalations.jsonl")
+	srv := httptest.NewServer(buildMux(store, lint, skillLint, nil, nil, time.Hour, escLog))
+	t.Cleanup(srv.Close)
+
+	// A Go plan with no test step: rejected by ADR-060 (go_tests_present),
+	// deterministically, every time.
+	badPlan := `{"session_id":"22222222-2222-2222-2222-222222222222","intent":"patch the payment router","repository_context":{"name":"pay","tech_stack":["Go"]},"steps":[{"id":"s1","action":"edit code","tool":"Edit","targets":["internal/payment/router.go"]}]}`
+
+	for i := 1; i < conflictThreshold; i++ {
+		status, body := post(t, srv.URL+"/lock_in_plan", badPlan)
+		if status != http.StatusUnprocessableEntity || !strings.Contains(body, "PLAN_REJECTED") {
+			t.Fatalf("submission %d: want 422 PLAN_REJECTED, got %d %s", i, status, body)
+		}
+	}
+	status, body := post(t, srv.URL+"/lock_in_plan", badPlan)
+	if status != http.StatusConflict {
+		t.Fatalf("submission %d: want 409 POLICY_CONFLICT, got %d %s", conflictThreshold, status, body)
+	}
+	var conflict struct {
+		Status        string            `json:"status"`
+		PolicyIDs     []string          `json:"policy_ids"`
+		PolicySources map[string]string `json:"policy_sources"`
+	}
+	if err := json.Unmarshal([]byte(body), &conflict); err != nil {
+		t.Fatalf("decoding conflict response: %v (%s)", err, body)
+	}
+	if conflict.Status != "POLICY_CONFLICT" || len(conflict.PolicyIDs) == 0 {
+		t.Fatalf("conflict payload incomplete: %s", body)
+	}
+	for id, src := range conflict.PolicySources {
+		if src != "adr" && src != "skill" && src != "built-in" {
+			t.Fatalf("policy %s has unclassified source %q", id, src)
+		}
+	}
+
+	// Still blocked on the next identical submission.
+	if status, body := post(t, srv.URL+"/lock_in_plan", badPlan); status != http.StatusConflict {
+		t.Fatalf("post-escalation submission: want 409, got %d %s", status, body)
+	}
+
+	// The escalation was recorded.
+	raw, err := os.ReadFile(escLog)
+	if err != nil {
+		t.Fatalf("escalation log unreadable: %v", err)
+	}
+	if !strings.Contains(string(raw), `"session_id":"22222222-2222-2222-2222-222222222222"`) {
+		t.Fatalf("escalation log missing the session record: %s", raw)
+	}
+
+	// A different violation set resets the streak back to 422.
+	otherPlan := `{"session_id":"22222222-2222-2222-2222-222222222222","intent":"broad refactor","repository_context":{"name":"pay","tech_stack":["Go"]},"steps":[{"id":"s1","action":"edit everything","tool":"Edit","targets":["."]}]}`
+	if status, body := post(t, srv.URL+"/lock_in_plan", otherPlan); status != http.StatusUnprocessableEntity {
+		t.Fatalf("different violation set must reset to 422, got %d %s", status, body)
+	}
+
+	// A successful lock clears the streak entirely.
+	goodPlan := `{"session_id":"22222222-2222-2222-2222-222222222222","intent":"patch the payment router","repository_context":{"name":"pay","tech_stack":["Go"]},"steps":[{"id":"s1","action":"edit code","tool":"Edit","targets":["internal/payment/router.go"]},{"id":"s2","action":"go test","tool":"go-test","targets":["internal/payment/router_test.go"]}]}`
+	if status, body := post(t, srv.URL+"/lock_in_plan", goodPlan); status != http.StatusOK {
+		t.Fatalf("good plan must lock, got %d %s", status, body)
+	}
+	if status, _ := post(t, srv.URL+"/lock_in_plan", badPlan); status != http.StatusUnprocessableEntity {
+		t.Fatalf("streak must be cleared after a successful lock, got %d", status)
 	}
 }

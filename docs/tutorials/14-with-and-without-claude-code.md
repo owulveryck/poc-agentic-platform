@@ -112,6 +112,16 @@ auto-discovers skills committed under `.claude/skills/`. Committing
 lands them in the tree, ready to be picked up on the next session
 open.
 
+**Gateway enforcement of the skill's `SKILL.rego`** happens through a
+parallel mechanism: the MCP server (`ppg-mcp-server`) auto-uploads every
+skill it finds under `.claude/skills/` to the gateway via
+[`POST /register_skill`](../reference/http-api.md#post-register_skill)
+before each `lock_in_plan`. That's why this tutorial works even when the
+gateway is not started with `-skills` — see
+[policy views](../reference/policy-views.md#where-a-skillrego-comes-from)
+for the two tiers (operator-provided baseline vs client-uploaded
+per session).
+
 Open Claude Code in this project (`claude` from the terminal, or
 open the folder from the app). **Select the small model** in the
 model selector.

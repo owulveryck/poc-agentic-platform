@@ -17,8 +17,29 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/open-policy-agent/opa/v1/ast"
 	"github.com/open-policy-agent/opa/v1/rego"
 )
+
+// deterministicCaps is the OPA capability set with every built-in that OPA
+// itself marks nondeterministic (http.send, time.now_ns, rand.intn,
+// uuid.rfc4122, opa.runtime, net.lookup_ip_addr, …) removed. Policies are
+// the deterministic core of the platform: a rule depending on wall-clock
+// time, randomness, or the network would make verdicts irreproducible —
+// and a session-uploaded SKILL.rego could smuggle one in. Removing the
+// built-ins from the capability set makes such policies fail at compile
+// time, so determinism holds by construction, not by corpus convention.
+var deterministicCaps = func() *ast.Capabilities {
+	caps := ast.CapabilitiesForThisVersion()
+	kept := caps.Builtins[:0]
+	for _, b := range caps.Builtins {
+		if !b.Nondeterministic {
+			kept = append(kept, b)
+		}
+	}
+	caps.Builtins = kept
+	return caps
+}()
 
 // Evaluator wraps a compiled OPA query. A nil or empty Evaluator is a valid
 // no-op that yields no violations, so callers with no policy files still work.
@@ -37,9 +58,31 @@ func Prepare(query string, regoPaths []string) (*Evaluator, error) {
 	pq, err := rego.New(
 		rego.Query(query),
 		rego.Load(regoPaths, nil),
+		rego.Capabilities(deterministicCaps),
 	).PrepareForEval(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("preparing OPA query %q: %w", query, err)
+	}
+	return &Evaluator{prepared: &pq}, nil
+}
+
+// PrepareModule compiles query over one .rego module supplied as in-memory
+// source. It is the client-upload counterpart of Prepare: the same OPA engine,
+// same fail-closed posture, but callers do not need to persist the rego to a
+// file just to hand it to the compiler. Empty source returns a ready no-op
+// Evaluator so a tier-0 skill upload (SKILL.md only, no rego) is safe.
+func PrepareModule(query, moduleName, source string) (*Evaluator, error) {
+	if source == "" {
+		return &Evaluator{}, nil
+	}
+	ctx := context.Background()
+	pq, err := rego.New(
+		rego.Query(query),
+		rego.Module(moduleName, source),
+		rego.Capabilities(deterministicCaps),
+	).PrepareForEval(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("preparing OPA query %q for module %q: %w", query, moduleName, err)
 	}
 	return &Evaluator{prepared: &pq}, nil
 }

@@ -11,10 +11,13 @@
 > Prerequisites:
 > - [Tutorial 0 — bootstrap](00-bootstrap.md) completed.
 > - [How-to — set up a governed workstation](../how-to/set-up-a-governed-workstation.md)
->   applied for the Claude Code recipe: user-scope MCP
->   (`claude mcp list` shows `ppg`), hooks in `~/.claude/settings.json`,
+>   applied for the Claude Code recipe: MCP registered
+>   (`claude mcp list` shows `ppg`), hooks installed at either
+>   [managed scope (A)](../how-to/set-up-a-governed-workstation.md#a-managed-scope--recommended-for-it-managed-fleets)
+>   or [user scope (B)](../how-to/set-up-a-governed-workstation.md#b-user-scope--dev-workstation-no-root),
 >   contract in `~/.claude/CLAUDE.md`, and optionally skills in
->   `~/.claude/skills/`.
+>   `~/.claude/skills/`. The choice between (A) and (B) only affects
+>   tamper-proofing — the walkthrough below is identical either way.
 
 ## Step 1 — Create a fresh, empty project
 
@@ -46,8 +49,9 @@ Observe:
 - **SessionStart fires** — no artefact appears in the project; the
   session id is recorded via the SessionStore under
   `$XDG_STATE_HOME/ppg/projects/<slug>/session`. The `ppg-guard` binary
-  was invoked by the user-scope hook declaration in
-  `~/.claude/settings.json`; it purges any stale tickets from the
+  was invoked by the hook declaration installed by the how-to (managed
+  scope in `managed-settings.json`, or user scope in
+  `~/.claude/settings.json`); it purges any stale tickets from the
   TokenStore and records the fresh session id.
 
 ## Step 3 — Run the amplified loop from a single prompt
@@ -103,6 +107,18 @@ registration, hooks, contract, and skills — ready for the next
 project. If you want to fully unconfigure the workstation, follow the
 ["Rollback" section](../how-to/set-up-a-governed-workstation.md#rollback)
 of the how-to.
+
+## A note on per-project skills
+
+The workstation setup above installs skills into `~/.claude/skills/`
+(user-wide). Per-project installs — `apm install ... --target claude`
+inside a project — also work out of the box: the MCP server auto-uploads
+every skill it finds under the project's `.claude/skills/` to the gateway
+before each `lock_in_plan` (see
+[policy views](../reference/policy-views.md#where-a-skillrego-comes-from)).
+No `-skills` flag needed, no gateway restart, and — crucially — the same
+mechanism works when the gateway runs elsewhere (a shared team gateway,
+a container in a cluster).
 
 **✅ Done.** Same three commands, same one prompt, same drift test
 as tutorial 9 — different agent surface, identical result. The

@@ -199,7 +199,8 @@ func projectDirFallback(in hookInput) string {
 
 // recordSession persists the session id for the MCP server and purges any
 // ticket inherited from a previous session: the capability dies with the
-// session that locked it, not only with its 15-minute TTL.
+// session that locked it, not only with its TTL (8h by default — see
+// internal/ticket.DefaultTTL).
 func recordSession(in hookInput, ts store.TokenStore, ss store.SessionStore) error {
 	if in.SessionID == "" {
 		return nil
@@ -279,17 +280,18 @@ func decide(payload []byte, rawTicket string, verify artifactVerifier) (bool, st
 			claims.SessionID, in.SessionID)
 	}
 
+	// Always consult the policy — even an empty or unrecognized content
+	// payload can violate a path-scoped content rule (e.g. a governed file
+	// that must not be touched in-session at all). Fail closed on any error.
 	if verify != nil {
-		if content := in.editedContent(); content != "" {
-			violations, err := verify(rawTicket, rel, content)
-			if err != nil {
-				return true, "PPG_GUARD_ERROR: cannot verify content against policy: " + err.Error() +
-					" — denying (fail-closed). Nothing was modified."
-			}
-			if len(violations) > 0 {
-				return true, "ARCHITECTURAL_INVARIANT_VIOLATION: " + strings.Join(violations, " | ") +
-					" Nothing was modified; fix the content to satisfy the invariant and resubmit."
-			}
+		violations, err := verify(rawTicket, rel, in.editedContent())
+		if err != nil {
+			return true, "PPG_GUARD_ERROR: cannot verify content against policy: " + err.Error() +
+				" — denying (fail-closed). Nothing was modified."
+		}
+		if len(violations) > 0 {
+			return true, "ARCHITECTURAL_INVARIANT_VIOLATION: " + strings.Join(violations, " | ") +
+				" Nothing was modified; fix the content to satisfy the invariant and resubmit."
 		}
 	}
 	return false, ""

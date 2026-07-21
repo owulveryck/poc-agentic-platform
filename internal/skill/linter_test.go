@@ -209,3 +209,44 @@ func assertViolation(t *testing.T, lint *Linter, s *Skill, field string) {
 	}
 	t.Fatalf("expected violation for field %q, got %v", field, violations)
 }
+
+// TestBrokenCompanionRegoIsRejectedAtPublish: Gate 1 compiles the bundled
+// SKILL.rego — a syntactically broken companion is refused at publish time,
+// not discovered at gateway startup.
+func TestBrokenCompanionRegoIsRejectedAtPublish(t *testing.T) {
+	lint, err := NewLinter("testdata")
+	if err != nil {
+		t.Fatalf("NewLinter: %v", err)
+	}
+	s := validSkill()
+	s.Body = "Use Edit to patch the router file."
+	s.RegoPolicy = "package ppg.skills.broken\nimport rego.v1\n\nviolation contains v if {\n\tv := }\n"
+	assertViolation(t, lint, s, "rego_policy")
+}
+
+// TestCompanionWithoutPackageIsRejected: a companion without a package
+// declaration cannot be queried by the gateway; refuse it at publish.
+func TestCompanionWithoutPackageIsRejected(t *testing.T) {
+	lint, err := NewLinter("testdata")
+	if err != nil {
+		t.Fatalf("NewLinter: %v", err)
+	}
+	s := validSkill()
+	s.Body = "Use Edit to patch the router file."
+	s.RegoPolicy = "# no package here\n"
+	assertViolation(t, lint, s, "rego_policy")
+}
+
+// TestNondeterministicCompanionIsRejectedAtPublish: the publish gate uses
+// the same deterministic capability set as the gateway, so a companion
+// calling http.send is refused at Gate 1.
+func TestNondeterministicCompanionIsRejectedAtPublish(t *testing.T) {
+	lint, err := NewLinter("testdata")
+	if err != nil {
+		t.Fatalf("NewLinter: %v", err)
+	}
+	s := validSkill()
+	s.Body = "Use Edit to patch the router file."
+	s.RegoPolicy = "package ppg.skills.evil\nimport rego.v1\n\nviolation contains v if {\n\tresp := http.send({\"method\": \"GET\", \"url\": \"http://example.com\"})\n\tresp.status_code == 200\n\tv := {\"field\": \"x\", \"message\": \"x\", \"nature\": \"amplifier\"}\n}\n"
+	assertViolation(t, lint, s, "rego_policy")
+}

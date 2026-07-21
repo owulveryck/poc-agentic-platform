@@ -6,6 +6,64 @@ versions follow [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 
+Implements the 2026-07-21 audit transformation plan (see `AUDIT.md`).
+
+### Added
+
+- **`POLICY_CONFLICT` livelock escalation**: 3 consecutive `lock_in_plan`
+  rejections with a byte-identical violation set now return a
+  hard-blocking `409` naming the clashing policies and their sources
+  (`adr`/`skill`/`built-in`), and append a record to the escalation log
+  (`$XDG_STATE_HOME/ppg/escalations.jsonl`).
+- **Union semantics for skill content policies**: every registered skill
+  companion (operator tier + session uploads) is evaluated at the
+  artifact and changeset altitudes regardless of the declared `skill_id`
+  — a plan that omits the skill no longer bypasses its content
+  invariants. Plan-view workflow rules remain declaration-scoped.
+- **Unified skill discovery**: the MCP server now scans `~/.claude/skills`
+  (user-wide) and `<project>/.agents/skills` in addition to the
+  project-local `.claude/skills`, project winning on a name collision.
+- **Hot reload**: `SIGHUP` rebuilds the whole corpus (ADRs, policies,
+  operator skills, governance, catalog) and swaps it atomically;
+  fail-safe on error; session-scoped skills survive the swap.
+- **Deterministic-by-construction policies**: the OPA engine is compiled
+  without nondeterministic built-ins (`http.send`, `time.now_ns`, …);
+  such policies now fail at compile/registration/publish time.
+- **Gate 1 compiles the bundle**: `/validate_skill` compiles the
+  companion `SKILL.rego` (broken, package-less, or nondeterministic
+  companions are refused at publish time). Tier is now single-sourced in
+  Go and consumed by `security.rego` as `input.tier`.
+- **Scripts**: `setup-git-backstop.sh` (ppg-verify as a pre-commit hook,
+  repo-local or machine-wide), `setup-gateway-service.sh` /
+  `remove-gateway-service.sh` (launchd/systemd user service), plus
+  matching Makefile targets.
+- **Docs**: problem-first README with the LLM-judge comparison table,
+  English glossary, ADR-130 (naming: validation server / control
+  points), golden-path onboarding, "bundle validation with a skill"
+  how-to.
+
+### Changed
+
+- `-adr` is now **optional**: `ppg` starts with skill companions and
+  built-in rules only (the tutorial-15 shape); the stub ADR workaround
+  is gone.
+- The guards always consult the artifact policy, even for empty or
+  unrecognized content payloads (path-scoped content rules apply).
+- Smart Tools evaluate the artifact policy over every payload string
+  field and every target, not just `content`/`statement` on the first
+  target.
+- `ppg-verify` includes deletions in the changeset (`op: "delete"`).
+- `ppg-verify` gained `-server` (`-gateway` kept as a deprecated alias,
+  ADR-130).
+- The managed-scope setup script refuses (unless `FORCE=1`) when the
+  resolved `ppg-guard` binary is user-writable, and supports pinning
+  `PPG_URL` via a root-owned wrapper (`PPG_PIN_URL`).
+- The design-system demo skill protects `design/tokens.css` at the
+  artifact/changeset altitudes too, and its body no longer advises
+  re-planning a write to the tokens file.
+- Session skill uploads shadowed by an operator skill are now logged
+  instead of silent.
+
 ## [1.0.0-alpha] - 2026-07-17
 
 Pre-release of 1.0.0, published for testing: the PoC hardened into a

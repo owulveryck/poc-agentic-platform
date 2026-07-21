@@ -8,7 +8,8 @@
 | Method | Route | Body | Success | Error |
 |---|---|---|---|---|
 | `POST` | `/enrich` | `{intent, repository_context}` | `200` + amplifier context | `400` malformed body |
-| `POST` | `/lock_in_plan` | plan (see [plan contract](plan-contract.md)) | `200` `{status: PLAN_LOCKED, plan_hash, execution_ticket}` | `400` `PLAN_MALFORMED` · `422` `PLAN_REJECTED` + `violations[]` |
+| `POST` | `/lock_in_plan` | plan (see [plan contract](plan-contract.md)) | `200` `{status: PLAN_LOCKED, plan_hash, execution_ticket}` | `400` `PLAN_MALFORMED` · `422` `PLAN_REJECTED` + `violations[]` · `409` `POLICY_CONFLICT` (livelock escalation) |
+| `POST` | `/register_skill` | `{session_id, name, skill_md, skill_rego?}` | `200` `{status: SKILL_REGISTERED}` | `400` malformed body · `422` `SKILL_COMPILE_ERROR` + `error` |
 | `POST` | `/tools/{name}` | `{ticket, targets, payload}` | `200` tool result | `403` `REFUSED` (`TOOL_NOT_IN_PLAN` \| `OUT_OF_PLAN_SCOPE`) · `401` invalid/expired ticket |
 | `POST` | `/verify_artifact` | `{ticket, path, content, op?}` | `200` `{status: ARTIFACT_OK}` | `422` `ARTIFACT_REJECTED` + `violations[]` · `403` `REFUSED` (path out of scope) · `401` invalid/expired ticket · `400` malformed body |
 | `POST` | `/verify_changeset` | `{ticket, files[], plan_hash?}` | `200` `{status: CHANGESET_OK}` | `422` `CHANGESET_REJECTED` + `violations[]` · `409` `PLAN_SUBSTITUTION` · `403` `REFUSED` · `401` invalid/expired ticket · `400` malformed body |
@@ -60,6 +61,105 @@ Response (`422 PLAN_REJECTED`): `violations[]`, each with `policy_id`,
 string. The linter fails closed: an undecodable policy evaluation result is
 reported as a `linter_eval_error` violation, never as a pass.
 
+Response (`409 POLICY_CONFLICT`) — the **livelock escalation**. When a
+session's plans are rejected 3 consecutive times with a byte-identical
+violation policy-id set, "fix and resubmit" stops being honest guidance:
+either the policies are mutually unsatisfiable for this intent, or the
+required plan shape is unreachable from the agent's approach. The gateway
+switches to a hard block carrying:
+
+| Field | Description |
+|---|---|
+| `policy_ids` | The sorted, deduplicated ids of the stable violation set |
+| `policy_sources` | Per id: `adr` (ADR corpus), `skill` (a companion SKILL.rego), or `built-in` (linter rule) — who must be in the room |
+| `consecutive_rejections` | The streak length |
+| `escalation_log` | Path of the append-only JSONL record written for the platform team (`$XDG_STATE_HOME/ppg/escalations.jsonl`) |
+
+The block persists for the same violation set; a submission hitting a
+*different* set resets to the normal `422` path, and a successful lock
+clears the streak. This detects the livelock **symptom** — general
+unsatisfiability of a Rego corpus is undecidable and is not claimed. The
+escalation log is the capitalization loop: each record is a conflict a
+human must resolve, and the resolution belongs back in the corpus so the
+same conflict cannot recur.
+
+## `POST /register_skill`
+
+Client-uploaded, session-scoped skill companion. The MCP server calls this
+before every `/lock_in_plan` for every skill it finds under the project's
+`.claude/skills/`; it is idempotent by content hash. Enables enforcement of
+a locally-installed `SKILL.rego` against a gateway that does **not** share
+the client's filesystem — the target scenario for a shared / remote gateway.
+See [policy views](policy-views.md) for how the operator (`-skills`) and
+session-scoped tiers compose.
+
+Request:
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `session_id` | string | ✅ | Isolates the registration; the same name in a different session is a separate entry |
+| `name` | string | ✅ | Skill id — must match the `skill_id` a plan will declare |
+| `skill_md` | string | ❌ | The `SKILL.md` body (stored for auditability; not currently evaluated) |
+| `skill_rego` | string | ❌ | The `SKILL.rego` source. Omit for a tier-0 skill (no rego, no-op evaluator) |
+
+Responses:
+
+| Status | Body |
+|---|---|
+| `200` | `{status: SKILL_REGISTERED, session_id, name, has_rego}` |
+| `422` | `{status: SKILL_COMPILE_ERROR, error, guidance}` — malformed Rego; nothing was stored, the prior registration under this name (if any) still applies |
+| `400` | `{error}` — malformed body, or missing `session_id` / `name` |
+
+Precedence at evaluation time: entries loaded by the operator via
+`ppg -skills` **win over** any client-uploaded registration under the same
+name. This prevents a project-local upload from silently downgrading an
+org-wide policy the operator has already reserved.
+
+### Lifetime & post-restart recovery
+
+Session-scoped registrations live only in memory
+(`internal/linter/linter.go` — `sessionSkills`). A gateway restart drops
+every session-scoped skill; the operator tier is re-read from `-skills` but
+client-uploaded skills are gone.
+
+The MCP server self-heals this: it inspects every `/lock_in_plan` response
+for `unknown_skill` violations naming a local skill and, when it finds
+one, drops that entry from its content-hash cache, re-uploads via
+`/register_skill`, and retries the lock exactly once. Bounded at one
+retry — a second `unknown_skill` means the skill is genuinely missing
+locally, so the semantic error reaches the model. See
+`lockWithRegistrationRetry` in
+[adapters/claudecode/mcpserver/main.go](../../adapters/claudecode/mcpserver/main.go).
+
+Cross-session sharing is deliberately absent: a skill uploaded under
+`session_id: "A"` is invisible to `session_id: "B"`. To distribute a
+skill to every session on a shared gateway, load it via `ppg -skills`
+(operator tier).
+
+### Authentication & multi-user posture
+
+Requests to `/register_skill` carry `session_id` verbatim from the client;
+the gateway does not authenticate the caller. Same posture as the JWT
+ticket signing key today (see the
+[symmetric-key note](../explanation/design-decisions-and-limits.md#known-limits-of-the-poc)).
+
+Two structural mitigations bound the blast radius of that trust:
+
+- **Operator wins on name collision** — a client cannot downgrade an
+  organisation-wide policy by re-uploading a permissive version under the
+  same name.
+- **Session-scoped isolation** — a rogue upload targeting session_id `A`
+  only affects evaluations whose ticket carries `A`. Practical isolation
+  relies on `session_id` being unguessable; `ppg-guard` `SessionStart`
+  generates cryptographic UUIDs, which is sufficient for a trusted-team
+  deployment on a private network.
+
+An **enterprise multi-tenant** deployment should layer mTLS (or an
+equivalent client-authentication scheme) in front of `/register_skill`
+and bind each accepted `session_id` to a client identity, plus signed
+skill manifests so a skill's provenance can be verified independently of
+its uploader. Out of scope for the PoC.
+
 ## `POST /tools/{name}`
 
 Request:
@@ -92,7 +192,11 @@ altitudes, discriminated by the `input.view` field:
 
 An ADR's `.rego` opts into an altitude with a `violation` rule guarded by
 `input.view == "…"`; the altitudes it implements are declared in its
-[front matter](adr-front-matter.md) (`enforcement.altitudes`).
+[front matter](adr-front-matter.md) (`enforcement.altitudes`). Skill
+companion `SKILL.rego` policies loaded via `ppg -skills` follow the same
+model — when the ticket declared a `skill_id`, that skill's rules union
+with the ADR corpus at every view. See
+[policy views](policy-views.md) for the full input schemas.
 
 ## `POST /verify_artifact`
 

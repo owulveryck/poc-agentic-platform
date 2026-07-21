@@ -28,6 +28,15 @@ demonstrates the opposite case: a declarative-only ADR with no Rego file —
 the semantic directive alone is sufficient because the invariant has no
 deterministic check to express.
 
+Although a single `.rego` file, the policy half is exercised at **three
+altitudes** — plan, artifact, and changeset — discriminated by the
+`input.view` field. One file, three moments in the loop: rejecting a bad
+plan at `/lock_in_plan`, rejecting a bad edit at `/verify_artifact`
+(called from the guard hook), and rejecting a bad diff at
+`/verify_changeset` (the apply-time backstop). See
+[policy views](../reference/policy-views.md) for the input schemas and
+the guard idiom.
+
 ## Why OPA/Rego for plan enforcement
 
 The plan linter uses the embedded [Open Policy Agent](https://www.openpolicyagent.org/)

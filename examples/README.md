@@ -1,7 +1,7 @@
 # Examples — a fictional demo corpus
 
 Everything in this directory is **sample data for a fictional organization**.
-The ADRs (ADR-042 … ADR-110), the service records (`notify-svc`,
+The ADRs (ADR-042 … ADR-120), the service records (`notify-svc`,
 `legacy-mailer`, `payments-gateway`, `stripe-direct`) and the ranking policy
 are invented so the tutorials, `make quickstart`, and the demo scripts run
 out of the box. None of it is product code: the gateway loads whatever
@@ -12,7 +12,7 @@ corpus with its own.
 
 | Directory | What it holds |
 |---|---|
-| `adr/` | 7 sample ADRs: YAML front matter + invariant prose, 6 of them paired with a `.rego` policy (`package ppg.linter`). ADR-042 is declarative-only. |
+| `adr/` | 8 sample ADRs: YAML front matter + invariant prose, 7 of them paired with a `.rego` policy (`package ppg.linter`). ADR-042 is declarative-only. |
 | `services/` | A sample service catalog: one `.md` record per shared service (front matter + verbatim API-usage body). Endpoints point at `svc-mock` or fake internal hosts. |
 | `service-policy/` | The sample catalog ranking policy (`package ppg.catalog`, Rego). |
 

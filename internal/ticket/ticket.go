@@ -108,6 +108,10 @@ type Claims struct {
 	// PlanHash is the SHA-256 fingerprint of the locked plan. Execution tools
 	// can compare it against the current plan to detect plan substitution.
 	PlanHash string `json:"plan_hash"`
+	// SkillID names the published skill the plan declared, or empty when the
+	// plan was locked without a skill. Content-view gates (artifact, changeset)
+	// use it to evaluate that skill's companion Rego alongside the ADR corpus.
+	SkillID string `json:"skill_id,omitempty"`
 	// Scope is the least-privilege contract the agent must stay within.
 	Scope Scope `json:"scope"`
 	jwt.RegisteredClaims
@@ -152,6 +156,7 @@ func IssueWithTTL(p *plan.Plan, ttl time.Duration) (string, error) {
 	claims := Claims{
 		SessionID: p.SessionID,
 		PlanHash:  planHash,
+		SkillID:   p.SkillID,
 		Scope:     DeriveScope(p),
 		RegisteredClaims: jwt.RegisteredClaims{
 			IssuedAt:  jwt.NewNumericDate(now),

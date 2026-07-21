@@ -57,6 +57,11 @@ deny-by-default tool allowlist):
 | 1 | body contains `Edit` or `Write` | File modifications |
 | 2 | body contains `Bash` | Shell access |
 
+The Go computation is the **single source of tier truth**: the governance
+policies receive it as `input.tier` and consume it (see
+`security.rego`'s `privileged if input.tier >= 1`) rather than re-deriving
+it from body keywords, so the Go and Rego views cannot drift.
+
 ## Structural rules (`skill-governance/structure.rego`)
 
 | Field | Rule | nature |
@@ -76,7 +81,17 @@ deny-by-default tool allowlist):
 
 | Rule | nature |
 |---|---|
-| A skill whose body mentions `Edit`, `Write`, or `Bash` (tier ≥ 1) must ship a companion `rego_policy`, so the plan linter can enforce its requirements at `lock_in_plan` time | amplifier |
+| A tier ≥ 1 skill (`input.tier >= 1`) must ship a companion `rego_policy`, so the plan linter can enforce its requirements at `lock_in_plan` time | amplifier |
+
+## Companion compilation (Gate 1 compiles the bundle)
+
+When `rego_policy` is present, `/validate_skill` also **compiles** it with
+the same deterministic engine the gateway uses. A companion that is
+syntactically broken, lacks a `package` declaration, or calls a
+nondeterministic built-in (`http.send`, `time.now_ns`, …) is refused at
+publish time with a `rego_policy` violation — instead of surfacing later
+at gateway startup or as a `422 SKILL_COMPILE_ERROR` on
+`/register_skill`.
 
 The verb and secret checks are deliberately naive pattern matches, same
 assumed posture as the tier keywords: deterministic and reproducible over

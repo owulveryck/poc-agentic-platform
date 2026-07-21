@@ -33,7 +33,7 @@ it as a hard failure, not a pass.
 
 ## Prerequisite
 
-`make install` put `ppg-verify` on `PATH` (it is one of the six binaries
+`make install` put `ppg-verify` on `PATH` (it is one of the seven binaries
 built by the Makefile). A plan must be locked for the active session so a
 ticket exists in the store — see [tutorial 2](../tutorials/02-claude-code-end-to-end.md)
 or [tutorial 7](../tutorials/07-copilot-end-to-end.md). The gateway must
@@ -56,12 +56,28 @@ under a ticket issued for a different plan. Re-plan through `lock_in_plan`.
 ## As a pre-commit hook
 
 Block a commit whose staged changes leave the locked scope or break a
-content invariant. In `.git/hooks/pre-commit` (or your hook manager):
+content invariant. Scripted install (idempotent, `DRY_RUN=1` to preview):
+
+```bash
+make setup-git-backstop            # this repository
+GLOBAL=1 make setup-git-backstop   # machine-wide via core.hooksPath
+make remove-git-backstop           # undo
+```
+
+Or by hand, in `.git/hooks/pre-commit` (or your hook manager):
 
 ```bash
 #!/bin/sh
 ppg-verify --staged || exit 1
 ```
+
+Posture note: a local git hook is a **cooperative** control —
+`git commit --no-verify` skips it. It catches accidental and agent-driven
+bypasses of the in-loop guards (Bash writes, other editors), not a hostile
+human. The non-bypassable apply-time gate is the same check in CI, below.
+The machine-wide variant blocks *every* commit on the machine without a
+valid ticket (exit 2, fail closed) — intended for fully-governed
+workstations, wrong for mixed human/agent machines.
 
 ## As a pre-push hook
 
@@ -89,8 +105,10 @@ the job rather than silently passing:
 
 ## Notes
 
-- **Deletions are skipped** — there is no content to verify. Renames are
-  verified at the new path.
+- **Deletions are included** as `{path, op: "delete"}` with empty content —
+  removing a governed file is still a change the changeset policy can
+  refuse (match on `f.op == "delete"`). Renames are verified at the new
+  path.
 - **`PPG_URL`** (or `--gateway`) points at the gateway;
   `--project-dir` / `PPG_PROJECT_DIR` and `--store-root` /
   `PPG_STORE_ROOT` locate the per-machine store, exactly as the guards
@@ -100,4 +118,4 @@ the job rather than silently passing:
   [Enforce a content invariant](enforce-a-content-invariant.md), and both
   the in-loop guard and `ppg-verify` pick it up.
 - The endpoint contract is in the [HTTP API reference](../reference/http-api.md#post-verify_changeset);
-  the flags in the [gateway CLI reference](../reference/gateway-cli.md#cmdppg-verify--apply-time--ci-backstop).
+  the flags in the [gateway CLI reference](../reference/validation-server-cli.md#cmdppg-verify--apply-time--ci-backstop).

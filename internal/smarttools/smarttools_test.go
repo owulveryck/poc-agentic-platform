@@ -81,7 +81,7 @@ func TestRunEnforcesArtifactPolicy(t *testing.T) {
 	t.Cleanup(func() { delete(Catalog, "patch_code") })
 
 	// Injected evaluator flags any content containing "RAW".
-	SetArtifactEvaluator(func(path, content string) []string {
+	SetArtifactEvaluator(func(path, content, _, _ string) []string {
 		if strings.Contains(content, "RAW") {
 			return []string{"raw value forbidden in " + path}
 		}

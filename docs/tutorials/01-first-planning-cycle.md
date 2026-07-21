@@ -26,10 +26,12 @@ ppg -addr :8765 -adr examples/adr \
 You should see the readiness lines, then the listen line:
 
 ```
-ADR store loaded: 7 invariants
-Plan linter ready: 7 policies
+ADR store loaded: 8 invariants
+Plan linter ready: 8 policies
+Ticket signing key: ~/.local/state/ppg/ticket.key
 Skill governance linter ready
 Service catalog loaded: 4 services
+Capability ticket TTL: 8h0m0s (bounded by the session)
 Platform Planning Gateway listening on :8765
 ```
 

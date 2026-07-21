@@ -18,6 +18,7 @@
 | `CHANGESET_OK` | `/verify_changeset` accepted the whole diff (changeset view) |
 | `CHANGESET_REJECTED` | `/verify_changeset`: the diff breaks an invariant, `violations[]` provided (422) |
 | `PLAN_SUBSTITUTION` | `/verify_changeset`: the supplied `plan_hash` does not match the ticket's claim; `expected`/`got` provided (409) |
+| `POLICY_CONFLICT` | `/lock_in_plan`: 3 consecutive rejections with a byte-identical violation set — livelock escalation; `policy_ids`, `policy_sources` (adr\|skill\|built-in) and the `escalation_log` path provided; the block persists until the violation set changes (409) |
 | `ARCHITECTURAL_INVARIANT_VIOLATION` | Content broke an architectural invariant; emitted by the guards (block reason) and Smart Tools (`error_category`) after the path scope passed |
 | `PPG_GUARD_ERROR` | A guard could not evaluate an edit (unreadable payload, unopenable store, unreachable gateway) and blocked the PreToolUse edit fail-closed |
 | `EXECUTION_FAILED` | Application failure; see `error_category` |

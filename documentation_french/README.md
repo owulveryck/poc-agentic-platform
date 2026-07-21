@@ -14,6 +14,17 @@
 > (tutoriel 12), la Gate 3 des skills, ni le durcissement 1.0 (clé de
 > signature par machine, plafond de portée des plans). La documentation
 > anglaise ([`docs/`](../docs/README.md)) fait référence.
+>
+> **Attention — affirmations devenues fausses** (pas seulement
+> incomplètes) : ne suivez pas ce document pour l'exploitation.
+> Depuis la v1.0.0 : le ticket et l'identifiant de session ne sont
+> **plus** stockés dans le projet (`.ppg-ticket`, `.ppg-session`) mais
+> sous `$XDG_STATE_HOME/ppg/projects/<slug>/` ; le TTL du ticket n'est
+> plus de 15 minutes mais de **8 h par défaut** (borné par la session,
+> réglable via `-ticket-ttl`) ; la clé de signature n'est plus codée en
+> dur mais vient de `$PPG_TICKET_SECRET` ou d'un fichier de clé par
+> machine ; et la Gate 3 (Rego compagnon des skills au verrouillage du
+> plan) est implémentée, non plus « à venir ».
 
 ## Table des matières
 

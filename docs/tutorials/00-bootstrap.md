@@ -29,7 +29,7 @@ cd poc-agentic-platform
 
 ## Step 2 — Build the binaries onto your `PATH`
 
-Five binaries, one `PATH` directory. The Makefile builds and installs
+Seven binaries, one `PATH` directory. The Makefile builds and installs
 them in one shot. `~/.local/bin` is the default; override with
 `BINDIR=/usr/local/bin make install` for a system-wide install.
 
@@ -46,6 +46,11 @@ That produces:
 - `ppg-copilot-guard` — PreToolUse hook for the GitHub Copilot surfaces.
 - `ppg-preflight` — pre-flight adapter for black-box agents (see
   [tutorial 3](03-github-copilot-preflight.md)).
+- `ppg-verify` — apply-time / CI control point: verifies the whole
+  working-tree diff (see
+  [gate changes at apply time](../how-to/gate-changes-at-apply-time.md)).
+- `svc-mock` — local stand-in for a cataloged service (used by
+  [tutorial 13](13-discover-a-platform-service.md)).
 
 Verify each is on `PATH`:
 
@@ -142,10 +147,12 @@ ppg -addr :8765 -adr examples/adr \
 You should see:
 
 ```
-ADR store loaded: 7 invariants
-Plan linter ready: 7 policies
+ADR store loaded: 8 invariants
+Plan linter ready: 8 policies
+Ticket signing key: ~/.local/state/ppg/ticket.key
 Skill governance linter ready
 Service catalog loaded: 4 services
+Capability ticket TTL: 8h0m0s (bounded by the session)
 Platform Planning Gateway listening on :8765
 ```
 
@@ -216,7 +223,7 @@ Ships three skills: `ppg-tutorial`, `add-payment-method`, and
 | Per-machine (this tutorial) | Per-project (each tutorial you run) |
 |---|---|
 | Clone `poc-agentic-platform` | `git init` a target project |
-| Build the five binaries onto `PATH` | Enable hooks in `.github/hooks/` (Copilot) or `.claude/settings.json` (Claude) |
+| Build the seven binaries onto `PATH` | Enable hooks in `.github/hooks/` (Copilot) or `.claude/settings.json` (Claude) |
 | Register the MCP server (user scope) | Preflight `.github/copilot-instructions.md` for the current intent |
 | Start the gateway (`ppg -addr :8765 -adr …`, step 4) | (Optionally) `apm install` a skill |
 
@@ -287,16 +294,25 @@ Common failure modes we've hit while shipping the tutorials:
   but returns nothing. Re-register the MCP server with the correct
   `--env PPG_URL=…`, or restart the gateway on the expected port.
 
-- **Gateway startup shows fewer than `6 invariants`.** You are on a
-  checkout that predates the latest ADRs (ADR-090, ADR-100). `git pull`.
+- **Startup shows fewer than `8 invariants`.** You are on a
+  checkout that predates the latest ADRs (ADR-110, ADR-120). `git pull`.
 
-## Appendix — running the gateway as a service
+## Appendix — running the validation server as a service
 
-macOS (launchd) example: create
-`~/Library/LaunchAgents/dev.ppg.plist` with a program pointing at
-`~/.local/bin/ppg` and args `["-addr", ":8765"]`. `launchctl load` it
-once. The gateway is holding-cost-free (no external dependencies) — you
-can leave it running.
+One command, both OSes (launchd LaunchAgent on macOS, systemd `--user`
+unit on Linux); every argument after the script name is passed to `ppg`
+verbatim:
+
+```bash
+scripts/setup-gateway-service.sh -adr "$PWD/examples/adr" \
+    -services "$PWD/examples/services" -service-policy "$PWD/examples/service-policy"
+# preview: DRY_RUN=1 scripts/setup-gateway-service.sh ...
+# undo:    scripts/remove-gateway-service.sh
+```
+
+The server is holding-cost-free (no external dependencies) — you can
+leave it running. Point the paths at your real corpus (not the demo
+`examples/`) for a production workstation.
 
 **✅ Done.** You have the platform installed once for every project on
 this machine. From here:

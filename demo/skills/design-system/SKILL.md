@@ -56,10 +56,11 @@ Run these once per project, in order:
 
 If the guard denies an edit citing the ADR-090 design-token invariant, do
 not retry the same call. Read the reason: it names the disallowed value
-and the palette to pick from. Either switch to a `var(--color-*)`
-reference, or route the styling through `design/tokens.css` (for a new
-button variant, extend the tokens file and re-plan through
-`lock_in_plan`).
+and the palette to pick from, then switch to a `var(--color-*)` reference.
+`design/tokens.css` itself is **immutable from within a session**
+(`design_tokens_immutable`): a new button variant or palette extension is
+a human git commit outside any agent session — tell the user so, do not
+re-plan a write to the tokens file.
 
 If the guard denies with `OUT_OF_PLAN_SCOPE`, re-plan through
 `lock_in_plan` if the extra change is genuinely needed.

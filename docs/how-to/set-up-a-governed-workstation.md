@@ -39,9 +39,12 @@ into the *machine* rather than into each *project* means:
 - **Trivial upgrades** — a new ADR ships to the gateway, a new skill
   publishes into the registry; both take effect on the next session,
   with no fan-out PR across N repositories.
-- **MDM-friendly** — the entire configuration is a handful of files in
-  `~/.claude/` and `~/.copilot/`, easy to push, version, and audit at
-  the fleet level.
+- **MDM-friendly** — the entire configuration is a handful of files
+  either under `~/.claude/` / `~/.copilot/` (user scope, per-user push)
+  or under the OS-level managed-settings path (managed scope, root-owned,
+  tamper-proof via `allowManagedHooksOnly`). See
+  [(A) Managed scope](#a-managed-scope--recommended-for-it-managed-fleets)
+  below.
 - **The developer stops seeing the machinery** — `.github/hooks/`,
   `CLAUDE.md`, and skill packages disappear from every project's file
   tree. What remains visible in the repo is what the developer works
@@ -66,9 +69,109 @@ completed. This means:
 - The gateway is running on `:8765` (or is set to auto-start).
 - MCP is registered at user scope for at least one agent surface.
 
-## Recipe — Claude Code (user-wide)
+## Recipe — Claude Code
 
-### 1. MCP + hooks — one command
+Two options, same end-to-end UX, different tamper-proofing guarantee. Pick
+the one that matches your deployment.
+
+### (A) Managed scope — recommended for IT-managed fleets
+
+Claude Code's [scope precedence](https://code.claude.com/docs/en/settings)
+is *Managed > CLI > Local > Project > User*. Installing hooks at **managed
+scope** (root-owned) with `allowManagedHooksOnly: true` makes user, project,
+and plugin hooks silently ignored — so a repository cannot ship a
+`.claude/settings.json` that overrides the platform hooks. This closes
+[tutorial 12 A10](../tutorials/12-bypassing-the-gateway.md#a10--disable-the-guard-by-editing-its-own-config)
+at the settings layer; a user-scope install only guards it softly.
+
+Managed scope does **not** by itself make the guard tamper-proof. The hook
+executes whatever binary its command points at, and the guard reads its
+environment. For a hostile-user threat model, additionally:
+
+1. install the binaries in a root-owned directory —
+   `sudo BINDIR=/usr/local/bin make install` — so the user cannot replace
+   `ppg-guard` itself (the default `~/.local/bin` is user-writable);
+2. pin `PPG_URL` in the managed hook command so content verification
+   cannot be re-pointed at a rogue gateway; `PPG_TICKET_SECRET` and
+   `PPG_STORE_ROOT` follow the same argument.
+
+The managed setup script refuses to install (unless `FORCE=1`) when the
+resolved `ppg-guard` binary is user-writable, and prints the pinning
+recipe.
+
+Requires root. One command:
+
+```bash
+sudo make setup-claude-code-managed
+```
+
+Preview without touching the disk (no root required):
+
+```bash
+DRY_RUN=1 make setup-claude-code-managed
+```
+
+What that writes, per OS:
+
+| OS | Path |
+|---|---|
+| macOS | `/Library/Application Support/ClaudeCode/managed-settings.json` |
+| Linux / WSL | `/etc/claude-code/managed-settings.json` |
+| Windows | `C:\Program Files\ClaudeCode\managed-settings.json` (install by hand — see the shape in [`adapters/claudecode/managed-settings.example.json`](../../adapters/claudecode/managed-settings.example.json)) |
+
+Guarantees, same as the user-scope script:
+
+- **Surgical merge** — any non-ppg policy already in the file
+  (e.g. `permissions`, IT-authored hooks) is preserved. If
+  `allowManagedHooksOnly` is already set to `false`, it is *not* flipped
+  without `FORCE=1` (respects an explicit operator choice).
+- **Backup** on every modifying write to `<file>.bak-YYYYMMDDHHMMSS`.
+- **Absolute path** to `ppg-guard` resolved at install time.
+- **File mode `0644 root:root`** so Claude Code (running as the user) can
+  read it.
+
+MCP registration stays at user scope (`~/.claude.json`) — it's not a
+policy, and pushing MCP config to root scope is not something Claude Code
+supports uniformly across surfaces. Run the user-scope MCP install once
+per user account:
+
+```bash
+make setup-claude-code       # for the MCP entry only; hooks come from managed
+```
+
+**MDM alternatives.** For fleet management without shell access:
+
+- macOS (Jamf, Kandji, Mosyle, Intune): push a configuration profile for
+  the `com.anthropic.claudecode` preferences domain — same JSON keys as
+  `managed-settings.json`.
+- Windows (Group Policy / Intune): set `HKLM\SOFTWARE\Policies\ClaudeCode`
+  → `Settings` with the JSON payload.
+- Split ownership (IT vs platform team): use the drop-in directory
+  `managed-settings.d/*.json` next to `managed-settings.json`; files are
+  merged alphabetically. Prefix with a two-digit sort key (e.g.
+  `50-ppg.json`) to control ordering.
+
+**Verify the hard refusal** (manual smoke test on a scratch VM/container):
+
+1. `sudo make setup-claude-code-managed`.
+2. In a scratch project, drop `.claude/settings.json` with a `PreToolUse`
+   matcher `Edit|Write` calling a benign `echo` — a fake ppg-bypass.
+3. Also inject the same entry into `~/.claude/settings.json`.
+4. Open `claude`, attempt an `Edit` with no locked plan.
+5. Expected: block fires with `No capability ticket for this session`;
+   project- *and* user-scope hooks are silently ignored.
+6. `sudo make remove-claude-code-managed`; reopen; the project-scope
+   bypass now runs (guard gone, project hooks re-enabled).
+
+### (B) User scope — dev workstation, no root
+
+Use this when you don't own the machine's root, or on a personal machine.
+**Trade-off**: a project's `.claude/settings.json` can override user-scope
+hooks and disable the guard for that project (see
+[tutorial 12 A10](../tutorials/12-bypassing-the-gateway.md#a10--disable-the-guard-by-editing-its-own-config) —
+soft-guarded, not hard-guarded). For governed fleets, prefer (A).
+
+#### 1. MCP + hooks — one command
 
 From the `poc-agentic-platform` checkout:
 
@@ -95,7 +198,7 @@ Verify:
 claude mcp list          # → ppg   connected   (user)
 ```
 
-### 2. Contract — write `~/.claude/CLAUDE.md`
+#### 2. Contract — write `~/.claude/CLAUDE.md`
 
 Copy the three-rules contract from the reference example:
 
@@ -109,7 +212,7 @@ Every `claude` session on this machine now loads this contract at
 startup, regardless of the project. If a project needs to override or
 extend it, its own `./CLAUDE.md` takes precedence.
 
-### About the session state
+#### About the session state
 
 Opening ANY project in `claude` now triggers `SessionStart`, which
 purges any stale tickets from the per-project TokenStore under
@@ -117,15 +220,17 @@ purges any stale tickets from the per-project TokenStore under
 session id in the SessionStore. `Edit`/`Write` calls then get gated
 through the ticket scope.
 
-### Manual alternative (if you'd rather see the wiring)
+#### Manual alternative (if you'd rather see the wiring)
 
 The Make target is a wrapper over `scripts/setup-claude-code.sh`. Read
 that script for the exact JSON writes; the target files are
 `~/.claude.json` (`mcpServers.ppg`) and `~/.claude/settings.json`
 (`hooks.SessionStart[]` + `hooks.PreToolUse[]` with matcher `Edit|Write`),
-using absolute paths to `ppg-mcp-server` and `ppg-guard`.
+using absolute paths to `ppg-mcp-server` and `ppg-guard`. For the
+managed-scope variant, see `scripts/setup-claude-code-managed.sh`
+(same shape at the OS-level managed-settings path).
 
-### 4. Skills — install them user-wide
+### Skills — install them user-wide (both scopes)
 
 APM's `--target claude` deploys to `.claude/skills/` in the current
 working directory. To make skills user-wide, install them into a
@@ -150,6 +255,19 @@ ls ~/.claude/skills/
 ## Recipe — GitHub Copilot desktop / `gh copilot` CLI (user-wide)
 
 Same four steps, different filesystem locations under `~/.copilot/`.
+
+> **No managed-scope equivalent today.** GitHub Copilot has no documented
+> counterpart to Claude Code's `allowManagedHooksOnly`.
+> `~/.copilot/hooks/ppg.json` is user-writable and can be deleted or
+> edited by the account that runs Copilot. OS-level file-locking
+> (`chattr +i` on Linux, SIP-protected paths on macOS) is **not** a
+> substitute — it breaks Copilot updates and does not prevent replacement
+> at the parent-directory level. For **tamper-proof governance today,
+> use Claude Code at managed scope** (see the (A) recipe above); treat
+> Copilot governance as best-effort until GitHub ships a managed-hooks
+> feature. The apply-time backstop (`ppg-verify` in pre-commit / CI)
+> catches escapes on any surface, Copilot included — see
+> [gate-changes-at-apply-time](gate-changes-at-apply-time.md).
 
 ### 1. MCP — already user-scope from tutorial 0
 
@@ -300,10 +418,20 @@ touch to non-ppg config.
 ### Claude Code
 
 ```bash
+# Managed scope (only if you installed via (A) above):
+sudo make remove-claude-code-managed   # DRY_RUN=1 to preview (no sudo needed)
+
+# User scope (MCP + user-scope hooks):
 make remove-claude-code        # DRY_RUN=1 to preview
 rm -f ~/.claude/CLAUDE.md      # if you deployed the contract
 rm -rf ~/.claude/skills        # if you deployed skills user-wide
 ```
+
+`make remove-claude-code-managed` strips only the ppg-guard hook entries
+from the OS-level `managed-settings.json`; if the resulting file contains
+no other policy, `allowManagedHooksOnly` is dropped and the file is
+removed entirely (a timestamped backup is taken first). Non-ppg policy
+(other hooks, permissions, IT-authored settings) is always preserved.
 
 `make remove-claude-code` clears ppg from **global config and the current
 project only** — other projects on this machine are never touched. It removes

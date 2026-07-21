@@ -14,7 +14,10 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo deve
 LDFLAGS  = -ldflags "-X github.com/owulveryck/poc-agentic-platform/internal/version.Version=$(VERSION)"
 
 .PHONY: help build quickstart install uninstall setup-claude-code remove-claude-code \
-        setup-github-copilot remove-github-copilot test lint tidy clean
+        setup-claude-code-managed remove-claude-code-managed \
+        setup-github-copilot remove-github-copilot \
+        setup-git-backstop remove-git-backstop \
+        setup-gateway-service remove-gateway-service test lint tidy clean
 
 ## help: Show this help.
 help:
@@ -67,6 +70,14 @@ setup-claude-code:
 remove-claude-code:
 	@scripts/remove-claude-code.sh
 
+## setup-claude-code-managed: Install ppg-guard hooks at managed scope (tamper-proof via allowManagedHooksOnly, requires sudo).
+setup-claude-code-managed:
+	@scripts/setup-claude-code-managed.sh
+
+## remove-claude-code-managed: Uninstall managed-scope ppg-guard hooks (requires sudo).
+remove-claude-code-managed:
+	@scripts/remove-claude-code-managed.sh
+
 ## setup-github-copilot: Register the ppg MCP server + hooks user-scope for GitHub Copilot (DRY_RUN=1 to preview, FORCE=1 to overwrite).
 setup-github-copilot:
 	@scripts/setup-github-copilot.sh
@@ -74,6 +85,22 @@ setup-github-copilot:
 ## remove-github-copilot: Unregister the ppg MCP + delete the ppg hook file for GitHub Copilot (DRY_RUN=1 to preview).
 remove-github-copilot:
 	@scripts/remove-github-copilot.sh
+
+## setup-git-backstop: Install ppg-verify as the current repo's pre-commit hook (GLOBAL=1 for machine-wide core.hooksPath; DRY_RUN=1 to preview).
+setup-git-backstop:
+	@scripts/setup-git-backstop.sh
+
+## remove-git-backstop: Remove the ppg-verify pre-commit hook (GLOBAL=1 for the machine-wide variant; DRY_RUN=1 to preview).
+remove-git-backstop:
+	@scripts/remove-git-backstop.sh
+
+## setup-gateway-service: Run the validation server as a user service — launchd (macOS) / systemd --user (Linux). Flags via PPG_SERVICE_ARGS="-adr ...".
+setup-gateway-service:
+	@scripts/setup-gateway-service.sh $(PPG_SERVICE_ARGS)
+
+## remove-gateway-service: Stop and remove the validation-server user service (DRY_RUN=1 to preview).
+remove-gateway-service:
+	@scripts/remove-gateway-service.sh
 
 ## test: Run all tests.
 test:

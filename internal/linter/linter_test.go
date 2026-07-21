@@ -303,7 +303,7 @@ func TestArtifactViewRejectsRawColorsAndButtonRules(t *testing.T) {
 	}
 	for _, tc := range reject {
 		t.Run("reject/"+tc.name, func(t *testing.T) {
-			vs := lint.EvaluateArtifact(Artifact{Path: "index.css", Content: tc.content})
+			vs := lint.EvaluateArtifact("", "", Artifact{Path: "index.css", Content: tc.content})
 			if !hasPolicy(vs, "design_tokens_referenced") {
 				t.Fatalf("expected design_tokens_referenced violation for %q, got %v", tc.content, vs)
 			}
@@ -322,7 +322,7 @@ func TestArtifactViewRejectsRawColorsAndButtonRules(t *testing.T) {
 	}
 	for _, tc := range allow {
 		t.Run("allow/"+tc.name, func(t *testing.T) {
-			vs := lint.EvaluateArtifact(Artifact{Path: tc.path, Content: tc.content})
+			vs := lint.EvaluateArtifact("", "", Artifact{Path: tc.path, Content: tc.content})
 			if hasPolicy(vs, "design_tokens_referenced") {
 				t.Fatalf("expected no design_tokens violation for %s %q, got %v", tc.path, tc.content, vs)
 			}
@@ -337,7 +337,7 @@ func TestArtifactViewDoesNotFirePlanRules(t *testing.T) {
 	}
 	// A clean UI artifact must not trip any plan-altitude policy (e.g.
 	// go_tests_present, which has no step context in the artifact view).
-	vs := lint.EvaluateArtifact(Artifact{Path: "index.css", Content: ".a{color:var(--color-primary);}"})
+	vs := lint.EvaluateArtifact("", "", Artifact{Path: "index.css", Content: ".a{color:var(--color-primary);}"})
 	if len(vs) != 0 {
 		t.Fatalf("expected no violations for a clean artifact, got %v", vs)
 	}
@@ -353,13 +353,90 @@ func TestChangesetViewChecksEveryFile(t *testing.T) {
 		{Path: "ok.css", Content: ".a{color:var(--color-primary)}"},
 		{Path: "bad.css", Content: ".b{color:#abc}"},
 	}}
-	if !hasPolicy(lint.EvaluateChangeset(cs), "design_tokens_referenced") {
+	if !hasPolicy(lint.EvaluateChangeset("", "", cs), "design_tokens_referenced") {
 		t.Fatal("expected a raw-color file in the changeset to be rejected")
 	}
 	// An all-clean changeset passes.
 	clean := Changeset{Files: []Artifact{{Path: "ok.css", Content: ".a{color:var(--color-primary)}"}}}
-	if len(lint.EvaluateChangeset(clean)) != 0 {
-		t.Fatalf("expected a clean changeset to pass, got %v", lint.EvaluateChangeset(clean))
+	if len(lint.EvaluateChangeset("", "", clean)) != 0 {
+		t.Fatalf("expected a clean changeset to pass, got %v", lint.EvaluateChangeset("", "", clean))
+	}
+}
+
+// TestSkillCompanionArtifactViewFires proves that a SKILL.rego with an
+// artifact-view rule is evaluated at per-edit time when the caller supplies
+// the matching skill id — the extension that turns SKILL.rego into a
+// content-altitude enforcer alongside the ADR corpus.
+func TestSkillCompanionArtifactViewFires(t *testing.T) {
+	lint, err := New(testStore(), "testdata")
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if err := lint.LoadSkillCompanions("../../demo/skills"); err != nil {
+		t.Fatalf("LoadSkillCompanions: %v", err)
+	}
+	// A raw hex color in a .tsx file, under skill_id "design-system", is
+	// rejected by the skill's artifact-view rule even though ADR-090 is not
+	// asserted here (the testStore covers it too, but this proves the skill
+	// contributes independently).
+	bad := lint.EvaluateArtifact("", "design-system", Artifact{
+		Path:    "src/Button.tsx",
+		Content: "export const c = '#ff0000'",
+	})
+	if !hasPolicy(bad, "design_tokens_referenced") {
+		t.Fatalf("expected the skill's artifact-view rule to reject a raw hex, got %v", bad)
+	}
+	// Without a skill id, only the ADR corpus applies (and ADR-090's
+	// artifact rule fires on .css/.html/.tsx too — the point of this check
+	// is only that no unknown_skill is raised).
+	noSkill := lint.EvaluateArtifact("", "", Artifact{
+		Path:    "src/Button.tsx",
+		Content: "export const c = 'var(--color-primary)'",
+	})
+	for _, v := range noSkill {
+		if v.PolicyID == "unknown_skill" {
+			t.Fatalf("empty skillID must not trigger unknown_skill, got %v", noSkill)
+		}
+	}
+}
+
+// TestSkillCompanionUnknownSkillFailsClosedAtArtifactView ensures the same
+// fail-closed contract as the plan view: a ticket declaring an unregistered
+// skill is refused at content altitude too, so a stale/renamed skill cannot
+// slip past the per-edit gate.
+func TestSkillCompanionUnknownSkillFailsClosedAtArtifactView(t *testing.T) {
+	lint, err := New(testStore(), "testdata")
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if err := lint.LoadSkillCompanions("../../demo/skills"); err != nil {
+		t.Fatalf("LoadSkillCompanions: %v", err)
+	}
+	vs := lint.EvaluateArtifact("", "no-such-skill", Artifact{
+		Path:    "src/Button.tsx",
+		Content: "export const c = 'var(--color-primary)'",
+	})
+	if !hasPolicy(vs, "unknown_skill") {
+		t.Fatalf("expected unknown_skill fail-closed at artifact view, got %v", vs)
+	}
+}
+
+// TestSkillCompanionChangesetViewFires mirrors the artifact test at the
+// apply-time altitude.
+func TestSkillCompanionChangesetViewFires(t *testing.T) {
+	lint, err := New(testStore(), "testdata")
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if err := lint.LoadSkillCompanions("../../demo/skills"); err != nil {
+		t.Fatalf("LoadSkillCompanions: %v", err)
+	}
+	cs := Changeset{Files: []Artifact{
+		{Path: "src/Button.tsx", Content: "export const c = '#0af'"},
+	}}
+	vs := lint.EvaluateChangeset("", "design-system", cs)
+	if !hasPolicy(vs, "design_tokens_referenced") {
+		t.Fatalf("expected the skill's changeset-view rule to reject a raw hex, got %v", vs)
 	}
 }
 
@@ -398,7 +475,7 @@ func TestADR110ArtifactRejectsForbiddenProvider(t *testing.T) {
 	}
 	for name, content := range cases {
 		t.Run(name, func(t *testing.T) {
-			vs := lint.EvaluateArtifact(Artifact{Path: "internal/pay/client.go", Content: content})
+			vs := lint.EvaluateArtifact("", "", Artifact{Path: "internal/pay/client.go", Content: content})
 			if !hasPolicy(vs, "use_cataloged_services") {
 				t.Fatalf("expected use_cataloged_services violation, got %v", vs)
 			}
@@ -414,7 +491,7 @@ func TestADR110ArtifactAllowsSanctionedService(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 	content := "package pay\nconst gateway = \"http://localhost:9120/v1/charges\"\n"
-	vs := lint.EvaluateArtifact(Artifact{Path: "internal/pay/client.go", Content: content})
+	vs := lint.EvaluateArtifact("", "", Artifact{Path: "internal/pay/client.go", Content: content})
 	if hasPolicy(vs, "use_cataloged_services") {
 		t.Fatalf("sanctioned gateway call should pass, got %v", vs)
 	}
@@ -429,7 +506,7 @@ func TestADR110ChangesetRejectsForbiddenProvider(t *testing.T) {
 	cs := Changeset{Files: []Artifact{
 		{Path: "internal/pay/client.go", Content: "import \"github.com/stripe/stripe-go/v76\""},
 	}}
-	if !hasPolicy(lint.EvaluateChangeset(cs), "use_cataloged_services") {
+	if !hasPolicy(lint.EvaluateChangeset("", "", cs), "use_cataloged_services") {
 		t.Fatalf("expected changeset rejection for stripe SDK")
 	}
 }

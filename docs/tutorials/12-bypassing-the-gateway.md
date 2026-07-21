@@ -171,11 +171,33 @@ connection refused — blocking (fail-closed). Nothing was modified.
 
 ### A10 — disable the guard by editing its own config
 
-The most direct attack: edit `~/.claude/settings.json` to remove the hook.
-But the harness-metadata carve-out is deliberately narrow — it exempts
-`~/.claude/plans/` only, not sibling files — so `settings.json` is still
+The most direct attack: edit `~/.claude/settings.json` (user scope) or
+`.claude/settings.json` (project scope) to remove the hook. Two flavors
+depending on how the workstation was installed:
+
+**User-scope deployment** (default: `make setup-claude-code`) — the
+harness-metadata carve-out is deliberately narrow, exempting
+`~/.claude/plans/` only, not sibling files, so `settings.json` is still
 guarded and the edit is refused (`OUT_OF_PLAN_SCOPE`, since it is outside
-any locked plan). An agent cannot edit away its own guard.
+any locked plan). **Soft refusal**: an agent inside the loop cannot edit
+away its own guard, but a determined user out of the loop still can (the
+guard runs as the user; the file is owned by the user). Also, per
+[Claude Code scope precedence](https://code.claude.com/docs/en/settings)
+(*Managed > CLI > Local > Project > User*), a project's
+`.claude/settings.json` can shadow user-scope hook entries — again
+mitigated in-loop by the guard on `Edit`/`Write`, but not prevented at
+the file level.
+
+**Managed-scope deployment**
+([recipe (A)](../how-to/set-up-a-governed-workstation.md#a-managed-scope--recommended-for-it-managed-fleets))
+— `allowManagedHooksOnly: true` in `/Library/Application Support/ClaudeCode/managed-settings.json`
+(or the Linux/Windows equivalent) causes Claude Code to **ignore user,
+project, and plugin hooks entirely**. A bypass entry planted in
+`~/.claude/settings.json` or a repo-committed `.claude/settings.json` is
+silently dropped. The managed file is `root:root`; removing it requires
+local root — outside the agent's authority by construction. **Hard
+refusal**: this closes A10 for real, not softly. This is why an
+IT-managed fleet should always deploy via the managed recipe.
 
 ## Group B — refused at lock time
 

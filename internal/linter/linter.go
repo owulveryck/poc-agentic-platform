@@ -15,10 +15,14 @@ package linter
 
 import (
 	"fmt"
+	"log"
+	"maps"
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
+	"sync"
 
 	"github.com/owulveryck/poc-agentic-platform/internal/adr"
 	"github.com/owulveryck/poc-agentic-platform/internal/plan"
@@ -64,7 +68,21 @@ type Violation struct {
 // Linter evaluates OPA/Rego policies derived from ADR .rego files. The same
 // compiled corpus is evaluated at three altitudes — plan, artifact and
 // changeset — discriminated by the input.view field (see Validate,
-// EvaluateArtifact, EvaluateChangeset).
+// EvaluateArtifact, EvaluateChangeset). When the caller supplies a skillID,
+// the artifact and changeset evaluators additionally run that skill's
+// companion Rego, so a SKILL.rego can enforce per-edit invariants alongside
+// the ADR corpus (fail-closed on an unknown skill).
+//
+// Skill companions live in two tiers:
+//
+//   - **Operator-provided** — loaded from -skills at startup
+//     (LoadSkillCompanions). Enterprise baseline; shared across sessions.
+//   - **Session-scoped** — uploaded via RegisterSessionSkill (client push
+//     over POST /register_skill). Isolated per session_id, evicted at
+//     session teardown.
+//
+// The operator tier wins on name collision so a project-local upload cannot
+// silently downgrade a policy the operator has already reserved.
 type Linter struct {
 	// Registry is the governance catalog of all tracked policies, keyed by
 	// policy_id. Used by the debt report to measure the compensatory ratio.
@@ -75,10 +93,20 @@ type Linter struct {
 	// be allow-all and least privilege would be meaningless.
 	AllowWideScope bool
 	eval           *policy.Evaluator
+	// skillMu guards skillCompanions and sessionSkills for the lifetime of
+	// the process. Reads are hot (every /verify_artifact and /lock_in_plan
+	// with a skill id); writes only happen at startup and at
+	// /register_skill (rare).
+	skillMu sync.RWMutex
 	// skillCompanions maps a published skill name to the compiled evaluator
 	// of its companion Rego (Gate 3). A nil value marks a skill published
 	// without a companion (tier 0). Populated by LoadSkillCompanions.
 	skillCompanions map[string]*policy.Evaluator
+	// sessionSkills is the session-scoped tier: (session_id → skill_name →
+	// evaluator). Populated by RegisterSessionSkill; the operator tier
+	// (skillCompanions) is consulted first, so a session upload cannot
+	// override an operator-provided policy under the same name.
+	sessionSkills map[string]map[string]*policy.Evaluator
 }
 
 // Artifact is one edited file's actual content — the artifact view of the
@@ -124,7 +152,10 @@ type changesetInput struct {
 // files found in adrDir. ADRs without a RegoFile (e.g. declarative-only ADRs)
 // still contribute to the Registry but not to the Rego evaluation.
 func New(store *adr.Store, adrDir string) (*Linter, error) {
-	l := &Linter{Registry: make(map[string]PolicyMeta)}
+	l := &Linter{
+		Registry:      make(map[string]PolicyMeta),
+		sessionSkills: make(map[string]map[string]*policy.Evaluator),
+	}
 
 	var regoPaths []string
 	for _, inv := range store.Invariants {
@@ -158,10 +189,9 @@ func (l *Linter) Validate(p *plan.Plan) []Violation {
 	if !l.AllowWideScope {
 		violations = wideScopeViolations(p)
 	}
-	if p.SkillID != "" {
-		violations = append(violations, l.skillViolations(p)...)
-	}
-	return append(violations, l.evaluate(planInput{Plan: *p, View: "plan"})...)
+	input := planInput{Plan: *p, View: "plan"}
+	violations = append(violations, l.evaluateSkillCompanion(p.SessionID, p.SkillID, input)...)
+	return append(violations, l.evaluate(input)...)
 }
 
 // LoadSkillCompanions registers the published skills found in dir (one
@@ -174,7 +204,7 @@ func (l *Linter) LoadSkillCompanions(dir string) error {
 	if err != nil {
 		return fmt.Errorf("reading skills directory: %w", err)
 	}
-	l.skillCompanions = make(map[string]*policy.Evaluator)
+	loaded := make(map[string]*policy.Evaluator)
 	for _, e := range entries {
 		if !e.IsDir() {
 			continue
@@ -186,39 +216,161 @@ func (l *Linter) LoadSkillCompanions(dir string) error {
 		name := skillName(filepath.Join(skillDir, "SKILL.md"), e.Name())
 		regoFile := filepath.Join(skillDir, "SKILL.rego")
 		if _, err := os.Stat(regoFile); err != nil {
-			l.skillCompanions[name] = nil // published without a companion
+			loaded[name] = nil // published without a companion
 			continue
 		}
-		pkg, err := regoPackage(regoFile)
+		ev, err := compileSkillFromFile(regoFile)
 		if err != nil {
 			return fmt.Errorf("skill %s: %w", name, err)
 		}
-		ev, err := policy.Prepare("data."+pkg+".violation", []string{regoFile})
-		if err != nil {
-			return fmt.Errorf("skill %s: %w", name, err)
-		}
-		l.skillCompanions[name] = ev
+		loaded[name] = ev
 	}
+	l.skillMu.Lock()
+	l.skillCompanions = loaded
+	l.skillMu.Unlock()
 	return nil
 }
 
-// SkillCount reports how many published skills are registered for Gate 3.
-func (l *Linter) SkillCount() int { return len(l.skillCompanions) }
+// SkillCount reports how many published skills the operator loaded via
+// -skills (the operator-provided tier). Session-scoped registrations do not
+// count.
+func (l *Linter) SkillCount() int {
+	l.skillMu.RLock()
+	defer l.skillMu.RUnlock()
+	return len(l.skillCompanions)
+}
 
-// skillViolations evaluates the plan against the declared skill's companion
-// Rego. It fails closed: an unknown skill id — including every skill id when
-// the gateway was started without -skills — is itself a violation.
-func (l *Linter) skillViolations(p *plan.Plan) []Violation {
-	ev, ok := l.skillCompanions[p.SkillID]
+// RegisterSessionSkill compiles rego (may be empty for a tier-0 skill) and
+// stores the evaluator under (sessionID, name). Subsequent evaluate calls
+// with that session id find the skill in the session-scoped tier; the
+// operator tier still wins on name collision.
+//
+// A compile error is returned to the caller so the client sees the failure
+// synchronously (POST /register_skill → 422 SKILL_COMPILE_ERROR). No state
+// is mutated on error.
+func (l *Linter) RegisterSessionSkill(sessionID, name, rego string) error {
+	if sessionID == "" {
+		return fmt.Errorf("session_id is required")
+	}
+	if name == "" {
+		return fmt.Errorf("name is required")
+	}
+	ev, err := compileSkillFromModule(name, rego)
+	if err != nil {
+		return err
+	}
+	l.skillMu.Lock()
+	if _, shadowed := l.skillCompanions[name]; shadowed {
+		// Registration succeeds (idempotent client behavior) but the upload
+		// will never be consulted — say so instead of shadowing silently.
+		log.Printf("register_skill: session %s upload of %q is shadowed by the operator-provided skill of the same name (operator tier wins)",
+			sessionID, name)
+	}
+	if l.sessionSkills[sessionID] == nil {
+		l.sessionSkills[sessionID] = make(map[string]*policy.Evaluator)
+	}
+	l.sessionSkills[sessionID][name] = ev
+	l.skillMu.Unlock()
+	return nil
+}
+
+// AdoptSessions copies the session-scoped skill registrations from old into
+// l. Used by the hot-reload path (SIGHUP on the validation server):
+// rebuilding the durable corpus must not evict the skills that live
+// sessions uploaded via /register_skill.
+func (l *Linter) AdoptSessions(old *Linter) {
+	if old == nil {
+		return
+	}
+	old.skillMu.RLock()
+	defer old.skillMu.RUnlock()
+	l.skillMu.Lock()
+	defer l.skillMu.Unlock()
+	for sid, bySkill := range old.sessionSkills {
+		copied := make(map[string]*policy.Evaluator, len(bySkill))
+		maps.Copy(copied, bySkill)
+		l.sessionSkills[sid] = copied
+	}
+}
+
+// UnregisterSession drops every skill registered under sessionID. Called
+// at session teardown; a no-op for an unknown session.
+func (l *Linter) UnregisterSession(sessionID string) {
+	l.skillMu.Lock()
+	delete(l.sessionSkills, sessionID)
+	l.skillMu.Unlock()
+}
+
+// SessionSkillCount reports how many skills are registered for sessionID.
+// Diagnostic helper; tests use it to observe register/unregister effects.
+func (l *Linter) SessionSkillCount(sessionID string) int {
+	l.skillMu.RLock()
+	defer l.skillMu.RUnlock()
+	return len(l.sessionSkills[sessionID])
+}
+
+// compileSkillFromFile prepares an evaluator over a SKILL.rego on disk. Used
+// at startup by LoadSkillCompanions.
+func compileSkillFromFile(regoFile string) (*policy.Evaluator, error) {
+	pkg, err := regoPackage(regoFile)
+	if err != nil {
+		return nil, err
+	}
+	return policy.Prepare("data."+pkg+".violation", []string{regoFile})
+}
+
+// compileSkillFromModule prepares an evaluator over an in-memory rego source.
+// An empty source is a tier-0 skill (returns a ready no-op).
+func compileSkillFromModule(name, source string) (*policy.Evaluator, error) {
+	if source == "" {
+		return nil, nil
+	}
+	pkg, err := regoPackageFromSource(source)
+	if err != nil {
+		return nil, err
+	}
+	return policy.PrepareModule("data."+pkg+".violation", name+".rego", source)
+}
+
+// lookupSkill resolves a skill by (sessionID, skillID) with operator-provided
+// entries winning over session-scoped ones. Returns (evaluator, found).
+func (l *Linter) lookupSkill(sessionID, skillID string) (*policy.Evaluator, bool) {
+	l.skillMu.RLock()
+	defer l.skillMu.RUnlock()
+	if ev, ok := l.skillCompanions[skillID]; ok {
+		return ev, true
+	}
+	if bySkill, ok := l.sessionSkills[sessionID]; ok {
+		if ev, ok := bySkill[skillID]; ok {
+			return ev, true
+		}
+	}
+	return nil, false
+}
+
+// evaluateSkillCompanion evaluates the declared skill's companion Rego against
+// one input document (any view). It fails closed: an unknown skill id —
+// including every skill id when the gateway was started without -skills — is
+// itself a violation. An empty skillID means the caller did not declare a
+// skill, in which case only the ADR corpus applies. A registered skill with a
+// nil evaluator (tier-0 publication) is a no-op.
+func (l *Linter) evaluateSkillCompanion(sessionID, skillID string, input any) []Violation {
+	if skillID == "" {
+		return nil
+	}
+	ev, ok := l.lookupSkill(sessionID, skillID)
 	if !ok {
 		return []Violation{{
 			PolicyID: "unknown_skill",
-			Message: fmt.Sprintf("plan declares skill_id %q but no published skill with that name is registered with the gateway "+
-				"(start ppg with -skills pointing at the published skills directory, or drop skill_id)", p.SkillID),
+			Message: fmt.Sprintf("plan declares skill_id %q but no published skill with that name is registered with the gateway for session %q "+
+				"(register it via POST /register_skill, or start ppg with -skills pointing at the published skills directory)", skillID, sessionID),
 			Nature: Amplifier,
 		}}
 	}
-	violations, err := policy.Eval[Violation](ev, planInput{Plan: *p, View: "plan"})
+	if ev == nil {
+		return nil
+	}
+	violations, err := policy.Eval[Violation](ev, input)
 	if err != nil {
 		return []Violation{{
 			PolicyID: "linter_eval_error",
@@ -252,12 +404,31 @@ func regoPackage(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	for line := range strings.SplitSeq(string(raw), "\n") {
+	pkg, ok := scanPackage(string(raw))
+	if !ok {
+		return "", fmt.Errorf("%s: no package declaration", path)
+	}
+	return pkg, nil
+}
+
+// regoPackageFromSource returns the package path declared by an in-memory
+// rego source. Same syntax as a file — the compiler is oblivious to the
+// origin.
+func regoPackageFromSource(source string) (string, error) {
+	pkg, ok := scanPackage(source)
+	if !ok {
+		return "", fmt.Errorf("no package declaration in rego source")
+	}
+	return pkg, nil
+}
+
+func scanPackage(source string) (string, bool) {
+	for line := range strings.SplitSeq(source, "\n") {
 		if after, ok := strings.CutPrefix(strings.TrimSpace(line), "package "); ok {
-			return strings.TrimSpace(after), nil
+			return strings.TrimSpace(after), true
 		}
 	}
-	return "", fmt.Errorf("%s: no package declaration", path)
+	return "", false
 }
 
 // wideScopeViolations rejects step targets so broad that the ticket derived
@@ -301,14 +472,74 @@ func isWideTarget(target string) bool {
 
 // EvaluateArtifact evaluates the corpus against a single edited file's content
 // (artifact view) — the in-loop check behind the guard hook and Smart Tools.
-func (l *Linter) EvaluateArtifact(a Artifact) []Violation {
-	return l.evaluate(artifactInput{View: "artifact", Artifact: a})
+// The declared skill (when skillID is non-empty) is evaluated fail-closed —
+// an unknown id is itself a violation. Independently, EVERY registered skill
+// applicable to the session (operator tier + this session's uploads) is
+// unioned in: an installed skill's content invariants apply automatically,
+// whether or not the plan declared that skill (union semantics — a plan that
+// omits skill_id no longer bypasses skill content rules). sessionID selects
+// the session-scoped tier; pass "" to consult only the operator tier.
+func (l *Linter) EvaluateArtifact(sessionID, skillID string, a Artifact) []Violation {
+	input := artifactInput{View: "artifact", Artifact: a}
+	violations := l.evaluateSkillCompanion(sessionID, skillID, input)
+	violations = append(violations, l.evaluateAllSkills(sessionID, skillID, input)...)
+	return append(violations, l.evaluate(input)...)
 }
 
 // EvaluateChangeset evaluates the corpus against a whole diff (changeset view) —
-// the apply-time backstop.
-func (l *Linter) EvaluateChangeset(c Changeset) []Violation {
-	return l.evaluate(changesetInput{View: "changeset", Changeset: c})
+// the apply-time backstop. Same union semantics as EvaluateArtifact: the
+// declared skill is evaluated fail-closed, and every other registered skill
+// applicable to the session is unioned in regardless of the declared id.
+func (l *Linter) EvaluateChangeset(sessionID, skillID string, c Changeset) []Violation {
+	input := changesetInput{View: "changeset", Changeset: c}
+	violations := l.evaluateSkillCompanion(sessionID, skillID, input)
+	violations = append(violations, l.evaluateAllSkills(sessionID, skillID, input)...)
+	return append(violations, l.evaluate(input)...)
+}
+
+// evaluateAllSkills evaluates every registered skill companion applicable to
+// the session — the operator tier plus this session's uploads, the operator
+// winning on name collision — against one content-view input document,
+// skipping the declared skill (already evaluated fail-closed by
+// evaluateSkillCompanion). This implements the governed-machine intent for
+// the content altitudes: as soon as an installed skill provides a
+// validation, it applies automatically. Plan-view rules stay selected by
+// skill_id: a skill's *workflow requirements* (e.g. "the plan must read the
+// tokens file") only make sense for plans executed under that skill, whereas
+// its *content invariants* (artifact/changeset views) hold for every edit.
+// Iteration is name-sorted so verdicts are reproducible run to run.
+func (l *Linter) evaluateAllSkills(sessionID, declaredSkillID string, input any) []Violation {
+	l.skillMu.RLock()
+	evs := make(map[string]*policy.Evaluator, len(l.skillCompanions)+len(l.sessionSkills[sessionID]))
+	for name, ev := range l.sessionSkills[sessionID] {
+		evs[name] = ev
+	}
+	for name, ev := range l.skillCompanions { // operator tier wins on collision
+		evs[name] = ev
+	}
+	l.skillMu.RUnlock()
+
+	var violations []Violation
+	for _, name := range slices.Sorted(maps.Keys(evs)) {
+		if name == declaredSkillID {
+			continue
+		}
+		ev := evs[name]
+		if ev == nil {
+			continue // tier-0 skill: registered, no companion policy
+		}
+		vs, err := policy.Eval[Violation](ev, input)
+		if err != nil {
+			violations = append(violations, Violation{
+				PolicyID: "linter_eval_error",
+				Message:  fmt.Sprintf("skill %s: %v", name, err),
+				Nature:   Compensatory,
+			})
+			continue
+		}
+		violations = append(violations, vs...)
+	}
+	return violations
 }
 
 // evaluate runs the corpus against one input document. It fails closed: an

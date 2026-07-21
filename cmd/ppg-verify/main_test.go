@@ -102,7 +102,7 @@ func TestChangedFilesStagedOnly(t *testing.T) {
 	}
 }
 
-func TestChangedFilesSkipsDeletions(t *testing.T) {
+func TestChangedFilesIncludesDeletionsAsDeleteOp(t *testing.T) {
 	gitRepo(t)
 	write(t, "gone.go", "package gone\n")
 	commitAll(t)
@@ -114,8 +114,13 @@ func TestChangedFilesSkipsDeletions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(files) != 0 {
-		t.Errorf("deletions must be skipped, got %v", paths(files))
+	// Removing a governed file is still a change the changeset policy must
+	// see: it travels as {path, op: "delete"} with empty content.
+	if len(files) != 1 || files[0].Path != "gone.go" {
+		t.Fatalf("deletion must be included, got %v", paths(files))
+	}
+	if files[0].Op != "delete" || files[0].Content != "" {
+		t.Fatalf("deletion must carry op=delete and empty content, got %+v", files[0])
 	}
 }
 

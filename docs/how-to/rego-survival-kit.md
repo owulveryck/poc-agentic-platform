@@ -149,6 +149,32 @@ plan_has_migration if {
 }
 ```
 
+## Rules that fire at more than one altitude
+
+The same `.rego` file is evaluated at three views — `plan`, `artifact`,
+`changeset` — so guard each rule with the view it targets:
+
+```rego
+violation contains v if {
+    input.view == "plan"        # <-- always add this
+    some step in input.steps
+    endswith(step.targets[_], ".tsx")
+    ...
+}
+
+violation contains v if {
+    input.view == "artifact"    # different view, different input shape
+    endswith(input.artifact.path, ".tsx")
+    regex.match(`#[0-9a-fA-F]{3,8}\b`, input.artifact.content)
+    ...
+}
+```
+
+Without the guard, a plan-shape rule reading `input.steps` silently
+no-ops at artifact time (undefined reference → no match), so nothing
+breaks — but the intent is muddied. Always be explicit. Full input
+schemas: [policy views](../reference/policy-views.md).
+
 ## The two traps that bite everyone
 
 **Trap 1 — inline negation.** This does not mean "no step is a test step",

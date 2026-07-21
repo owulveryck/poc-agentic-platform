@@ -77,6 +77,50 @@ A fully worked, tested session is in the
 5. **Instruct the agent** — add the contract to the target project's
    `CLAUDE.md` (see [`CLAUDE.example.md`](CLAUDE.example.md)).
 
+## Deployment scope
+
+Claude Code merges settings from four scopes (highest wins):
+**Managed > CLI > Local > Project > User** — see
+[Claude Code settings docs](https://code.claude.com/docs/en/settings).
+Where you install the hook determines who can undo it.
+
+| Scope | File | Writable by | Bypass by user? | Example |
+|---|---|---|---|---|
+| **Managed** | `/Library/Application Support/ClaudeCode/managed-settings.json` (macOS), `/etc/claude-code/managed-settings.json` (Linux), `C:\Program Files\ClaudeCode\managed-settings.json` (Windows) | root only | Not via settings — with `allowManagedHooksOnly:true`, user/project/plugin hooks are ignored entirely. The binary and environment vectors remain (see below) | [`managed-settings.example.json`](managed-settings.example.json) |
+| **User** | `~/.claude/settings.json` | the user | Yes — a repo's `.claude/settings.json` overrides it, and the user can edit the file directly | [`settings.example.json`](settings.example.json) |
+| **Project** | `.claude/settings.json` (committed) | anyone with repo write access | N/A — this *is* what a bypass would look like | (not used by ppg) |
+
+For **IT-managed fleets**, install at managed scope with
+`allowManagedHooksOnly:true` — this closes
+[tutorial 12 A10](../../docs/tutorials/12-bypassing-the-gateway.md#a10--disable-the-guard-by-editing-its-own-config)
+at the **settings layer**: the hook entries can no longer be edited,
+overridden, or shadowed by the user. It does **not** by itself make the
+guard tamper-proof. Two vectors remain open and must be closed
+operationally:
+
+- **The binary.** The managed hook executes whatever the command path
+  points at. If `ppg-guard` lives in a user-writable location
+  (`~/.local/bin`, the default `make install` target), replacing it with
+  a no-op defeats the managed settings entirely. For a hostile-user
+  threat model, install the binaries root-owned:
+  `sudo BINDIR=/usr/local/bin make install`.
+- **The environment.** The guard reads `PPG_URL` (where content checks
+  are sent), `PPG_TICKET_SECRET` (the ticket signing key), and
+  `PPG_STORE_ROOT` (where tickets are read) from the user's environment.
+  A user can re-point verification at a rogue gateway or mint their own
+  tickets. Pin these in the managed hook command for fleet deployments.
+
+Automated via `sudo make setup-claude-code-managed` (see
+[the governed-workstation how-to](../../docs/how-to/set-up-a-governed-workstation.md#a-managed-scope--recommended-for-it-managed-fleets)).
+
+For **personal / no-root workstations**, install at user scope via
+`make setup-claude-code`. The in-loop guard still refuses out-of-plan
+`Edit`/`Write`, but the file itself is user-writable.
+
+For **per-project experiments**, drop the same JSON into the repo's
+`.claude/settings.json` (the shape in step 4 above works verbatim). The
+end-to-end tutorial uses this scope.
+
 ## What happens in a session
 
 - Claude calls `get_platform_guidelines_for_intent` → receives the ADR
@@ -123,5 +167,8 @@ A fully worked, tested session is in the
 - `PPG_URL` overrides the gateway address for both the MCP server and
   `ppg-guard` — the guard POSTs edited content to `/verify_artifact` for
   the content check (default `http://localhost:8765`).
-  `PPG_PROJECT_DIR` is required for the MCP server; both binaries also
-  accept `PPG_STORE_ROOT` to override the state root.
+  `PPG_PROJECT_DIR` overrides the project directory for the MCP server
+  (it defaults to the process cwd, which is correct for Claude Code's
+  per-project launches — set it explicitly only for daemon or long-lived
+  setups); both binaries also accept `PPG_STORE_ROOT` to override the
+  state root.

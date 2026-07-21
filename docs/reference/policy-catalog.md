@@ -1,5 +1,9 @@
 # Policy catalog
 
+> Each entry below can carry rules for any of the three views (`plan`,
+> `artifact`, `changeset`). Full input schemas and the view-guard idiom
+> live in [policy views](policy-views.md).
+
 ## Plan linter policies (`internal/linter.Registry`)
 
 The registry is populated at startup from the ADR front matter
@@ -15,6 +19,7 @@ are compiled into a single OPA query over `data.ppg.linter.violation`.
 | `design_tokens_referenced` | ADR-090 | `examples/adr/ADR-090.rego` | amplifier | plan, artifact | — |
 | `per_machine_state_directory` | ADR-100 | `examples/adr/ADR-100.rego` | amplifier | plan | — |
 | `use_cataloged_services` | ADR-110 | `examples/adr/ADR-110.rego` | amplifier | plan, artifact, changeset | — |
+| `governance_artifacts_immutable` | ADR-120 | `examples/adr/ADR-120.rego` | amplifier | plan | — |
 
 One built-in product rule sits outside the registry (so it never skews the
 debt ratio): `scope_breadth_cap` rejects plan targets like `.` or `*` whose

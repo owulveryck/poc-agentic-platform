@@ -42,11 +42,23 @@ func NewLinter(governancePolicyDir string) (*Linter, error) {
 	return &Linter{eval: eval}, nil
 }
 
+// validationInput is the policy input document: the skill's fields plus the
+// Go-computed security tier, so the Rego rules consume one source of tier
+// truth (Linter.Tier) instead of re-deriving it from body keywords.
+type validationInput struct {
+	*Skill
+	Tier int `json:"tier"`
+}
+
 // Validate runs all governance policies against the skill and returns violations.
 // An empty slice means the skill passes all checks and can be published. It
-// fails closed: an evaluation or decode error surfaces as a rejection.
+// fails closed: an evaluation or decode error surfaces as a rejection. When
+// the skill bundles a companion SKILL.rego, Validate also compiles it (with
+// the same deterministic engine the gateway uses), so a broken or
+// nondeterministic companion is refused at publish time (Gate 1) instead of
+// surfacing at gateway startup or /register_skill.
 func (l *Linter) Validate(s *Skill) []Violation {
-	violations, err := policy.Eval[Violation](l.eval, s)
+	violations, err := policy.Eval[Violation](l.eval, validationInput{Skill: s, Tier: l.Tier(s)})
 	if err != nil {
 		return []Violation{{
 			Field:   "linter",
@@ -54,13 +66,48 @@ func (l *Linter) Validate(s *Skill) []Violation {
 			Nature:  "compensatory",
 		}}
 	}
-	return violations
+	return append(violations, compileCompanion(s)...)
+}
+
+// compileCompanion compiles the bundled SKILL.rego, when present.
+func compileCompanion(s *Skill) []Violation {
+	if s.RegoPolicy == "" {
+		return nil
+	}
+	pkg, ok := scanRegoPackage(s.RegoPolicy)
+	if !ok {
+		return []Violation{{
+			Field:   "rego_policy",
+			Message: "companion SKILL.rego has no package declaration (expected e.g. `package ppg.skills.<name>`)",
+			Nature:  "amplifier",
+		}}
+	}
+	if _, err := policy.PrepareModule("data."+pkg+".violation", "SKILL.rego", s.RegoPolicy); err != nil {
+		return []Violation{{
+			Field:   "rego_policy",
+			Message: fmt.Sprintf("companion SKILL.rego does not compile: %v", err),
+			Nature:  "amplifier",
+		}}
+	}
+	return nil
+}
+
+// scanRegoPackage returns the package path declared by a rego source (same
+// shape as internal/linter's parser).
+func scanRegoPackage(source string) (string, bool) {
+	for line := range strings.SplitSeq(source, "\n") {
+		if after, ok := strings.CutPrefix(strings.TrimSpace(line), "package "); ok {
+			return strings.TrimSpace(after), true
+		}
+	}
+	return "", false
 }
 
 // Tier returns the security tier of the skill based on the tools it instructs
 // the agent to use. Tier 0 = read-only, Tier 1 = file modifications, Tier 2 = shell.
-// This is computed in Go rather than Rego to keep the violation rules focused on
-// structural and semantic governance rather than classification.
+// This is the SINGLE source of tier truth: the governance policies receive it
+// as input.tier (see validationInput) instead of re-deriving it from body
+// keywords, so the Go and Rego views of "privileged" can never drift.
 func (l *Linter) Tier(s *Skill) int {
 	if strings.Contains(s.Body, "Bash") {
 		return 2

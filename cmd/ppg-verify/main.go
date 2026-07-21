@@ -37,7 +37,8 @@ func main() {
 	planFile := flag.String("plan", "", "path to the locked plan JSON; when set, its hash is checked against the ticket")
 	projectDirFlag := flag.String("project-dir", "", "absolute project directory (overrides "+store.EnvProjectDir+")")
 	storeRootFlag := flag.String("store-root", "", "per-machine state root (overrides "+store.EnvStoreRoot+")")
-	gateway := flag.String("gateway", gatewayURL(), "Platform Planning Gateway base URL")
+	server := flag.String("server", "", "validation server base URL (default $PPG_URL, else http://localhost:8765)")
+	gateway := flag.String("gateway", "", "deprecated alias of -server (kept until v2; see ADR-130)")
 	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
 
@@ -46,7 +47,17 @@ func main() {
 		return
 	}
 
-	if err := run(*staged, *planFile, *projectDirFlag, *storeRootFlag, *gateway); err != nil {
+	// -server wins over the deprecated -gateway alias; both default to
+	// $PPG_URL / localhost via gatewayURL().
+	serverURL := *server
+	if serverURL == "" {
+		serverURL = *gateway
+	}
+	if serverURL == "" {
+		serverURL = gatewayURL()
+	}
+
+	if err := run(*staged, *planFile, *projectDirFlag, *storeRootFlag, serverURL); err != nil {
 		fmt.Fprintln(os.Stderr, "ppg-verify: "+err.Error())
 		os.Exit(2) // could not run the check: fail closed
 	}
@@ -131,7 +142,9 @@ type changedFile struct {
 }
 
 // changedFiles returns the working-tree (or staged) changes as artifacts with
-// their current content. Deletions are skipped (no content to verify).
+// their current content. Deletions are included with empty content and
+// op "delete": removing a governed file is still a change the
+// changeset-view policy must see.
 func changedFiles(staged bool) ([]changedFile, error) {
 	args := []string{"status", "--porcelain"}
 	out, err := exec.Command("git", args...).Output()
@@ -150,14 +163,18 @@ func changedFiles(staged bool) ([]changedFile, error) {
 			path = path[idx+4:]
 		}
 		path = strings.Trim(path, `"`)
+		var isDeletion bool
 		if staged {
-			if x == ' ' || x == '?' || x == 'D' {
-				continue // not staged, or a staged deletion
+			if x == ' ' || x == '?' {
+				continue // not staged
 			}
+			isDeletion = x == 'D'
 		} else {
-			if x == 'D' || y == 'D' {
-				continue // a deletion in either index
-			}
+			isDeletion = x == 'D' || y == 'D'
+		}
+		if isDeletion {
+			files = append(files, changedFile{Path: filepath.ToSlash(path), Op: "delete"})
+			continue
 		}
 		content, err := os.ReadFile(path)
 		if err != nil {

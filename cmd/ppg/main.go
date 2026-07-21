@@ -2,7 +2,10 @@
 //
 //	POST /enrich           — amplifier context (ADR invariants) for an intent
 //	POST /lock_in_plan     — deterministic plan linter + capability ticket
+//	POST /register_skill   — session-scoped SKILL.rego upload (client-pushed)
 //	POST /tools/{name}     — Smart Platform Tools (ticket verified in-tool)
+//	POST /verify_artifact  — in-loop content check (guard hook, Smart Tools)
+//	POST /verify_changeset — apply-time content check (ppg-verify, CI)
 //	POST /discover_service — policy-ranked service catalog: the sanctioned service for a capability
 //	GET  /services         — list the service catalog
 //	GET  /services/{id}    — one catalog record
@@ -18,8 +21,11 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/owulveryck/poc-agentic-platform/internal/adr"
@@ -39,7 +45,7 @@ import (
 
 func main() {
 	addr := flag.String("addr", ":8765", "listen address")
-	adrDir := flag.String("adr", "", "path to the ADR store (required; demo corpus: examples/adr)")
+	adrDir := flag.String("adr", "", "path to the ADR store (optional; omit to run on skill companions and built-in rules only; demo corpus: examples/adr)")
 	skillGovDir := flag.String("skill-governance", "skill-governance", "path to the skill governance Rego policy directory")
 	skillsDir := flag.String("skills", "", "path to the published skills directory (one subdir per skill with SKILL.md [+ SKILL.rego]); enables Gate 3 for plans that declare skill_id")
 	servicesDir := flag.String("services", "", "path to the service catalog directory (optional; omit to disable /discover_service)")
@@ -61,47 +67,30 @@ func main() {
 		log.Fatalf("resolving ticket TTL: %v", err)
 	}
 
-	if *adrDir == "" {
-		log.Fatalf("ppg: -adr is required. Pass the path to your ADR store; for the fictional demo corpus, run from the repo root: ppg -adr examples/adr")
+	cfg := corpusConfig{
+		adrDir:           *adrDir,
+		skillsDir:        *skillsDir,
+		skillGovDir:      *skillGovDir,
+		servicesDir:      *servicesDir,
+		servicePolicyDir: *servicePolicyDir,
+		allowWideScope:   *allowWideScope,
 	}
-	store, err := adr.Load(*adrDir)
+	c, err := loadCorpus(cfg)
 	if err != nil {
-		log.Fatalf("loading ADR store: %v", err)
+		log.Fatalf("ppg: %v", err)
 	}
-	// filepath.Glob succeeds silently on a missing directory, so an empty
-	// store means a typo'd -adr path, not a valid corpus.
-	if len(store.Invariants) == 0 {
-		log.Fatalf("ppg: no ADRs (*.md) found in %s — check the -adr path", *adrDir)
-	}
-	log.Printf("ADR store loaded: %d invariants", len(store.Invariants))
 
-	lint, err := linter.New(store, *adrDir)
+	stateRoot, err := storepkg.ResolveRoot("")
 	if err != nil {
-		log.Fatalf("loading plan linter: %v", err)
+		log.Fatalf("resolving per-machine state root: %v", err)
 	}
-	lint.AllowWideScope = *allowWideScope
-	if *allowWideScope {
-		log.Printf("WARNING: -allow-wide-scope set; root-scoped plans yield allow-all tickets")
-	}
-	log.Printf("Plan linter ready: %d policies", len(lint.Registry))
-
-	// Gate 3: plans that declare skill_id are additionally evaluated against
-	// the published skill's companion Rego. Without -skills, any skill_id is
-	// an unknown_skill rejection (fail closed).
-	if *skillsDir != "" {
-		if err := lint.LoadSkillCompanions(*skillsDir); err != nil {
-			log.Fatalf("loading skill companions: %v", err)
-		}
-		log.Printf("Skill companions loaded (Gate 3): %d skills", lint.SkillCount())
-	}
+	// escalationLog is the POLICY_CONFLICT paper trail (JSONL, append-only):
+	// every livelock escalation lands here for the humans who own the rules.
+	escalationLog := filepath.Join(stateRoot, "escalations.jsonl")
 
 	// The ticket signing key is never hardcoded: $PPG_TICKET_SECRET wins,
 	// else a per-machine key is generated once under the state root.
 	if os.Getenv(ticket.EnvSecret) == "" {
-		stateRoot, err := storepkg.ResolveRoot("")
-		if err != nil {
-			log.Fatalf("resolving state root for the ticket signing key: %v", err)
-		}
 		keyFile := filepath.Join(stateRoot, "ticket.key")
 		if err := ticket.UseKeyFile(keyFile); err != nil {
 			log.Fatalf("loading ticket signing key: %v", err)
@@ -111,54 +100,52 @@ func main() {
 		log.Printf("Ticket signing key: $%s", ticket.EnvSecret)
 	}
 
-	skillLint, err := skill.NewLinter(*skillGovDir)
-	if err != nil {
-		log.Fatalf("loading skill governance linter: %v", err)
-	}
-	log.Printf("Skill governance linter ready")
-
-	// The service catalog is an optional capability: without -services the
-	// gateway serves everything except discovery.
-	var catStore *catalog.Store
-	var ranker *catalog.Ranker
-	switch {
-	case *servicesDir == "" && *servicePolicyDir == "":
-		log.Printf("Service catalog disabled (no -services); /discover_service will answer SERVICE_CATALOG_UNAVAILABLE")
-	case *servicesDir == "":
-		log.Fatalf("ppg: -service-policy requires -services")
-	default:
-		catStore, err = catalog.Load(*servicesDir)
-		if err != nil {
-			log.Fatalf("loading service catalog: %v", err)
-		}
-		if len(catStore.All()) == 0 {
-			log.Fatalf("ppg: no service records (*.md) found in %s — check the -services path", *servicesDir)
-		}
-		log.Printf("Service catalog loaded: %d services", len(catStore.All()))
-		if *servicePolicyDir == "" {
-			log.Printf("WARNING: no -service-policy given; catalog loaded but /discover_service is disabled")
-		} else {
-			ranker, err = catalog.NewRanker(*servicePolicyDir)
-			if err != nil {
-				log.Fatalf("loading service ranking policy: %v", err)
-			}
-		}
-	}
-
 	smarttools.Register(patchcode.Tool{}, "amplifier", "")
 	smarttools.Register(dbmigrate.Tool{}, "amplifier", "")
 
-	// Smart Tools enforce the artifact-view policy against the content they are
-	// handed, reusing the same corpus as the plan linter and the guards.
-	smarttools.SetArtifactEvaluator(func(path, content string) []string {
-		var msgs []string
-		for _, v := range lint.EvaluateArtifact(linter.Artifact{Path: path, Content: content}) {
-			msgs = append(msgs, v.Message)
-		}
-		return msgs
-	})
+	// install wires one loaded corpus into everything that consumes it: the
+	// Smart Tools' artifact evaluator and the HTTP routes. It is called at
+	// startup and again on every successful SIGHUP reload — the routes swap
+	// atomically via the reloadableHandler.
+	handler := &reloadableHandler{}
+	install := func(c *corpus) {
+		// Smart Tools enforce the artifact-view policy against the content
+		// they are handed, reusing the same corpus as the plan linter and the
+		// guards. When the ticket carries a skill_id, that skill's companion
+		// Rego joins the ADR corpus so per-edit skill invariants also fire —
+		// the session_id selects between operator-provided skills and
+		// client-uploaded, session-scoped ones.
+		lint := c.lint
+		smarttools.SetArtifactEvaluator(func(path, content, skillID, sessionID string) []string {
+			var msgs []string
+			for _, v := range lint.EvaluateArtifact(sessionID, skillID, linter.Artifact{Path: path, Content: content}) {
+				msgs = append(msgs, v.Message)
+			}
+			return msgs
+		})
+		handler.mux.Store(buildMux(c.store, c.lint, c.skillLint, c.catStore, c.ranker, ttl, escalationLog))
+	}
+	install(c)
 
-	mux := buildMux(store, lint, skillLint, catStore, ranker, ttl)
+	// Hot reload: SIGHUP rebuilds the whole corpus from disk — capitalizing
+	// a new or extended policy no longer requires a restart. Fail-safe: a
+	// reload error keeps the previous corpus serving. Session-scoped skill
+	// registrations survive the swap (AdoptSessions).
+	go func() {
+		hup := make(chan os.Signal, 1)
+		signal.Notify(hup, syscall.SIGHUP)
+		for range hup {
+			nc, err := loadCorpus(cfg)
+			if err != nil {
+				log.Printf("SIGHUP reload failed — keeping the previous corpus: %v", err)
+				continue
+			}
+			nc.lint.AdoptSessions(c.lint)
+			c = nc
+			install(nc)
+			log.Printf("SIGHUP: corpus reloaded")
+		}
+	}()
 
 	log.Printf("Capability ticket TTL: %s (bounded by the session)", ttl)
 	log.Printf("Platform Planning Gateway listening on %s", *addr)
@@ -166,7 +153,7 @@ func main() {
 	// request body size and the connection lifetimes.
 	srv := &http.Server{
 		Addr:              *addr,
-		Handler:           http.MaxBytesHandler(mux, maxRequestBody),
+		Handler:           http.MaxBytesHandler(handler, maxRequestBody),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       time.Minute,
 		WriteTimeout:      time.Minute,
@@ -175,17 +162,28 @@ func main() {
 	log.Fatal(srv.ListenAndServe())
 }
 
+// reloadableHandler serves the current mux behind an atomic pointer so a
+// SIGHUP corpus reload swaps every route's dependencies in one step, with no
+// locking on the request path.
+type reloadableHandler struct{ mux atomic.Pointer[http.ServeMux] }
+
+func (h *reloadableHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	h.mux.Load().ServeHTTP(w, r)
+}
+
 // maxRequestBody caps any request body: /verify_changeset carries the full
 // content of every changed file, so the cap is generous but finite.
 const maxRequestBody = 16 << 20 // 16 MiB
 
 // buildMux wires the gateway routes. All handlers close over dependencies that
-// are read-only after construction, so the returned mux is safe to serve
+// are read-only after construction — except the conflict detector, which is
+// internally synchronized — so the returned mux is safe to serve
 // concurrently (see cmd/ppg/main_test.go, which exercises it under -race).
-func buildMux(store *adr.Store, lint *linter.Linter, skillLint *skill.Linter, catStore *catalog.Store, ranker *catalog.Ranker, ttl time.Duration) *http.ServeMux {
+func buildMux(store *adr.Store, lint *linter.Linter, skillLint *skill.Linter, catStore *catalog.Store, ranker *catalog.Ranker, ttl time.Duration, escalationLog string) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /enrich", handleEnrich(store))
-	mux.HandleFunc("POST /lock_in_plan", handleLockInPlan(lint, ttl))
+	mux.HandleFunc("POST /lock_in_plan", handleLockInPlan(lint, ttl, newConflictDetector(), escalationLog))
+	mux.HandleFunc("POST /register_skill", handleRegisterSkill(lint))
 	mux.HandleFunc("POST /tools/{name}", handleTool)
 	mux.HandleFunc("POST /verify_artifact", handleVerifyArtifact(lint))
 	mux.HandleFunc("POST /verify_changeset", handleVerifyChangeset(lint))
@@ -237,7 +235,7 @@ func handleEnrich(store *adr.Store) http.HandlerFunc {
 	}
 }
 
-func handleLockInPlan(lint *linter.Linter, ttl time.Duration) http.HandlerFunc {
+func handleLockInPlan(lint *linter.Linter, ttl time.Duration, conflicts *conflictDetector, escalationLog string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var p plan.Plan
 		if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
@@ -252,6 +250,41 @@ func handleLockInPlan(lint *linter.Linter, ttl time.Duration) http.HandlerFunc {
 			return
 		}
 		if violations := lint.Validate(&p); len(violations) > 0 {
+			ids := violationPolicyIDs(violations)
+			streak := conflicts.observeRejection(p.SessionID, ids)
+			if streak >= conflictThreshold {
+				// Livelock: the violation set has been byte-identical for
+				// conflictThreshold consecutive submissions. "Fix and
+				// resubmit" is no longer honest guidance — escalate to the
+				// humans who own the clashing rules, and keep blocking.
+				sources := policySources(lint, ids)
+				appendEscalation(escalationLog, map[string]any{
+					"ts":                     time.Now().UTC().Format(time.RFC3339),
+					"session_id":             p.SessionID,
+					"intent":                 p.Intent,
+					"consecutive_rejections": streak,
+					"policy_ids":             ids,
+					"policy_sources":         sources,
+					"violations":             violations,
+				})
+				log.Printf("POLICY_CONFLICT: session %s rejected %d consecutive times with identical violation set %v — escalation recorded in %s",
+					p.SessionID, streak, ids, escalationLog)
+				httpError(w, http.StatusConflict, map[string]any{
+					"status":                 "POLICY_CONFLICT",
+					"violations":             violations,
+					"policy_ids":             ids,
+					"policy_sources":         sources,
+					"consecutive_rejections": streak,
+					"escalation_log":         escalationLog,
+					"guidance": "STOP resubmitting. This session's plans were rejected with a byte-identical violation set " +
+						"multiple consecutive times: either these policies are mutually unsatisfiable for this intent, or the " +
+						"required plan shape is not reachable from the current approach. This is now a human decision — " +
+						"review the policies in policy_ids with their owners (policy_sources says whether each comes from " +
+						"the ADR corpus, a skill companion, or a built-in rule), or change the intent. The escalation was " +
+						"recorded for the platform team; the gateway keeps answering POLICY_CONFLICT for this violation set.",
+				})
+				return
+			}
 			httpError(w, http.StatusUnprocessableEntity, map[string]any{
 				"status":     "PLAN_REJECTED",
 				"violations": violations,
@@ -259,6 +292,7 @@ func handleLockInPlan(lint *linter.Linter, ttl time.Duration) http.HandlerFunc {
 			})
 			return
 		}
+		conflicts.observeSuccess(p.SessionID)
 		planHash, err := p.Hash()
 		if err != nil {
 			httpError(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
@@ -297,11 +331,12 @@ func handleVerifyArtifact(lint *linter.Linter) http.HandlerFunc {
 			httpError(w, http.StatusBadRequest, map[string]any{"error": "path is required"})
 			return
 		}
-		if _, err := smarttools.GuardTargets(req.Ticket, []string{req.Path}); err != nil {
+		claims, err := smarttools.GuardTargets(req.Ticket, []string{req.Path})
+		if err != nil {
 			writeGuardError(w, err)
 			return
 		}
-		violations := lint.EvaluateArtifact(linter.Artifact{Path: req.Path, Content: req.Content, Op: req.Op})
+		violations := lint.EvaluateArtifact(claims.SessionID, claims.SkillID, linter.Artifact{Path: req.Path, Content: req.Content, Op: req.Op})
 		if len(violations) > 0 {
 			httpError(w, http.StatusUnprocessableEntity, map[string]any{
 				"status":     "ARTIFACT_REJECTED",
@@ -348,7 +383,7 @@ func handleVerifyChangeset(lint *linter.Linter) http.HandlerFunc {
 			})
 			return
 		}
-		violations := lint.EvaluateChangeset(linter.Changeset{Files: req.Files, PlanHash: req.PlanHash})
+		violations := lint.EvaluateChangeset(claims.SessionID, claims.SkillID, linter.Changeset{Files: req.Files, PlanHash: req.PlanHash})
 		if len(violations) > 0 {
 			httpError(w, http.StatusUnprocessableEntity, map[string]any{
 				"status":     "CHANGESET_REJECTED",
@@ -395,6 +430,50 @@ func handleTool(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, result)
+}
+
+// handleRegisterSkill compiles a client-uploaded SKILL.rego and stores it in
+// the linter's session-scoped tier. It is how a skill installed locally
+// (e.g. via `apm install ... --target claude`) reaches a gateway that does
+// not share the client's filesystem: the MCP server POSTs it here before
+// forwarding lock_in_plan. Idempotent — re-uploading identical content is
+// a no-op (the linter simply overwrites the same key with the same evaluator).
+func handleRegisterSkill(lint *linter.Linter) http.HandlerFunc {
+	type request struct {
+		SessionID string `json:"session_id"`
+		Name      string `json:"name"`
+		SkillMD   string `json:"skill_md"`
+		SkillRego string `json:"skill_rego"`
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req request
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			httpError(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+			return
+		}
+		if strings.TrimSpace(req.SessionID) == "" {
+			httpError(w, http.StatusBadRequest, map[string]any{"error": "session_id is required"})
+			return
+		}
+		if strings.TrimSpace(req.Name) == "" {
+			httpError(w, http.StatusBadRequest, map[string]any{"error": "name is required"})
+			return
+		}
+		if err := lint.RegisterSessionSkill(req.SessionID, req.Name, req.SkillRego); err != nil {
+			httpError(w, http.StatusUnprocessableEntity, map[string]any{
+				"status":   "SKILL_COMPILE_ERROR",
+				"error":    err.Error(),
+				"guidance": "Fix the Rego source and re-register the skill; the previous registration under this name (if any) still applies.",
+			})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"status":     "SKILL_REGISTERED",
+			"session_id": req.SessionID,
+			"name":       req.Name,
+			"has_rego":   req.SkillRego != "",
+		})
+	}
 }
 
 func handleValidateSkill(lint *skill.Linter) http.HandlerFunc {
