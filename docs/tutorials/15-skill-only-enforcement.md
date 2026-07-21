@@ -259,7 +259,8 @@ Only the skill's companion Rego is doing the work. Concretely:
 - **The ticket carries `skill_id`** (and `session_id`). Since the
   SKILL.rego artifact extension, `/verify_artifact` uses both to look
   up the skill's evaluator (operator tier first, then session-scoped)
-  and unions its violations with the ADR corpus — see
+  and unions its violations with whatever ADR corpus is loaded — here,
+  none, so the skill's rules are the only ones running — see
   [policy views](../reference/policy-views.md).
 - **The skill's Rego covers both altitudes**. The plan-view rule
   (must read tokens, must not overwrite tokens) closes the "just
@@ -314,6 +315,9 @@ more.
 - [Tutorial 14 — With and without the validation server, on Claude Code](14-with-and-without-claude-code.md):
   the same demo shape with the full ADR corpus (ADR-090 + ADR-120).
   Read that first if you want the "org-wide invariants" version.
+- [Tutorial 16 — Tier-0 vs governed: the rego IS the enforcement](16-tier-0-vs-governed-skill.md):
+  the follow-up by elimination — same platform, same session, and the
+  only variable is whether `SKILL.rego` is present in the package.
 - [Tutorial 8 — govern a design system through a skill](08-design-system-end-to-end.md):
   the deep dive on ADR-090's Rego (identical shape to the skill's).
 - [Policy views reference](../reference/policy-views.md): plan /

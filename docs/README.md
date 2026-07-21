@@ -30,6 +30,9 @@ sequence below is the workstation path:
    — author your own SKILL.md + SKILL.rego package.
 5. [Tutorial 15](tutorials/15-skill-only-enforcement.md) — see the skill
    enforce itself with zero ADRs, under an adversarial prompt.
+6. [Tutorial 16](tutorials/16-tier-0-vs-governed-skill.md) — prove the
+   rego is the enforcement: same platform, same session, toggle only
+   `SKILL.rego`.
 
 ## Tutorials — learning-oriented
 
@@ -49,6 +52,7 @@ sequence below is the workstation path:
 13. [Discover and use a platform service](tutorials/13-discover-a-platform-service.md) — the service catalog: the agent asks the validation server which sanctioned service provides a capability (notifications, payments), gets the endpoint + API usage ranked by policy, and is refused when it reaches for a deprecated/forbidden provider; asserted by `scripts/service-catalog-demo.sh`
 14. [With and without the validation server, on Claude Code](tutorials/14-with-and-without-claude-code.md) — the Claude Code companion of tutorial 11: same design-system skill, same small-model drift, same deterministic refusals, using the repo's setup/teardown scripts to toggle the platform on and off
 15. [Skill-only enforcement, on Claude Code](tutorials/15-skill-only-enforcement.md) — the same four-Act demo as tutorial 14, but the enforcement comes exclusively from `demo/skills/design-system/SKILL.rego`: no ADR-090, no ADR-120 in scope. One skill, its companion Rego, three views — the shape a design team ships as a stand-alone bundle
+16. [Tier-0 vs governed: the rego IS the enforcement](tutorials/16-tier-0-vs-governed-skill.md) — the platform stays fully up and the only variable is one file: install the skill without its `SKILL.rego` (tier-0 — every lock and every edit passes, and the drift lands), then restore the rego mid-session and the same drift is deterministically refused. Any skill becomes governed by adding one file
 
 ## How-to guides — task-oriented
 

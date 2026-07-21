@@ -1,6 +1,6 @@
 ---
 name: design-system
-description: Applies the Deep Umbra design system to any UI work in the project. Use whenever the user asks to build a landing page, a web component, a page prototype, or any piece of styling in HTML/CSS/TSX. Materializes the canonical palette in design/tokens.css; every subsequent edit is enforced against ADR-090 by the platform guard at write time.
+description: Applies the Deep Umbra design system to any UI work in the project. Use whenever the user asks to build a landing page, a web component, a page prototype, or any piece of styling in HTML/CSS/TSX. Materializes the canonical palette in design/tokens.css; every subsequent edit is enforced against the design-token invariant by the platform guard at write time.
 version: 1.0.0
 argument-hint: "<what to build, e.g. a landing page with a START PAYMENT CTA button>"
 ---
@@ -8,7 +8,9 @@ argument-hint: "<what to build, e.g. a landing page with a START PAYMENT CTA but
 Build what the user asked for ($ARGUMENTS) through the governance
 harness, applying the Deep Umbra design system. Enforcement is platform-native:
 the workstation's `ppg-guard` / `ppg-copilot-guard` sends every edit's content to
-the validation server, which evaluates ADR-090 at the **artifact altitude** and denies any
+the validation server, which evaluates the design-token invariant at the
+**artifact altitude** (ADR-090 when the org corpus is loaded, and the skill's
+companion `SKILL.rego` in every case) and denies any
 raw color or button re-styling outside `design/tokens.css`. There is no
 skill-specific hook to install — the governed workstation (tutorial 0) already
 wires the guard.
@@ -29,8 +31,10 @@ Run these once per project, in order:
 
 - Call `get_platform_guidelines_for_intent` with the intent (a
   paraphrase of "$ARGUMENTS") and the repository context. Read every
-  returned invariant — ADR-090 (design tokens are canonical) will
-  appear.
+  returned invariant. When the organisation's ADR corpus is loaded,
+  ADR-090 (design tokens are canonical) appears; when it is not, the
+  list may be empty — the skill's own rules still apply at plan and
+  write time.
 - Read `design/tokens.css` — it is the only source of truth for visual
   values.
 - Draft the plan: markup files under `./` (or the project's chosen web
@@ -54,7 +58,7 @@ Run these once per project, in order:
 
 ## 4. On refusal
 
-If the guard denies an edit citing the ADR-090 design-token invariant, do
+If the guard denies an edit citing the design-token invariant, do
 not retry the same call. Read the reason: it names the disallowed value
 and the palette to pick from, then switch to a `var(--color-*)` reference.
 `design/tokens.css` itself is **immutable from within a session**
