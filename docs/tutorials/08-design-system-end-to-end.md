@@ -177,6 +177,11 @@ ADR-090 rules also run at apply time through `ppg-verify`
 
 ## Where to go from here
 
+- **See it side-by-side with and without the platform**: tutorials
+  [11 (Copilot)](11-with-and-without-the-gateway.md) and
+  [14 (Claude Code)](14-with-and-without-claude-code.md) run this
+  same skill in two projects — one un-governed, one governed — with
+  identical adversarial prompts, to show the drift the guard prevents.
 - **Build your own content-scope policy**: the how-to
   [Enforce a content invariant](../how-to/enforce-a-content-invariant.md)
   generalizes the pattern for any invariant that lives in the emitted

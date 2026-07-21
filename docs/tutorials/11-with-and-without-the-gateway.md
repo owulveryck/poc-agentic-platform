@@ -10,6 +10,12 @@
 
 ## Audience & framing
 
+> **Claude Code version**: [tutorial 14](14-with-and-without-claude-code.md)
+> tells this same story with Claude Code as the agent surface, using
+> the repo's own `setup-claude-code.sh` / `remove-claude-code.sh`
+> scripts as the toggle instead of moving `~/.copilot` aside. Read
+> whichever matches the tool your audience uses.
+
 This tutorial is designed to be **run in front of an audience** (a
 team, a talk, a workshop). It contrasts two projects side-by-side:
 one where only the skill is installed, one where the whole platform
