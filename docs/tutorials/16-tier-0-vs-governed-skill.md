@@ -33,10 +33,14 @@ Two things to know before you start:
   one is registered "tier-0"). That is why Act 1's lock succeeds — the
   `skill_id` is known — while enforcing nothing: a tier-0 skill has no
   evaluator, and this demo's validation server has no ADR corpus either.
-- **No restarts anywhere.** The skill re-upload is keyed on a content
-  hash of `SKILL.md` + `SKILL.rego`. Restoring the rego changes the
-  hash, so the very next `lock_in_plan` re-registers the skill and its
-  rules fire — same Claude Code session, same validation server process.
+- **No restarts anywhere — but something must trigger a lock.** The
+  skill re-upload is keyed on a content hash of `SKILL.md` +
+  `SKILL.rego` and runs **inside `lock_in_plan` only**. Restoring the
+  rego changes the hash, so the very next `lock_in_plan` re-registers
+  the skill and its rules fire — same Claude Code session, same
+  validation server process. The catch: a model holding a valid ticket
+  has no reason to re-plan, so Act 2's prompt is deliberately crafted
+  to force one.
 
 ## Prerequisites
 
@@ -136,39 +140,53 @@ validation server:
 cp "$REPO/demo/skills/design-system/SKILL.rego" .claude/skills/design-system/
 ```
 
-Back in the **same Claude Code chat**, push the drift further with a
-*new* color (a different pink, so the check below cannot match Act 1's
-leftovers):
+One subtlety before prompting: the skill re-scan runs **inside
+`lock_in_plan` only** — and the model still holds its Act 1 ticket,
+whose scope covers the files it has been editing. Ask it to recolor
+those same files and it will edit them under the old ticket, never
+re-plan, and the rego will never be uploaded — the drift would pass
+again, exactly as in Act 1. So the Act 2 prompt asks for a **new
+page**: a file outside the Act 1 plan's scope, which forces the
+re-plan deterministically. (And a *different* pink, so the check below
+cannot match Act 1's leftovers.)
 
-> Even better: make all the buttons deep pink (`#FF1493`). Update the
-> palette and the page.
+Back in the **same Claude Code chat**:
 
-**What you should observe**: the model re-plans, and the next
-`lock_in_plan` re-scans the skill directory — the content hash changed,
-so the skill is re-uploaded, this time **with** its rego. From that
-moment the same two refusal paths as tutorial 15 Act 4 are live:
+> Now add a pricing page, `pricing.html`, in the same style: white
+> background, deep pink buttons (`#FF1493`), black text.
 
-- **Plan altitude** — a plan with a `Write` step on `design/tokens.css`
-  is rejected at lock time by the skill's `design_tokens_immutable`
-  rule: no ticket, and `ppg-guard`'s empty-ticket path refuses any
-  subsequent edit.
-- **Artifact altitude** — an `Edit` that puts `#FF1493` into a UI file
-  is refused at write time by the skill's raw-hex rule
-  (`ARCHITECTURAL_INVARIANT_VIOLATION: … uses a raw hex color. Route
-  the value through a design token…`).
+**What you should observe**, in order:
+
+1. The model's first `Write`/`Edit` on `pricing.html` is refused by
+   `ppg-guard` with `OUT_OF_PLAN_SCOPE` — the file is not in the
+   Act 1 ticket.
+2. The model re-plans through `lock_in_plan`. The pre-lock re-scan
+   sees the changed content hash and re-uploads the skill — this time
+   **with** its rego.
+3. From that lock onward, the same two refusal paths as tutorial 15
+   Act 4 are live:
+   - **Plan altitude** — a plan with a `Write` step on
+     `design/tokens.css` is rejected at lock time by the skill's
+     `design_tokens_immutable` rule: no ticket, and `ppg-guard`'s
+     empty-ticket path refuses any subsequent edit.
+   - **Artifact altitude** — an `Edit` that puts `#FF1493` into a UI
+     file is refused at write time by the skill's raw-hex rule
+     (`ARCHITECTURAL_INVARIANT_VIOLATION: … uses a raw hex color.
+     Route the value through a design token…`).
+4. Typically the model then falls back to the skill's contract
+   (SKILL.md §4): if `pricing.html` ships at all, its colors are
+   `var(--color-*)` references — the deep pink never lands.
 
 Deterministic verification — the new pink appears nowhere:
 
 ```bash
 grep -RE '#FF1493' . --include='*.css' --include='*.html' 2>/dev/null
 # → nothing
-git status --porcelain
-# → clean (nothing changed since the Act 1 commit)
 ```
 
 Same session, same server, same skill prose, same model, same kind of
 prompt. The only difference between Act 1 and Act 2 is the presence of
-`SKILL.rego`.
+`SKILL.rego` — plus one plan re-lock to load it.
 
 ## What made the difference
 
@@ -177,11 +195,14 @@ prompt. The only difference between Act 1 and Act 2 is the presence of
   `lock_in_plan`, with or without a companion rego. That is why Act 1's
   lock succeeded (the `skill_id` was known) while enforcing nothing (a
   tier-0 skill has no evaluator, and no `-adr` corpus was loaded).
-- **Hash-keyed re-upload** — the MCP server skips re-registering a
-  skill it already uploaded, keyed on a digest of `SKILL.md` +
-  `SKILL.rego`. Restoring the rego changes the digest, so the next
-  `lock_in_plan` re-registers the skill with its rules — no restart of
-  Claude Code, the MCP server, or the validation server.
+- **Hash-keyed re-upload, riding on `lock_in_plan`** — the MCP server
+  skips re-registering a skill it already uploaded, keyed on a digest
+  of `SKILL.md` + `SKILL.rego`. Restoring the rego changes the digest,
+  so the next `lock_in_plan` re-registers the skill with its rules —
+  no restart of Claude Code, the MCP server, or the validation server.
+  But registration happens *only* there, which is why Act 2 forces a
+  re-plan with an out-of-scope file instead of asking to recolor files
+  the Act 1 ticket already covers.
 - **Union semantics** — once registered with a rego, the skill's
   artifact- and changeset-view rules gate **every** edit in the
   session, whether or not the plan declared the `skill_id` (see
@@ -204,6 +225,13 @@ one file to the package — the how-to for authoring that file is
   (`.claude/skills/**`) is an org-wide concern — the ADR-120 shape in
   the real corpus — and is exactly the point made in tutorial 15's
   Known limits: a skill cannot govern its own body.
+- **Policy pickup rides on `lock_in_plan`.** A session holding a valid
+  ticket whose scope covers everything it wants to touch has no reason
+  to re-plan — so a rego added (or changed) mid-flight is not enforced
+  until the *next* lock, however long that takes. Act 2 forces the lock
+  with an out-of-scope file; in real life, a policy shipped mid-session
+  takes effect at the session's next natural re-plan, not at the moment
+  the file lands on disk.
 - **Tier-0 is invisible in the transcript.** Act 1 looks like a healthy
   governed session from inside the chat — every tool call succeeds.
   Whether a skill actually carries rules is visible only at
