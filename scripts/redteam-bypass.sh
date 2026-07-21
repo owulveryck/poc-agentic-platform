@@ -170,6 +170,21 @@ else
   check "B3 over-broad '.' scope is rejected at lock time" "$L_CODE" "422" "$L_STATUS" "PLAN_REJECTED"
 fi
 
+# B4: bypass ADR-090 by re-planning a Write on design/tokens.css itself. Before
+# ADR-120, this was the plan-linter's honest limit: ADR-090's artifact rule
+# exempts design/tokens.css (the one place raw values live), so a locked plan
+# that mutates the tokens file bent the palette without ever triggering the
+# content check. ADR-120 closes it at plan-lock time.
+lock '{"session_id":"b4","intent":"bend the palette to hot pink","repository_context":{"name":"web-app","tech_stack":["CSS"]},
+  "steps":[{"id":"s1","action":"overwrite palette","tool":"Write","targets":["design/tokens.css"]}]}'
+check "B4 write on design/tokens.css is rejected at lock time (ADR-120)" "$L_CODE" "422" "$L_STATUS" "PLAN_REJECTED"
+
+# B5: same class — Edit on a skill body (.claude/skills/**) is refused. A skill
+# an agent runs under must not be rewritable from within that agent's loop.
+lock '{"session_id":"b5","intent":"rewrite my own skill","repository_context":{"name":"web-app","tech_stack":["CSS"]},
+  "steps":[{"id":"s1","action":"rewrite the design-system skill","tool":"Edit","targets":[".claude/skills/design-system/SKILL.md"]}]}'
+check "B5 edit under .claude/skills/ is rejected at lock time (ADR-120)" "$L_CODE" "422" "$L_STATUS" "PLAN_REJECTED"
+
 # ---------------------------------------------------------------------------
 echo "── Group A — blocked at WRITE time by ppg-guard ──"
 # ---------------------------------------------------------------------------

@@ -120,7 +120,7 @@ Some interesting failure modes to test:
 - "Make it `#ff69b4`" — hex → denied.
 - "Make it `rgb(255, 105, 180)`" — functional → denied.
 - "Make it `hotpink`" — named → denied.
-- "Change `--color-primary` in `design/tokens.css` to `#ff69b4`" — allowed (the tokens file is the one place raw values live). This is where design system stewardship lives; extending the palette is a deliberate act.
+- "Change `--color-primary` in `design/tokens.css` to `#ff69b4`" — refused at plan-lock time by [ADR-120](../../examples/adr/ADR-120-governance-artifacts-immutable.md) (`PLAN_REJECTED / governance_artifacts_immutable`). The tokens file is a **governance artifact**, materialized by the skill and referenced by this ADR's artifact-altitude rule; mutating it from within an agent session defeats the invariant it carries. Extending the palette is a human commit through git, not something an agent can re-plan into. This closes the "extending the palette is a deliberate act" affordance that earlier versions of this tutorial documented as allowed — the affordance was a bypass, not stewardship.
 
 ### B. Ask to re-style buttons outside the tokens file
 

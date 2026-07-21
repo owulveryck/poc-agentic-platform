@@ -57,3 +57,13 @@ Two levers act together on this invariant, and — since this ADR declares
   bytes and denies raw colors (including inside `var()` fallbacks) or a button
   rule outside the tokens file. This replaces the earlier bespoke
   `design-guard.sh` shell hook, closing its bypasses.
+
+The artifact-altitude exemption for `design/tokens.css` (the one place
+raw values legitimately live) is safe **only because ADR-120 forbids
+agent-side writes to that file at plan-lock time**. Without ADR-120, an
+adversarial prompt would route around this ADR by re-planning a `Write`
+step targeting `design/tokens.css`: the plan would lock (this ADR's
+plan rule requires only a *read* of tokens), the ticket would issue,
+the write would succeed, and the palette would bend. See
+[ADR-120](ADR-120-governance-artifacts-immutable.md) for the closing
+argument.

@@ -64,6 +64,16 @@ func testStore() *adr.Store {
 					RegoFile: "ADR-110.rego",
 				},
 			},
+			{
+				ADRID:  "ADR-120",
+				Title:  "Governance artifacts are immutable from within agent sessions",
+				Nature: "amplifier",
+				Enforcement: adr.Enforcement{
+					Mode:     "programmatic",
+					PolicyID: "governance_artifacts_immutable",
+					RegoFile: "ADR-120.rego",
+				},
+			},
 		},
 	}
 }
@@ -436,5 +446,71 @@ func TestADR110PlanRejectsNamingStripe(t *testing.T) {
 	})
 	if !hasPolicy(lint.Validate(p), "use_cataloged_services") {
 		t.Fatalf("expected plan naming Stripe to be flagged")
+	}
+}
+
+// TestADR120RejectsWriteToTokensCSS covers the plan-altitude enforcement of
+// ADR-120: an agent may not modify the canonical design-tokens file, which
+// ADR-090 exempts from its artifact-altitude check. This closes the
+// "extending the palette" bypass observed live during tutorial 14.
+func TestADR120RejectsWriteToTokensCSS(t *testing.T) {
+	lint, err := New(testStore(), "testdata")
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	p := basePlan([]plan.Step{
+		{ID: "s1", Action: "recolor the palette", Tool: "Write", Targets: []string{"design/tokens.css"}},
+		{ID: "s2", Action: "go test ./...", Tool: "go-test", Targets: []string{"tests/x_test.go"}},
+	})
+	violations := lint.Validate(p)
+	found := false
+	for _, v := range violations {
+		if v.PolicyID == "governance_artifacts_immutable" {
+			found = true
+			if v.Nature != Amplifier {
+				t.Errorf("governance_artifacts_immutable should be tagged amplifier, got %s", v.Nature)
+			}
+			if !strings.Contains(v.Message, "design/tokens.css") {
+				t.Errorf("violation message should name the target, got %q", v.Message)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("expected governance_artifacts_immutable violation, got %v", violations)
+	}
+}
+
+// TestADR120RejectsWriteToSkillDir covers the prefix-match arm: any write
+// under .claude/skills/ or .agents/skills/ is refused. A skill body an agent
+// executes under must not be rewritable by that same agent.
+func TestADR120RejectsWriteToSkillDir(t *testing.T) {
+	lint, err := New(testStore(), "testdata")
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	p := basePlan([]plan.Step{
+		{ID: "s1", Action: "rewrite the design-system skill", Tool: "Edit", Targets: []string{".claude/skills/design-system/SKILL.md"}},
+		{ID: "s2", Action: "go test ./...", Tool: "go-test", Targets: []string{"tests/x_test.go"}},
+	})
+	if !hasPolicy(lint.Validate(p), "governance_artifacts_immutable") {
+		t.Fatalf("expected governance_artifacts_immutable violation for a write under .claude/skills/, got %v", lint.Validate(p))
+	}
+}
+
+// TestADR120AllowsReadOfTokensCSS covers the negative case: reading
+// design/tokens.css is not only allowed, it is required by ADR-090's own
+// plan-view rule. ADR-120 must not spuriously fire for read steps.
+func TestADR120AllowsReadOfTokensCSS(t *testing.T) {
+	lint, err := New(testStore(), "testdata")
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	p := basePlan([]plan.Step{
+		{ID: "s1", Action: "read the canonical palette", Tool: "Read", Targets: []string{"design/tokens.css"}},
+		{ID: "s2", Action: "write landing page", Tool: "Write", Targets: []string{"index.html"}},
+		{ID: "s3", Action: "go test ./...", Tool: "go-test", Targets: []string{"tests/x_test.go"}},
+	})
+	if hasPolicy(lint.Validate(p), "governance_artifacts_immutable") {
+		t.Fatalf("Read step on design/tokens.css should NOT trigger ADR-120, got %v", lint.Validate(p))
 	}
 }
