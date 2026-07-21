@@ -11,7 +11,7 @@
 | `SESSION_MISMATCH` | Ticket's `session_id` claim does not match the active session; emitted by the guards to block a ticket replayed from another session |
 | `SERVICE_FOUND` | `/discover_service` returned a recommended service for the capability |
 | `NO_SERVICE_FOR_CAPABILITY` | `/discover_service` found no candidate (or all were denied) for the capability |
-| `SERVICE_CATALOG_UNAVAILABLE` | `/discover_service` called on a gateway started without a catalog and/or ranking policy (503) |
+| `SERVICE_CATALOG_UNAVAILABLE` | `/discover_service` called on a validation server started without a catalog and/or ranking policy (503) |
 | `SERVICE_NOT_FOUND` | `GET /services/{id}` for an unknown service id (404) |
 | `ARTIFACT_OK` | `/verify_artifact` accepted the edited content (artifact view) |
 | `ARTIFACT_REJECTED` | `/verify_artifact`: the file scope is allowed but the content breaks an invariant, `violations[]` provided (422) |
@@ -20,7 +20,7 @@
 | `PLAN_SUBSTITUTION` | `/verify_changeset`: the supplied `plan_hash` does not match the ticket's claim; `expected`/`got` provided (409) |
 | `POLICY_CONFLICT` | `/lock_in_plan`: 3 consecutive rejections with a byte-identical violation set — livelock escalation; `policy_ids`, `policy_sources` (adr\|skill\|built-in) and the `escalation_log` path provided; the block persists until the violation set changes (409) |
 | `ARCHITECTURAL_INVARIANT_VIOLATION` | Content broke an architectural invariant; emitted by the guards (block reason) and Smart Tools (`error_category`) after the path scope passed |
-| `PPG_GUARD_ERROR` | A guard could not evaluate an edit (unreadable payload, unopenable store, unreachable gateway) and blocked the PreToolUse edit fail-closed |
+| `PPG_GUARD_ERROR` | A guard could not evaluate an edit (unreadable payload, unopenable store, unreachable validation server) and blocked the PreToolUse edit fail-closed |
 | `EXECUTION_FAILED` | Application failure; see `error_category` |
 | `GO_SYNTAX_ERROR` | Patched content does not parse; guidance provided |
 | `DATABASE_SCHEMA_CONFLICT` | Schema conflict; staging state provided |

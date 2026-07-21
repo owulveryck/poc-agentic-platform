@@ -15,8 +15,8 @@ enforcement:
 ## Invariant
 
 The following paths constitute the **governance surface** and MUST NOT
-appear as write/edit targets in any plan locked through the Platform
-Planning Gateway:
+appear as write/edit targets in any plan locked through the validation
+server:
 
 - `design/tokens.css` — the canonical design-system file materialized
   by the `design-system` skill and referenced by ADR-090's artifact
@@ -55,7 +55,7 @@ from within its own loop.
 
 The paved path for legitimate extension of these artifacts (a new
 palette variant, a new step in a skill, a new skill entirely) is a
-**human commit** through git, outside any agent session. The gateway
+**human commit** through git, outside any agent session. The validation server
 governs the agent loop; git governs the source of truth. This
 invariant is what keeps the two layers separate.
 

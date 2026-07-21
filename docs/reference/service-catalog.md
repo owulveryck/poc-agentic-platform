@@ -39,7 +39,7 @@ candidates: [<service>...]}`. Emits one verdict per candidate:
 { "service_id": "notify-svc", "allow": true, "score": 99, "reason": "recommended platform service." }
 ```
 
-The gateway sorts allowed candidates by `score` (then `tier`) to pick the
+The validation server sorts allowed candidates by `score` (then `tier`) to pick the
 recommendation; denied candidates become alternatives. A candidate with no
 verdict is treated as denied (fail-closed).
 
@@ -65,7 +65,7 @@ Response `200`:
 
 `status` is `SERVICE_FOUND` when a recommended service exists, else
 `NO_SERVICE_FOR_CAPABILITY` (no candidates, or all denied). `503`
-`SERVICE_CATALOG_UNAVAILABLE` when the gateway has no catalog/ranking policy.
+`SERVICE_CATALOG_UNAVAILABLE` when the validation server has no catalog/ranking policy.
 
 ### `GET /services`
 

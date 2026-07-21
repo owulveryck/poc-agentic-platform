@@ -5,7 +5,7 @@
  *
  * Enforced by ADR-090 at two altitudes (same adr/ADR-090.rego corpus):
  *  - plan: UI plans must include a step reading this file
- *  - artifact: the platform guard sends each edit's content to the gateway
+ *  - artifact: the platform guard sends each edit's content to the validation server
  *    (/verify_artifact), which denies raw colors and button re-styling
  *    outside this file
  *

@@ -12,7 +12,7 @@
 
 This tutorial is the "skill-scoped" variant of tutorial 14. Same four
 Acts, same design-system skill, same small-model drift, same
-deterministic refusals — but the gateway is started with **no ADR
+deterministic refusals — but the validation server is started with **no ADR
 corpus at all** and every policy that fires (plan-view and
 artifact-view) lives in `demo/skills/design-system/SKILL.rego`. This is
 the shape a design team uses when they want to distribute a skill
@@ -39,7 +39,7 @@ Two things to know before you start:
 - **Platform bootstrapped** — [tutorial 0](00-bootstrap.md) completed
   and [tutorial 10](10-claude-on-governed-workstation.md) applied
   (registers the ppg MCP server and installs the `ppg-guard` hook via
-  `scripts/setup-claude-code.sh`). Tutorial 0 left a gateway running
+  `scripts/setup-claude-code.sh`). Tutorial 0 left a validation server running
   on `:8765`; we will replace *that process* for the duration of the
   demo, then restore it in the cleanup step.
 - A **small model** available in Claude Code's model selector — the
@@ -54,13 +54,13 @@ export REPO=$HOME/src/poc-agentic-platform   # adjust to your path
 
 ## Setup (once, before you begin)
 
-**Step 1 — swap the gateway for a skill-only one.** The default gateway
+**Step 1 — swap the validation server for a skill-only one.** The default validation server
 (tutorial 0) runs with the full `examples/adr` corpus. For this
 tutorial we want no ADR-based enforcement at all — so we simply omit
 `-adr`: every refusal in Acts 3–4 provably comes from the skill's Rego.
 
 ```bash
-# Stop the running gateway (adjust to how you launched it in tutorial 0;
+# Stop the running validation server (adjust to how you launched it in tutorial 0;
 # if it runs under launchd/systemd, stop the service instead).
 pkill -f 'ppg -addr' || true
 
@@ -97,7 +97,7 @@ claude mcp list                                    # → no 'ppg' entry
 jq '.hooks' ~/.claude/settings.json 2>/dev/null    # → no ppg-guard
 ```
 
-The gateway itself (on `:8765`) stays up. What we are toggling is
+The validation server itself (on `:8765`) stays up. What we are toggling is
 *Claude Code's ability to talk to it*.
 
 ## Act 1 — without the platform, aligned prompt
@@ -149,7 +149,7 @@ cd ~/demo
 DRY_RUN=1 "$REPO/scripts/setup-claude-code.sh"   # preview
 "$REPO/scripts/setup-claude-code.sh"             # apply
 
-# Sanity: the gateway is still the skill-only one from setup.
+# Sanity: the validation server is still the skill-only one from setup.
 curl -sf http://localhost:8765/debt_report >/dev/null && echo "gateway OK"
 ```
 
@@ -202,7 +202,7 @@ by one of two rules — **both defined inside the skill**.
 ### Path 1 — the naive route: raw color into a governed file
 
 The model tries to `Edit` `style.css` with `.cta { background: #FF69B4 }`.
-`ppg-guard` POSTs the bytes to `/verify_artifact`; the gateway pulls
+`ppg-guard` POSTs the bytes to `/verify_artifact`; the validation server pulls
 `skill_id: "design-system"` from the ticket and runs the skill's
 artifact-view rule:
 
@@ -249,11 +249,11 @@ grep -E '#[0-9a-fA-F]{3,8}' *.html *.css design/tokens.css 2>/dev/null
 
 Only the skill's companion Rego is doing the work. Concretely:
 
-- **The MCP server uploaded the skill** to the gateway via
+- **The MCP server uploaded the skill** to the validation server via
   [`POST /register_skill`](../reference/http-api.md#post-register_skill)
   before the first `lock_in_plan`. That is what makes `ppg` know
   `design-system` exists in this session — no `-skills` flag, no
-  gateway restart, and it works even when the gateway runs on another
+  validation server restart, and it works even when the validation server runs on another
   host. Without the upload, every `skill_id` would be rejected as
   `unknown_skill` at lock time.
 - **The ticket carries `skill_id`** (and `session_id`). Since the
@@ -271,7 +271,7 @@ Only the skill's companion Rego is doing the work. Concretely:
 This is the shape a design team ships as an independent artifact: one
 skill package with its own SKILL.md + SKILL.rego, installable via APM
 into any project. The MCP server carries the enforcement to whichever
-gateway the workstation is pointed at.
+validation server the workstation is pointed at.
 
 ## Known limits
 
@@ -296,7 +296,7 @@ gateway the workstation is pointed at.
 ```bash
 cd ~ && rm -rf ~/demo
 
-# Restore the full-corpus gateway from tutorial 0.
+# Restore the full-corpus validation server from tutorial 0.
 # (If it runs under launchd/systemd per tutorial 0's appendix, stop the
 # service instead — the service manager would respawn a pkill'd process.)
 pkill -f 'ppg -addr' || true
@@ -311,7 +311,7 @@ more.
 
 ## Related tutorials
 
-- [Tutorial 14 — With and without the Gateway, on Claude Code](14-with-and-without-claude-code.md):
+- [Tutorial 14 — With and without the validation server, on Claude Code](14-with-and-without-claude-code.md):
   the same demo shape with the full ADR corpus (ADR-090 + ADR-120).
   Read that first if you want the "org-wide invariants" version.
 - [Tutorial 8 — govern a design system through a skill](08-design-system-end-to-end.md):

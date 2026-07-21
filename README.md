@@ -3,8 +3,8 @@
 PPG wraps an agentic coding loop (Claude Code, GitHub Copilot) in a
 **deterministic governance harness**: hooks, MCP servers, and a validation
 server, installed at the **machine** level, so that the artifacts an agent
-produces **provably respect your rules** — without asking a second LLM to
-police the first one.
+produces **provably respect your rules** *within the governed channel* —
+without asking a second LLM to police the first one.
 
 Companion repository of
 [The Amplified Agentic Loop](https://blog.owulveryck.info/2026/07/07/amplified-agentic-loop.html)
@@ -78,7 +78,7 @@ Install once per workstation; every project on the machine is governed:
 make install                    # binaries into ~/.local/bin
 make setup-claude-code          # user-wide hooks + MCP registration
 sudo make setup-claude-code-managed   # optional: root-owned, non-overridable hooks
-ppg -addr :8765 -adr examples/adr     # the validation server (demo corpus)
+ppg -adr examples/adr                 # the validation server (demo corpus; binds 127.0.0.1:8765)
 ```
 
 From then on, a skill that embeds a `SKILL.rego` carries its enforcement
@@ -116,6 +116,9 @@ honestly documented limit.
 | Skill bundled with its own validation, auto-applied | ✅ project and user-wide `.claude/skills` + `.agents/skills` on the MCP path; content policies apply to every edit regardless of the declared `skill_id` |
 | Governed-machine install (user + managed scope) | ✅ scripts with dry-run/rollback; managed setup verifies the guard binary is not user-writable |
 | ADR-independent operation | ✅ the validation server starts with `-skills` and no ADR corpus |
+| Validation-server API authentication | 🟡 none by design; binds `127.0.0.1:8765` by default — a networked or multi-user deployment must front it with an auth proxy (see PoC boundaries) |
+| Managed-mode tamper resistance | 🟡 managed scope closes the settings-edit vector; the guard binary (root-owned install) and `PPG_*` env pinning must be hardened operationally against a hostile user (see [set-up-a-governed-workstation](docs/how-to/set-up-a-governed-workstation.md)) |
+| Skill validation regardless of declared `skill_id` | 🟡 content-view (artifact/changeset) rules always apply; a skill's plan-view *ordering/workflow* rule is enforced only for a plan that declares its `skill_id` |
 | Conflict between validations → blocking escalation | 🟡 deterministic *livelock* escalation (`POLICY_CONFLICT` after repeated identical rejections, with the clashing policy ids and an escalation log); general unsatisfiability detection is undecidable and not claimed |
 | Terminal/Bash writes | 🟡 out of hook reach by design; `ppg-verify` covers them at apply time (`scripts/setup-git-backstop.sh` wires it as a pre-commit hook) |
 
@@ -149,6 +152,8 @@ internal/smarttools/     ticket guard + sandbox + semantic analyzers
 internal/skill/          skill parsing + OPA/Rego governance linter + security tiers
 internal/debt/           transition-debt report
 internal/store/          per-machine ticket/session storage (TokenStore/SessionStore, see ADR-100)
+internal/auth/           demo fixture only — frozen-legacy target for ADR-070 tutorials, not product code
+internal/payment/        demo fixture only — payment router edited in the tutorials, not product code
 examples/                fictional demo corpus — replace with your own (see examples/README.md)
 skill-governance/        skill governance policies (structure.rego, security.rego)
 schemas/                 language-neutral JSON Schema of the plan contract

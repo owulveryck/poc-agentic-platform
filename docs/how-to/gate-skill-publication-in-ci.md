@@ -19,7 +19,7 @@
       + (if $rego == "" then {} else {rego_policy: $rego} end)' > payload.json
    ```
 
-3. CI step (GitHub Actions): call the gateway, fail the job on rejection,
+3. CI step (GitHub Actions): call the validation server, fail the job on rejection,
    print the violations:
 
    ```yaml
@@ -47,7 +47,7 @@
 
 5. Scope note: this covers **Gate 1** (publish). Gate 3 (companion Rego
    enforced at `lock_in_plan` via a plan `skill_id`) is implemented since
-   v1.0.0 — start the gateway with `-skills` pointing at the published
+   v1.0.0 — start the validation server with `-skills` pointing at the published
    skills directory. Gate 2 (revalidation at install against
    possibly-tightened policies) remains the registry-side production
    path, not implemented here — see `AUDIT.md`.

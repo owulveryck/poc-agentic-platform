@@ -1,11 +1,11 @@
 # GitHub Copilot adapter — pre-tool hook gating
 
 This adapter wires **GitHub Copilot** (desktop app or VS Code) to the
-Platform Planning Gateway with the same in-tool gating pattern used for
+governance harness with the same in-tool gating pattern used for
 Claude Code. It closes the "soft half only" gap of the pre-flight adapter:
 Copilot's edits are now blocked in-loop against the locked plan — both the
 **file scope** (the capability ticket) and the **content** (the
-artifact-view policy corpus, via the gateway's `/verify_artifact`), not
+artifact-view policy corpus, via the validation server's `/verify_artifact`), not
 just at apply time.
 
 | Pillar | Mechanism | Component |
@@ -29,7 +29,7 @@ its scope.
    make install
    ```
 
-2. **Start the gateway** (`-adr` is required; point it at your ADR
+2. **Start the validation server** (`-adr` is required; point it at your ADR
    corpus — here the fictional demo corpus, from the checkout root):
 
    ```bash
@@ -131,7 +131,7 @@ its scope.
   TokenStore.
 - Every `Edit`/`Write` passes through `ppg-copilot-guard`. It first
   checks the target path against the ticket scope, then — when the path
-  is allowed — sends the edited content to the gateway's
+  is allowed — sends the edited content to the validation server's
   `/verify_artifact` for the content policy. In scope and clean: the
   hook emits `{"continue": true}` and the tool call proceeds. Out of
   scope, the hook returns:
@@ -152,14 +152,14 @@ its scope.
   breaks an invariant is denied the same way, with reason prefixed
   `ARCHITECTURAL_INVARIANT_VIOLATION` (the messages from
   `/verify_artifact`). The guard **fails closed**: if it cannot evaluate
-  an edit (unreadable payload, unopenable store, unreachable gateway) it
+  an edit (unreadable payload, unopenable store, unreachable validation server) it
   denies with `PPG_GUARD_ERROR: … (fail-closed)` rather than letting the
   edit through.
 
 ## Content policy and composability
 
 `ppg-copilot-guard` enforces **both** path scope (ticket-driven) and
-content: after the path check it sends the edited bytes to the gateway's
+content: after the path check it sends the edited bytes to the validation server's
 `/verify_artifact`, which runs the artifact-view Rego corpus. A content
 invariant is therefore authored once as an ADR's `.rego` (see
 [docs/how-to/enforce-a-content-invariant.md](../../docs/how-to/enforce-a-content-invariant.md))
@@ -198,6 +198,6 @@ parallel and applies the most-restrictive decision (`deny` > `ask` >
   `chat.agent.sandbox.fileSystem.*` and
   `chat.tools.terminal.autoApprove` settings). Read gating is out of
   scope for a plan-scope guard.
-- **PPG_URL** is the gateway base URL the guard POSTs the edited content
+- **PPG_URL** is the server base URL the guard POSTs the edited content
   to for the `/verify_artifact` content check (default
   `http://localhost:8765`) — the same convention as the MCP server.

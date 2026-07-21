@@ -5,10 +5,10 @@ version: 1.0.0
 argument-hint: "<what to build, e.g. a landing page with a START PAYMENT CTA button>"
 ---
 
-Build what the user asked for ($ARGUMENTS) through the Platform Planning
-Gateway, applying the Deep Umbra design system. Enforcement is platform-native:
+Build what the user asked for ($ARGUMENTS) through the governance
+harness, applying the Deep Umbra design system. Enforcement is platform-native:
 the workstation's `ppg-guard` / `ppg-copilot-guard` sends every edit's content to
-the gateway, which evaluates ADR-090 at the **artifact altitude** and denies any
+the validation server, which evaluates ADR-090 at the **artifact altitude** and denies any
 raw color or button re-styling outside `design/tokens.css`. There is no
 skill-specific hook to install — the governed workstation (tutorial 0) already
 wires the guard.
@@ -38,7 +38,7 @@ Run these once per project, in order:
   stylesheet whose steps include `design/tokens.css` as a read target
   and never re-declare button rules. Include a `link` step (or
   equivalent) so `design/tokens.css` loads before other stylesheets.
-- Submit the plan through `lock_in_plan`. If the gateway rejects it,
+- Submit the plan through `lock_in_plan`. If the validation server rejects it,
   the violation message names the exact criterion — fix precisely that
   and resubmit.
 

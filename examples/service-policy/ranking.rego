@@ -6,7 +6,7 @@ package ppg.catalog
 # Output: verdict[] — one decision per candidate:
 #           {service_id, allow, score, reason}
 #
-# The gateway (internal/catalog.Ranker) sorts allowed candidates by score
+# The validation server (internal/catalog.Ranker) sorts allowed candidates by score
 # (then tier) to pick the recommended service, and surfaces denied ones as
 # alternatives with their reason. A candidate the policy returns NO verdict for
 # is treated as denied by the caller (fail-closed), so an unknown status never

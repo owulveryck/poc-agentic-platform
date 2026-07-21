@@ -1,6 +1,6 @@
 # Tutorial 13 — discover and use a platform service
 
-> **Goal**: let the gateway answer *what to build on*. In the plan phase the
+> **Goal**: let the validation server answer *what to build on*. In the plan phase the
 > agent asks the platform which service provides a capability (notifications,
 > payments), and receives the **sanctioned** one — name, endpoint, and API
 > usage — chosen by internal policy. Then watch the platform refuse code that
@@ -13,7 +13,7 @@
 
 ## Why this exists
 
-An org gateway framing N teams needs to prevent reinvention and drift: two
+An org governance harness framing N teams needs to prevent reinvention and drift: two
 teams should not each hand-roll a payment client, and nobody should wire a
 deprecated mailer. The **Service Catalog** is the platform's answer to *what to
 build on*, the discovery counterpart of `enrich`'s *what to honor*. It is a set
@@ -21,9 +21,9 @@ of declarative records (`examples/services/*.md`) ranked by a policy
 (`examples/service-policy/*.rego`), and — through ADR-110 — the recommendation is
 binding, not merely advisory.
 
-## Step 1 — start the gateway and a service mock
+## Step 1 — start the validation server and a service mock
 
-The gateway loads the catalog and the ranking policy from the directories the
+The validation server loads the catalog and the ranking policy from the directories the
 flags point at — here, the fictional demo corpus in `examples/` (run from the
 repo root):
 
@@ -80,7 +80,7 @@ checkout"}` resolves the capability from the wording and returns
 
 ## Step 3 — let a governed Claude Code session use it
 
-Start `claude` in a scratch project wired to the gateway (as in
+Start `claude` in a scratch project wired to the validation server (as in
 [tutorial 2](02-claude-code-end-to-end.md)) and prompt:
 
 > Add an email notification when a user signs up.
@@ -119,7 +119,7 @@ commit too.
 
 ## Verification — deterministic, reader-runnable
 
-The whole loop is asserted by a hermetic harness (its own gateway, mock, state,
+The whole loop is asserted by a hermetic harness (its own validation server, mock, state,
 and temp project — your `:8765` is untouched):
 
 ```bash
@@ -129,10 +129,10 @@ bash scripts/service-catalog-demo.sh
 
 ## Cleanup
 
-The harness self-cleans. If you ran the manual walkthrough, stop the gateway
+The harness self-cleans. If you ran the manual walkthrough, stop the validation server
 and `svc-mock` (Ctrl-C) and `rm -rf` the scratch project.
 
-**✅ Done.** The gateway now answers *what to build on*, ranks the options by
+**✅ Done.** The validation server now answers *what to build on*, ranks the options by
 policy, and enforces the choice — the reuse-and-coherence half of governing N
 teams. To add your own capability, follow
 [Add a service to the catalog](../how-to/add-a-service-to-the-catalog.md); the

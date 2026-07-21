@@ -5,7 +5,7 @@
 > For a from-scratch Rego walkthrough, see the
 > [Rego survival kit](../how-to/rego-survival-kit.md).
 
-The gateway evaluates the same Rego corpus at three altitudes. Rules
+The validation server evaluates the same Rego corpus at three altitudes. Rules
 discriminate between them by reading the `input.view` field. A single
 `.rego` file can carry rules for any subset of the three views; the ADR's
 [front matter](adr-front-matter.md) `enforcement.altitudes` field declares
@@ -76,7 +76,7 @@ One file at a time. The guard hook posts one of these per intercepted
 }
 ```
 
-The whole diff in one call. `plan_hash` lets the gateway detect plan
+The whole diff in one call. `plan_hash` lets the validation server detect plan
 substitution against the ticket claim; leave it out for a bare content
 check.
 
@@ -160,8 +160,8 @@ There are two tiers, consulted in this order at every view:
 
 | Tier | Source | Loaded by | Persistence | Scope |
 |---|---|---|---|---|
-| **Operator** | `ppg -skills <dir>` at startup | `linter.LoadSkillCompanions` | Re-read at every gateway startup from disk | Global — every session sees it |
-| **Session-scoped** | `POST /register_skill` from the MCP server | `linter.RegisterSessionSkill` | In-memory only — dropped on gateway restart | Only the `session_id` in the request |
+| **Operator** | `ppg -skills <dir>` at startup | `linter.LoadSkillCompanions` | Re-read at every validation server startup from disk | Global — every session sees it |
+| **Session-scoped** | `POST /register_skill` from the MCP server | `linter.RegisterSessionSkill` | In-memory only — dropped on validation server restart | Only the `session_id` in the request |
 
 The MCP server ([`ppg-mcp-server`](validation-server-cli.md)) auto-uploads every
 skill it finds before forwarding `lock_in_plan`, scanning three roots in
@@ -175,11 +175,11 @@ tier is last-write-wins):
 3. `<project>/.claude/skills/` — project-local Claude Code skills.
 
 That's how a skill installed by `apm install ... --target claude` — into
-the project *or* user-wide — reaches a gateway that does not share the
-client's filesystem (e.g. a shared team gateway or a container).
+the project *or* user-wide — reaches a validation server that does not share the
+client's filesystem (e.g. a shared team validation server or a container).
 
 **Post-restart recovery.** Because session-scoped skills are memory-only,
-a gateway restart mid-session leaves the MCP's upload cache stale. The
+a validation server restart mid-session leaves the MCP's upload cache stale. The
 MCP handles this automatically: any `/lock_in_plan` response containing
 an `unknown_skill` violation triggers a cache invalidation and a re-upload
 of the named skill, then a single retry of the lock. Bounded at one
@@ -190,7 +190,7 @@ retry — see
 prevents a project-local upload from silently downgrading an org-wide
 policy the operator has already reserved under the same name.
 
-**Multi-user posture.** The gateway trusts `session_id` from the client
+**Multi-user posture.** The validation server trusts `session_id` from the client
 and is safe as a shared, single-tenant service on a trusted network. See
 the [multi-user posture note](http-api.md#authentication--multi-user-posture)
 for what an enterprise multi-tenant deployment would add (mTLS, signed
@@ -201,7 +201,7 @@ manifests).
 | Situation | Outcome |
 |---|---|
 | Rule iterates `input.steps` at artifact view without a view guard | Rule silently no-ops (`input.steps` is undefined). Safe but confusing — always add `input.view == "…"` |
-| Ticket declares `skill_id` for a skill the gateway does not know about | `unknown_skill` violation at every view — fail-closed. Fix: start the gateway with `-skills` pointing at the directory containing the skill package |
+| Ticket declares `skill_id` for a skill the validation server does not know about | `unknown_skill` violation at every view — fail-closed. Fix: start the validation server with `-skills` pointing at the directory containing the skill package |
 | Skill was published without a `SKILL.rego` (tier 0) | Skill loads with a nil evaluator; the companion is a no-op at every view. The ADR corpus still applies |
-| Guard hook cannot reach the gateway | The guard fails closed with `PPG_GUARD_ERROR: cannot verify content …`. Every write is refused until the gateway is reachable |
+| Guard hook cannot reach the validation server | The guard fails closed with `PPG_GUARD_ERROR: cannot verify content …`. Every write is refused until the validation server is reachable |
 | `.rego` fails to compile at startup | `ppg` refuses to start. Fix the syntax and restart |

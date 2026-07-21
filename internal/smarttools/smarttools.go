@@ -20,7 +20,7 @@ import (
 )
 
 // ArtifactEvaluator reports the architectural-invariant violations of a file's
-// proposed content (the artifact-view policy). It is injected by the gateway to
+// proposed content (the artifact-view policy). It is injected by the validation server to
 // keep this package decoupled from the linter; an empty return means the content
 // is clean. When nil (unwired), Run skips the content check. The skillID and
 // sessionID are taken from the ticket claims: skillID selects the skill

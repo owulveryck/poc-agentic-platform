@@ -57,7 +57,7 @@ func testServer(t *testing.T) (*httptest.Server, string) {
 		t.Fatalf("catalog.NewRanker: %v", err)
 	}
 
-	srv := httptest.NewServer(buildMux(store, lint, skillLint, catStore, ranker, time.Hour, filepath.Join(t.TempDir(), "escalations.jsonl")))
+	srv := httptest.NewServer(buildMux(store, lint, skillLint, catStore, ranker, time.Hour, newConflictDetector(), filepath.Join(t.TempDir(), "escalations.jsonl")))
 	t.Cleanup(srv.Close)
 
 	planJSON := `{"session_id":"11111111-1111-1111-1111-111111111111","intent":"build a landing page","repository_context":{"name":"web","tech_stack":["Go"]},"steps":[{"id":"s1","action":"read design tokens","tool":"Read","targets":["design/tokens.css"]},{"id":"s2","action":"write styles","tool":"Write","targets":["index.css"]},{"id":"s3","action":"go test","tool":"go-test","targets":["x_test.go"]}]}`
@@ -164,7 +164,7 @@ func TestVerifyArtifactRejectsSkillCompanionViolation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("catalog.NewRanker: %v", err)
 	}
-	srv := httptest.NewServer(buildMux(store, lint, skillLint, catStore, ranker, time.Hour, filepath.Join(t.TempDir(), "escalations.jsonl")))
+	srv := httptest.NewServer(buildMux(store, lint, skillLint, catStore, ranker, time.Hour, newConflictDetector(), filepath.Join(t.TempDir(), "escalations.jsonl")))
 	t.Cleanup(srv.Close)
 
 	// Plan reads design/tokens.css (ADR-090 plan rule) and writes a .tsx
@@ -239,7 +239,7 @@ func TestRegisterSkillThenVerifyArtifact(t *testing.T) {
 	if err != nil {
 		t.Fatalf("catalog.NewRanker: %v", err)
 	}
-	srv := httptest.NewServer(buildMux(store, lint, skillLint, catStore, ranker, time.Hour, filepath.Join(t.TempDir(), "escalations.jsonl")))
+	srv := httptest.NewServer(buildMux(store, lint, skillLint, catStore, ranker, time.Hour, newConflictDetector(), filepath.Join(t.TempDir(), "escalations.jsonl")))
 	t.Cleanup(srv.Close)
 
 	const session = "33333333-3333-3333-3333-333333333333"
@@ -423,7 +423,7 @@ func TestPolicyConflictLivelockEscalation(t *testing.T) {
 		t.Fatalf("skill.NewLinter: %v", err)
 	}
 	escLog := filepath.Join(t.TempDir(), "escalations.jsonl")
-	srv := httptest.NewServer(buildMux(store, lint, skillLint, nil, nil, time.Hour, escLog))
+	srv := httptest.NewServer(buildMux(store, lint, skillLint, nil, nil, time.Hour, newConflictDetector(), escLog))
 	t.Cleanup(srv.Close)
 
 	// A Go plan with no test step: rejected by ADR-060 (go_tests_present),

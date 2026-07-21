@@ -7,11 +7,11 @@
 | Everything in the system prompt | Fragile, non-deterministic, unverifiable: declarative compensatory. |
 | Gate only in CI (post-hoc) | Purely after-the-fact: frustrates the flow, feedback arrives too late for self-correction. |
 | An LLM to validate the plan | Non-deterministic → does not solve weak-model drift. We want a *linter*, not a judge. |
-| Hard-coding business patterns in the gateway | Compensatory debt; does not scale; gains nothing from model progress. |
+| Hard-coding business patterns in the validation server | Compensatory debt; does not scale; gains nothing from model progress. |
 
 ## Team Topologies positioning
 
-The gateway is a **platform product** (internal SaaS) built by the Platform
+The validation server is a **platform product** (internal SaaS) built by the Platform
 team to reduce the cognitive load of stream-aligned teams and their agents.
 ADRs are co-owned with the architects; programmatic policies belong to the
 platform team; stream teams consume everything friction-free via MCP or the
@@ -19,7 +19,7 @@ pre-flight adapter. X-as-a-Service applied to agentic governance.
 
 ## Concurrency
 
-The gateway is safe to drive with concurrent requests: every dependency (ADR
+The validation server is safe to drive with concurrent requests: every dependency (ADR
 store, the OPA prepared query, the linters, the ticket config, the tool
 catalog) is built at startup and only read while serving, and each policy
 evaluation uses per-call input — so it is effectively stateless per request (a
@@ -75,7 +75,7 @@ atomic-rename writes, so concurrent sessions cannot corrupt or half-purge state
 - **Session-scoped skill registration is memory-only and single-tenant.**
   The `POST /register_skill` endpoint stores companion Rego per session in
   a process-local map (`internal/linter/linter.go` — `sessionSkills`); a
-  gateway restart drops every uploaded skill. The MCP server self-heals
+  validation server restart drops every uploaded skill. The MCP server self-heals
   the resulting `unknown_skill` on the next `/lock_in_plan` with a
   one-shot retry (`lockWithRegistrationRetry`), but longer-lived
   persistence (Bolt/SQLite/Redis) is not implemented. The endpoint also

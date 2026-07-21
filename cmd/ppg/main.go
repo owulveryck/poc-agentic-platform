@@ -1,4 +1,4 @@
-// Command ppg runs the Platform Planning Gateway PoC:
+// Command ppg runs the validation server PoC:
 //
 //	POST /enrich           — amplifier context (ADR invariants) for an intent
 //	POST /lock_in_plan     — deterministic plan linter + capability ticket
@@ -44,7 +44,8 @@ import (
 )
 
 func main() {
-	addr := flag.String("addr", ":8765", "listen address")
+	addr := flag.String("addr", "127.0.0.1:8765",
+		"listen address; defaults to loopback because the API is unauthenticated — pass an explicit host (e.g. :8765) only behind a trusted network or an auth proxy")
 	adrDir := flag.String("adr", "", "path to the ADR store (optional; omit to run on skill companions and built-in rules only; demo corpus: examples/adr)")
 	skillGovDir := flag.String("skill-governance", "skill-governance", "path to the skill governance Rego policy directory")
 	skillsDir := flag.String("skills", "", "path to the published skills directory (one subdir per skill with SKILL.md [+ SKILL.rego]); enables Gate 3 for plans that declare skill_id")
@@ -88,6 +89,14 @@ func main() {
 	// every livelock escalation lands here for the humans who own the rules.
 	escalationLog := filepath.Join(stateRoot, "escalations.jsonl")
 
+	// The conflict detector is created ONCE for the process lifetime, not per
+	// mux: buildMux runs again on every SIGHUP reload, so a detector owned by
+	// the mux would have its livelock streaks silently wiped on each reload —
+	// and a reload is exactly how a human applies the corpus fix, which would
+	// reset the counter just as the conflict is being resolved. Threading one
+	// detector through install keeps streak state stable across reloads.
+	conflicts := newConflictDetector()
+
 	// The ticket signing key is never hardcoded: $PPG_TICKET_SECRET wins,
 	// else a per-machine key is generated once under the state root.
 	if os.Getenv(ticket.EnvSecret) == "" {
@@ -123,7 +132,7 @@ func main() {
 			}
 			return msgs
 		})
-		handler.mux.Store(buildMux(c.store, c.lint, c.skillLint, c.catStore, c.ranker, ttl, escalationLog))
+		handler.mux.Store(buildMux(c.store, c.lint, c.skillLint, c.catStore, c.ranker, ttl, conflicts, escalationLog))
 	}
 	install(c)
 
@@ -148,8 +157,8 @@ func main() {
 	}()
 
 	log.Printf("Capability ticket TTL: %s (bounded by the session)", ttl)
-	log.Printf("Platform Planning Gateway listening on %s", *addr)
-	// The gateway accepts untrusted POSTed plans/artifacts: bound both the
+	log.Printf("validation server listening on %s", *addr)
+	// The validation server accepts untrusted POSTed plans/artifacts: bound both the
 	// request body size and the connection lifetimes.
 	srv := &http.Server{
 		Addr:              *addr,
@@ -175,14 +184,14 @@ func (h *reloadableHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // content of every changed file, so the cap is generous but finite.
 const maxRequestBody = 16 << 20 // 16 MiB
 
-// buildMux wires the gateway routes. All handlers close over dependencies that
+// buildMux wires the validation server routes. All handlers close over dependencies that
 // are read-only after construction — except the conflict detector, which is
 // internally synchronized — so the returned mux is safe to serve
 // concurrently (see cmd/ppg/main_test.go, which exercises it under -race).
-func buildMux(store *adr.Store, lint *linter.Linter, skillLint *skill.Linter, catStore *catalog.Store, ranker *catalog.Ranker, ttl time.Duration, escalationLog string) *http.ServeMux {
+func buildMux(store *adr.Store, lint *linter.Linter, skillLint *skill.Linter, catStore *catalog.Store, ranker *catalog.Ranker, ttl time.Duration, conflicts *conflictDetector, escalationLog string) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /enrich", handleEnrich(store))
-	mux.HandleFunc("POST /lock_in_plan", handleLockInPlan(lint, ttl, newConflictDetector(), escalationLog))
+	mux.HandleFunc("POST /lock_in_plan", handleLockInPlan(lint, ttl, conflicts, escalationLog))
 	mux.HandleFunc("POST /register_skill", handleRegisterSkill(lint))
 	mux.HandleFunc("POST /tools/{name}", handleTool)
 	mux.HandleFunc("POST /verify_artifact", handleVerifyArtifact(lint))
@@ -262,6 +271,8 @@ func handleLockInPlan(lint *linter.Linter, ttl time.Duration, conflicts *conflic
 					"ts":                     time.Now().UTC().Format(time.RFC3339),
 					"session_id":             p.SessionID,
 					"intent":                 p.Intent,
+					"skill_id":               p.SkillID,
+					"plan_steps":             p.Steps,
 					"consecutive_rejections": streak,
 					"policy_ids":             ids,
 					"policy_sources":         sources,
@@ -281,7 +292,7 @@ func handleLockInPlan(lint *linter.Linter, ttl time.Duration, conflicts *conflic
 						"required plan shape is not reachable from the current approach. This is now a human decision — " +
 						"review the policies in policy_ids with their owners (policy_sources says whether each comes from " +
 						"the ADR corpus, a skill companion, or a built-in rule), or change the intent. The escalation was " +
-						"recorded for the platform team; the gateway keeps answering POLICY_CONFLICT for this violation set.",
+						"recorded for the platform team; the validation server keeps answering POLICY_CONFLICT for this violation set.",
 				})
 				return
 			}
@@ -434,7 +445,7 @@ func handleTool(w http.ResponseWriter, r *http.Request) {
 
 // handleRegisterSkill compiles a client-uploaded SKILL.rego and stores it in
 // the linter's session-scoped tier. It is how a skill installed locally
-// (e.g. via `apm install ... --target claude`) reaches a gateway that does
+// (e.g. via `apm install ... --target claude`) reaches a validation server that does
 // not share the client's filesystem: the MCP server POSTs it here before
 // forwarding lock_in_plan. Idempotent — re-uploading identical content is
 // a no-op (the linter simply overwrites the same key with the same evaluator).
@@ -534,7 +545,7 @@ func handleDiscoverService(catStore *catalog.Store, ranker *catalog.Ranker) http
 		if catStore == nil || ranker == nil {
 			httpError(w, http.StatusServiceUnavailable, map[string]any{
 				"status":   "SERVICE_CATALOG_UNAVAILABLE",
-				"guidance": "The gateway was started without a service catalog and/or ranking policy (see -services / -service-policy).",
+				"guidance": "The validation server was started without a service catalog and/or ranking policy (see -services / -service-policy).",
 			})
 			return
 		}

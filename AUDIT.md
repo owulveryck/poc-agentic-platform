@@ -8,7 +8,7 @@ articles it accompanies:
 - **A2** — *The Governed Skills Registry: Policy-as-Code for Enterprise
   Agent Capabilities* (2026-07-08, draft at audit time)
 
-Every "verified live" entry below was exercised against a running gateway
+Every "verified live" entry below was exercised against a running validation server
 (`go run ./cmd/ppg -addr :8765`) on the audit date.
 
 Statuses: ✅ conforms · 🟡 partial · ❌ not implemented · 📄 article-only
@@ -26,7 +26,7 @@ Statuses: ✅ conforms · 🟡 partial · ❌ not implemented · 📄 article-on
 | Debt report: tagged artifacts, sunset conditions, currently `health: OK` (2/8 since ADR-110, ratio = 0.25, under the 0.3 alert threshold) | `internal/debt`, `GET /debt_report` | ✅ verified live (`transition_debt_ratio` = `0.25`, 2 pending sunsets) |
 | Claude Code adapter: stdio MCP server, 2 tools, ticket persisted via TokenStore (per-machine `$XDG_STATE_HOME/ppg/projects/<slug>/tickets/<sid>`) | `adapters/claudecode/mcpserver`, `internal/store` | ✅ |
 | `ppg-guard` PreToolUse hook on `Edit\|Write`, exit 2, semantic stderr | `adapters/claudecode/guard` | ✅ verified live (block out-of-scope, pass in-scope, block without ticket) |
-| Copilot path: pre-flight writes `.github/copilot-instructions.md` | `adapters/preflight` | ✅ verified live; gateway URL/repo-context hardcoding fixed during this audit (see below) |
+| Copilot path: pre-flight writes `.github/copilot-instructions.md` | `adapters/preflight` | ✅ verified live; validation server URL/repo-context hardcoding fixed during this audit (see below) |
 | MCP tool schema auto-generated from `internal/plan#Plan` | `modelcontextprotocol/go-sdk` typed tools | ✅ |
 | Docs follow Divio/Diátaxis; repo doubles as a documentation template | `docs/` | ✅ after this audit — was 🟡 (4 monolithic files with stale sections; see "Documentation" below) |
 | Pillar 3 (retroactive observation) out of scope | — | 📄 consistent (no code, none claimed) |
@@ -108,7 +108,7 @@ After: split into `docs/{tutorials,how-to,reference,explanation}/` with an
 index (`docs/README.md`), one file per topic, all staleness fixed, skill
 governance covered in all four quadrants, and two end-to-end agent
 tutorials (Claude Code, GitHub Copilot) whose commands were executed against
-a live gateway. `docs/tutorial.md` and `docs/explanation.md` remain as
+a live validation server. `docs/tutorial.md` and `docs/explanation.md` remain as
 redirect stubs because the published article links to those paths.
 
 ## Addendum 2026-07-17 — Service catalog (post-article feature)
@@ -121,7 +121,7 @@ time:
 |---|---|---|
 | Catalog store: one Markdown record per service, status `recommended`/`allowed`/`sandbox`/`deprecated`/`forbidden` | `internal/catalog/catalog.go`, corpus `examples/services/` | ✅ (unit-tested, 80.5% coverage) |
 | Rego ranker (`package ppg.catalog`, `Verdict{Allow,Score,Reason}`) over the intent | `internal/catalog/ranker.go`, `examples/service-policy/ranking.rego` | ✅ |
-| Gateway endpoints `POST /discover_service`, `GET /services`, `GET /services/{id}`; `-services` / `-service-policy` flags | `cmd/ppg/main.go` | ✅ |
+| Validation server endpoints `POST /discover_service`, `GET /services`, `GET /services/{id}`; `-services` / `-service-policy` flags | `cmd/ppg/main.go` | ✅ |
 | MCP tool `find_platform_service` | `adapters/claudecode/mcpserver` | ✅ |
 | Enforcement: ADR-110 `use_cataloged_services` at plan/artifact/changeset altitudes | `examples/adr/ADR-110*` | ✅ |
 | Runnable end-to-end: `cmd/svc-mock` + 13-check harness | `scripts/service-catalog-demo.sh`, tutorial 13 | ✅ (verified by the harness) |
@@ -136,7 +136,7 @@ harness, 19/19, and the full test suite — every package now has tests):
 
 - **Ticket signing key** is no longer hardcoded: `$PPG_TICKET_SECRET` >
   per-machine generated key file (`$XDG_STATE_HOME/ppg/ticket.key`, 0600),
-  shared by gateway and guards. The scheme stays symmetric (see limits).
+  shared by validation server and guards. The scheme stays symmetric (see limits).
 - **Scope-breadth cap** (`scope_breadth_cap`, built-in, deny by default):
   root-scoped plans (`.`, `*`, `/`, `../x`) are rejected at lock time;
   `-allow-wide-scope` restores the old behavior. Closes red-team B3.
@@ -161,6 +161,6 @@ Declared **out of scope for v1.0.0** (unchanged, still ❌ above):
   operator's responsibility.
 - Semantic (embedding-based) ADR and service retrieval; real sandbox and
   staging backends; asymmetric ticket keys behind a KMS; authenticated
-  gateway API (bind to localhost).
+  validation server API (bind to localhost).
 - `documentation_french/` is frozen at the pre-catalog feature set and
   says so; the English docs are the reference.

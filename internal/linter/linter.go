@@ -350,7 +350,7 @@ func (l *Linter) lookupSkill(sessionID, skillID string) (*policy.Evaluator, bool
 
 // evaluateSkillCompanion evaluates the declared skill's companion Rego against
 // one input document (any view). It fails closed: an unknown skill id —
-// including every skill id when the gateway was started without -skills — is
+// including every skill id when the validation server was started without -skills — is
 // itself a violation. An empty skillID means the caller did not declare a
 // skill, in which case only the ADR corpus applies. A registered skill with a
 // nil evaluator (tier-0 publication) is a no-op.
@@ -362,7 +362,7 @@ func (l *Linter) evaluateSkillCompanion(sessionID, skillID string, input any) []
 	if !ok {
 		return []Violation{{
 			PolicyID: "unknown_skill",
-			Message: fmt.Sprintf("plan declares skill_id %q but no published skill with that name is registered with the gateway for session %q "+
+			Message: fmt.Sprintf("plan declares skill_id %q but no published skill with that name is registered with the validation server for session %q "+
 				"(register it via POST /register_skill, or start ppg with -skills pointing at the published skills directory)", skillID, sessionID),
 			Nature: Amplifier,
 		}}

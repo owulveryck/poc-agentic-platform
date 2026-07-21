@@ -33,21 +33,21 @@ sequence below is the workstation path:
 
 ## Tutorials — learning-oriented
 
-0. [Bootstrap the platform on your machine](tutorials/00-bootstrap.md) — one-time install of the gateway, adapter binaries, and MCP server registration. Every other tutorial's prereqs collapse to this.
+0. [Bootstrap the platform on your machine](tutorials/00-bootstrap.md) — one-time install of the validation server, adapter binaries, and MCP server registration. Every other tutorial's prereqs collapse to this.
 1. [Your first amplified planning cycle](tutorials/01-first-planning-cycle.md) — the full `enrich → lock_in_plan → smart tool → debt_report` cycle with `curl`
 2. [Govern a live Claude Code session](tutorials/02-claude-code-end-to-end.md) — MCP planning + `PreToolUse` gating, end to end
 3. [Steer GitHub Copilot with the pre-flight adapter](tutorials/03-github-copilot-preflight.md) — invariants injected into a black-box agent
 4. [Validate your first skill](tutorials/04-validate-your-first-skill.md) — the skill governance gate and the security tiers
 5. [Write your first ADR, end to end](tutorials/05-write-your-first-adr.md) — author an invariant (Markdown + Rego) and watch both halves act
-6. [From a governed skill to a governed session](tutorials/06-skill-to-session-end-to-end.md) — write a skill and its policy, pass the publication gate, watch it drive a session through every gateway
+6. [From a governed skill to a governed session](tutorials/06-skill-to-session-end-to-end.md) — write a skill and its policy, pass the publication gate, watch it drive a session through every control point
 7. [Govern a live GitHub Copilot session](tutorials/07-copilot-end-to-end.md) — the Copilot sibling of tutorial 2: MCP planning + `PreToolUse` gating in the official Copilot app
 8. [Govern a design system through a skill](tutorials/08-design-system-end-to-end.md) — extend the loop from path-scope to content-scope: enforce the Deep Umbra palette on buttons via ADR-090's Rego at the artifact altitude (no per-skill hook)
 9. [Copilot on a governed workstation](tutorials/09-copilot-on-governed-workstation.md) — with the workstation configured user-wide (see how-to below), a fresh project is governed with three commands and one prompt
 10. [Claude Code on a governed workstation](tutorials/10-claude-on-governed-workstation.md) — the same demo for Claude Code
-11. [With and without the Gateway — a side-by-side demo](tutorials/11-with-and-without-the-gateway.md) — same skill, same prompts, two projects: without the platform a small model drifts under an adversarial prompt; with the platform, the drift is deterministically refused
-12. [Try to bypass the gateway (and watch it hold)](tutorials/12-bypassing-the-gateway.md) — a red-team catalogue of every trick against the Claude Code loop (no ticket, out-of-scope, traversal, sibling-prefix, forbidden content, session replay, tampered/forged ticket, gateway-down, self-disable) paired with its refusal — plus the honest limits caught only at apply time by `ppg-verify`; asserted end-to-end by `scripts/redteam-bypass.sh`
-13. [Discover and use a platform service](tutorials/13-discover-a-platform-service.md) — the service catalog: the agent asks the gateway which sanctioned service provides a capability (notifications, payments), gets the endpoint + API usage ranked by policy, and is refused when it reaches for a deprecated/forbidden provider; asserted by `scripts/service-catalog-demo.sh`
-14. [With and without the Gateway, on Claude Code](tutorials/14-with-and-without-claude-code.md) — the Claude Code companion of tutorial 11: same design-system skill, same small-model drift, same deterministic refusals, using the repo's setup/teardown scripts to toggle the platform on and off
+11. [With and without the validation server — a side-by-side demo](tutorials/11-with-and-without-the-gateway.md) — same skill, same prompts, two projects: without the platform a small model drifts under an adversarial prompt; with the platform, the drift is deterministically refused
+12. [Try to bypass the validation server (and watch it hold)](tutorials/12-bypassing-the-gateway.md) — a red-team catalogue of every trick against the Claude Code loop (no ticket, out-of-scope, traversal, sibling-prefix, forbidden content, session replay, tampered/forged ticket, server-down, self-disable) paired with its refusal — plus the honest limits caught only at apply time by `ppg-verify`; asserted end-to-end by `scripts/redteam-bypass.sh`
+13. [Discover and use a platform service](tutorials/13-discover-a-platform-service.md) — the service catalog: the agent asks the validation server which sanctioned service provides a capability (notifications, payments), gets the endpoint + API usage ranked by policy, and is refused when it reaches for a deprecated/forbidden provider; asserted by `scripts/service-catalog-demo.sh`
+14. [With and without the validation server, on Claude Code](tutorials/14-with-and-without-claude-code.md) — the Claude Code companion of tutorial 11: same design-system skill, same small-model drift, same deterministic refusals, using the repo's setup/teardown scripts to toggle the platform on and off
 15. [Skill-only enforcement, on Claude Code](tutorials/15-skill-only-enforcement.md) — the same four-Act demo as tutorial 14, but the enforcement comes exclusively from `demo/skills/design-system/SKILL.rego`: no ADR-090, no ADR-120 in scope. One skill, its companion Rego, three views — the shape a design team ships as a stand-alone bundle
 
 ## How-to guides — task-oriented
@@ -72,7 +72,7 @@ sequence below is the workstation path:
 - [HTTP API](reference/http-api.md) · [Plan contract](reference/plan-contract.md) · [ADR front matter](reference/adr-front-matter.md)
 - [Capability ticket](reference/capability-ticket.md) · [Policy catalog](reference/policy-catalog.md) · [Policy views](reference/policy-views.md) · [Skill governance](reference/skill-governance.md)
 - [Service catalog](reference/service-catalog.md) — record schema, ranking policy, `/discover_service` + `/services` endpoints
-- [Statuses and error codes](reference/error-codes.md) · [Gateway and adapter binaries](reference/validation-server-cli.md)
+- [Statuses and error codes](reference/error-codes.md) · [Validation server and control-point binaries](reference/validation-server-cli.md)
 
 ## Explanation — understanding-oriented
 

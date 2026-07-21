@@ -6,10 +6,10 @@
 > **Goal**: live the full lifecycle in one sitting. You play the stream
 > team: write a skill and its companion policy, pass them through the
 > platform's publication gate, then watch the skill drive a real Claude
-> Code session through every gateway (enrich, lock, in-tool guard).
+> Code session through every checkpoint (enrich, lock, in-tool guard).
 >
 > Time: ~20 minutes. Prerequisites:
-> [tutorial 2](02-claude-code-end-to-end.md) completed: the gateway runs on
+> [tutorial 2](02-claude-code-end-to-end.md) completed: the validation server runs on
 > `:8765`, and `~/ppg-demo` has the `ppg-guard` hooks (`SessionStart` +
 > `PreToolUse`), the `ppg` MCP server, and the `CLAUDE.md` contract.
 >
@@ -25,20 +25,20 @@ Create `.claude/skills/add-payment-method/SKILL.md` in `~/ppg-demo`:
 ```markdown
 ---
 name: add-payment-method
-description: Adds a payment provider to the checkout service through the governed loop of the Platform Planning Gateway, enriching the plan with the platform ADRs, locking it for a capability ticket, and implementing strictly within the ticket scope.
+description: Adds a payment provider to the checkout service through the governed loop of the governance harness, enriching the plan with the platform ADRs, locking it for a capability ticket, and implementing strictly within the ticket scope.
 version: 2.0.0
 argument-hint: "<provider name, e.g. Stripe>"
 ---
 
 Add the payment provider named in $ARGUMENTS to the checkout service,
-through the Platform Planning Gateway. Follow the three moves in order.
+through the governance harness. Follow the three moves in order.
 
 1. Call get_platform_guidelines_for_intent with the intent
    ("Add $ARGUMENTS as a payment method to the checkout service") and the
    repository context. Read every returned invariant before planning.
 
 2. Draft the structured plan honoring those invariants and submit it
-   through lock_in_plan. If the gateway rejects it, the violation message
+   through lock_in_plan. If the validation server rejects it, the violation message
    names the exact criterion: fix precisely that and resubmit.
 
 3. Implement with Edit, staying strictly within the ticket scope. If the
@@ -47,7 +47,7 @@ through the Platform Planning Gateway. Follow the three moves in order.
 ```
 
 Notice what the body is: not a list of rules to remember, but a **workflow
-that puts the gateway inside the loop**. The two tool names are the ones
+that puts the validation server inside the loop**. The two tool names are the ones
 the `ppg` MCP server registered in
 [tutorial 2](02-claude-code-end-to-end.md): `get_platform_guidelines_for_intent`
 bridges to `POST /enrich`, `lock_in_plan` to `POST /lock_in_plan`. Then
@@ -84,7 +84,7 @@ division of labor: **the team ships the capability and its policy**.
 
 Before a skill reaches anyone's agent, it passes the platform's gate.
 Build the request from your two files and submit it (from
-`~/ppg-demo`, gateway running on `:8765`):
+`~/ppg-demo`, validation server running on `:8765`):
 
 ```bash
 python3 - <<'EOF' > /tmp/skill.json
@@ -128,12 +128,12 @@ Start `claude` in `~/ppg-demo` and type the same command a developer would:
 /add-payment-method Stripe
 ```
 
-**What you should observe**, in order — every gateway of the platform,
+**What you should observe**, in order — every checkpoint of the platform,
 triggered by the skill's own body:
 
 1. The skill executes: its first instruction makes Claude call
    `get_platform_guidelines_for_intent`, the MCP bridge to the enrichment
-   gateway. The intent contains "payment", so ADR-042 (every external
+   validation server's enrichment endpoint. The intent contains "payment", so ADR-042 (every external
    provider call goes through the egress proxy) and ADR-070 (frozen legacy
    paths) come back as invariants: the same payload you saw in
    [tutorial 1, step 2](01-first-planning-cycle.md).
@@ -165,7 +165,7 @@ platform exposes the gates, the schema, and the enforcement; the agent
 executes the skill, and everything it does passes through the platform's
 endpoints.**
 
-**✅ Done.** For black-box agents that cannot call the gateways in-loop, the
+**✅ Done.** For black-box agents that cannot call the validation server in-loop, the
 soft half still applies: see the
 [GitHub Copilot tutorial](03-github-copilot-preflight.md). The *why* of the
 capability plane is in

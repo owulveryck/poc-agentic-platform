@@ -65,7 +65,7 @@ Response (`409 POLICY_CONFLICT`) — the **livelock escalation**. When a
 session's plans are rejected 3 consecutive times with a byte-identical
 violation policy-id set, "fix and resubmit" stops being honest guidance:
 either the policies are mutually unsatisfiable for this intent, or the
-required plan shape is unreachable from the agent's approach. The gateway
+required plan shape is unreachable from the agent's approach. The validation server
 switches to a hard block carrying:
 
 | Field | Description |
@@ -88,8 +88,8 @@ same conflict cannot recur.
 Client-uploaded, session-scoped skill companion. The MCP server calls this
 before every `/lock_in_plan` for every skill it finds under the project's
 `.claude/skills/`; it is idempotent by content hash. Enables enforcement of
-a locally-installed `SKILL.rego` against a gateway that does **not** share
-the client's filesystem — the target scenario for a shared / remote gateway.
+a locally-installed `SKILL.rego` against a validation server that does **not** share
+the client's filesystem — the target scenario for a shared / remote validation server.
 See [policy views](policy-views.md) for how the operator (`-skills`) and
 session-scoped tiers compose.
 
@@ -118,7 +118,7 @@ org-wide policy the operator has already reserved.
 ### Lifetime & post-restart recovery
 
 Session-scoped registrations live only in memory
-(`internal/linter/linter.go` — `sessionSkills`). A gateway restart drops
+(`internal/linter/linter.go` — `sessionSkills`). A validation server restart drops
 every session-scoped skill; the operator tier is re-read from `-skills` but
 client-uploaded skills are gone.
 
@@ -133,13 +133,13 @@ locally, so the semantic error reaches the model. See
 
 Cross-session sharing is deliberately absent: a skill uploaded under
 `session_id: "A"` is invisible to `session_id: "B"`. To distribute a
-skill to every session on a shared gateway, load it via `ppg -skills`
+skill to every session on a shared validation server, load it via `ppg -skills`
 (operator tier).
 
 ### Authentication & multi-user posture
 
 Requests to `/register_skill` carry `session_id` verbatim from the client;
-the gateway does not authenticate the caller. Same posture as the JWT
+the validation server does not authenticate the caller. Same posture as the JWT
 ticket signing key today (see the
 [symmetric-key note](../explanation/design-decisions-and-limits.md#known-limits-of-the-poc)).
 
@@ -265,7 +265,7 @@ schema and examples in [service-catalog.md](service-catalog.md).
 Response (`200`): `{status, capability, recommended, alternatives[],
 policy_notes[]}`. `status` is `SERVICE_FOUND` when a service is recommended,
 else `NO_SERVICE_FOR_CAPABILITY`. `503 SERVICE_CATALOG_UNAVAILABLE` when the
-gateway was started without a catalog and/or ranking policy.
+validation server was started without a catalog and/or ranking policy.
 
 ## `GET /services` · `GET /services/{id}`
 

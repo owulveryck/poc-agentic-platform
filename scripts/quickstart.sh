@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 #
-# quickstart.sh — a one-minute guided tour of the Platform Planning Gateway.
+# quickstart.sh — a one-minute guided tour of the validation server.
 #
 # Companion to the README "Quick start" (run it via `make quickstart`). It
-# starts a throwaway gateway on the fictional demo corpus in examples/ and
+# starts a throwaway validation server on the fictional demo corpus in examples/ and
 # shows the three core moves:
 #   1. /enrich          — retrieve the architectural invariants for an intent;
 #   2. /lock_in_plan    — watch the deterministic linter reject a bad plan,
 #                         then lock the fixed one (capability ticket);
 #   3. /discover_service — ask the Service Catalog for the sanctioned service.
 #
-# HERMETIC: its own gateway on a free port, everything removed on exit. It
+# HERMETIC: its own validation server on a free port, everything removed on exit. It
 # drives the freshly BUILT binary ($REPO/bin/ppg), so it works right after
 # `make build` — no `make install` needed.
 #
@@ -47,7 +47,7 @@ trap cleanup EXIT
   >"$TMP/gateway.log" 2>&1 &
 GW_PID=$!
 for _ in $(seq 1 50); do curl -sf "$GW/debt_report" >/dev/null 2>&1 && break; sleep 0.1; done
-curl -sf "$GW/debt_report" >/dev/null 2>&1 || { echo "gateway never came up"; cat "$TMP/gateway.log"; exit 3; }
+curl -sf "$GW/debt_report" >/dev/null 2>&1 || { echo "validation server never came up"; cat "$TMP/gateway.log"; exit 3; }
 
 pass=0; fail=0
 check() { # desc  actual  expected
@@ -59,7 +59,7 @@ pretty() { printf '%s' "$1" | python3 -m json.tool; }
 post() { curl -s -H 'content-type: application/json' -d "$2" "$GW$1"; }
 
 echo
-echo "PPG quickstart — throwaway gateway on $GW, demo corpus: examples/"
+echo "PPG quickstart — throwaway validation server on $GW, demo corpus: examples/"
 echo
 
 echo "━━ 1. /enrich — which architectural invariants govern this intent? ━━"

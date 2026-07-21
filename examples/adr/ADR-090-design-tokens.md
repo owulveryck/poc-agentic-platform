@@ -52,7 +52,7 @@ Two levers act together on this invariant, and — since this ADR declares
   must include a step reading `design/tokens.css` — the model must
   acknowledge the tokens exist before planning changes.
 - Artifact altitude (`input.view == "artifact"`): the `ppg-guard` /
-  `ppg-copilot-guard` PreToolUse hook sends each edit's content to the gateway
+  `ppg-copilot-guard` PreToolUse hook sends each edit's content to the validation server
   (`POST /verify_artifact`), which runs this same policy against the emitted
   bytes and denies raw colors (including inside `var()` fallbacks) or a button
   rule outside the tokens file. This replaces the earlier bespoke

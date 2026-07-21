@@ -2,11 +2,11 @@
 !include octo-theme.puml
 autonumber
 
-title Amplified planning — the Platform Planning Gateway (PPG)
+title Amplified planning — the validation server (PPG)
 
 actor "AI Agent\n(Claude Code, Copilot,\ncustom agent...)" as Agent
 
-box "Platform Planning Gateway" #E8F0FE
+box "Validation server" #E8F0FE
   participant "enrich()\n<size:11><i>amplifier / declarative</i></size>" as Enrich
   participant "Plan Linter\n<size:11><i>amplifier / programmatic</i></size>" as Linter
   participant "Ticket Service\n<size:11><i>least privilege</i></size>" as Ticket

@@ -1,4 +1,4 @@
-# Platform contract (Platform Planning Gateway)
+# Platform contract (governance harness)
 
 - Before planning any change, call `get_platform_guidelines_for_intent` with
   the intent and the repository context: the platform returns the

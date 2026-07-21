@@ -11,8 +11,8 @@
 
 `ppg-verify` reads the active capability ticket from the per-machine
 store, computes the git changeset (via `git status --porcelain`, reading
-each changed file's current content), and POSTs it to the gateway's
-`/verify_changeset`. The gateway runs the same Rego corpus as the plan
+each changed file's current content), and POSTs it to the validation server's
+`/verify_changeset`. The validation server runs the same Rego corpus as the plan
 linter and the in-loop guards — this time at the **changeset altitude**
 (`input.view == "changeset"`, reading `input.changeset.files`). It
 verifies three things: the ticket is valid, every changed path is in the
@@ -25,7 +25,7 @@ Exit codes are what a hook or CI step keys on:
 |---|---|
 | `0` | Changeset accepted (`CHANGESET_OK`) |
 | `1` | Rejected — violations printed to stderr (`CHANGESET_REJECTED`, `OUT_OF_PLAN_SCOPE`, or `PLAN_SUBSTITUTION`) |
-| `2` | Could not run the check (no ticket, gateway unreachable) — **fail closed** |
+| `2` | Could not run the check (no ticket, validation server unreachable) — **fail closed** |
 
 The distinction between `1` and `2` matters: `1` is a real policy
 rejection; `2` means the gate itself could not run and you should treat
@@ -36,7 +36,7 @@ it as a hard failure, not a pass.
 `make install` put `ppg-verify` on `PATH` (it is one of the seven binaries
 built by the Makefile). A plan must be locked for the active session so a
 ticket exists in the store — see [tutorial 2](../tutorials/02-claude-code-end-to-end.md)
-or [tutorial 7](../tutorials/07-copilot-end-to-end.md). The gateway must
+or [tutorial 7](../tutorials/07-copilot-end-to-end.md). The validation server must
 be running (default `http://localhost:8765`, override with `PPG_URL` or
 `--gateway`).
 
@@ -50,7 +50,7 @@ ppg-verify --plan plan.json   # also check the plan hash against the ticket
 
 `--plan` guards against **plan substitution**: if the plan JSON you point
 at hashes to something other than the ticket's `plan_hash` claim, the
-gateway answers `PLAN_SUBSTITUTION` (exit 1) — the diff is being applied
+validation server answers `PLAN_SUBSTITUTION` (exit 1) — the diff is being applied
 under a ticket issued for a different plan. Re-plan through `lock_in_plan`.
 
 ## As a pre-commit hook
@@ -92,14 +92,14 @@ ppg-verify || exit 1
 ## In CI
 
 The apply-time gate belongs in CI for the hookless surfaces. Because it
-fails closed (`exit 2`), a missing ticket or an unreachable gateway fails
+fails closed (`exit 2`), a missing ticket or an unreachable validation server fails
 the job rather than silently passing:
 
 ```yaml
 # e.g. a GitHub Actions step
 - name: Enforce the locked plan over the diff
   run: |
-    ppg &                       # start (or reach) the gateway
+    ppg &                       # start (or reach) the validation server
     ppg-verify --plan plan.json
 ```
 
@@ -109,7 +109,7 @@ the job rather than silently passing:
   removing a governed file is still a change the changeset policy can
   refuse (match on `f.op == "delete"`). Renames are verified at the new
   path.
-- **`PPG_URL`** (or `--gateway`) points at the gateway;
+- **`PPG_URL`** (or `--gateway`) points at the validation server;
   `--project-dir` / `PPG_PROJECT_DIR` and `--store-root` /
   `PPG_STORE_ROOT` locate the per-machine store, exactly as the guards
   do — so `ppg-verify` reads the ticket the same session locked.
@@ -118,4 +118,4 @@ the job rather than silently passing:
   [Enforce a content invariant](enforce-a-content-invariant.md), and both
   the in-loop guard and `ppg-verify` pick it up.
 - The endpoint contract is in the [HTTP API reference](../reference/http-api.md#post-verify_changeset);
-  the flags in the [gateway CLI reference](../reference/validation-server-cli.md#cmdppg-verify--apply-time--ci-backstop).
+  the flags in the [validation server CLI reference](../reference/validation-server-cli.md#cmdppg-verify--apply-time--ci-backstop).

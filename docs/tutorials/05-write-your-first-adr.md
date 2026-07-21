@@ -1,7 +1,7 @@
 # Tutorial — write your first ADR, end to end
 
 > **Goal**: author a new architectural invariant (Markdown + Rego), load it
-> into the gateway, and watch it steer an agent at `enrich` time and enforce
+> into the validation server, and watch it steer an agent at `enrich` time and enforce
 > at `lock_in_plan` time. You will govern the platform, not just use it.
 >
 > Time: ~10 minutes. Prerequisites: [tutorial 1](01-first-planning-cycle.md)
@@ -18,7 +18,7 @@ dual-representation pattern.
 cp -r examples/adr /tmp/my-adr-store
 ```
 
-The gateway takes the store as a flag, so you can experiment without
+The validation server takes the store as a flag, so you can experiment without
 touching the repository corpus.
 
 ## Step 2 — Write the semantic half (Markdown)
@@ -54,7 +54,7 @@ actually type.
 
 ## Step 3 — See the soft half work
 
-Start the gateway on your copy and enrich an intent containing a selector:
+Start the validation server on your copy and enrich an intent containing a selector:
 
 ```bash
 ppg -addr :8769 -adr /tmp/my-adr-store
@@ -107,7 +107,7 @@ without guessing.
 
 ## Step 5 — See the hard half work
 
-Restart the gateway (watch `Plan linter ready: 7 policies`), then submit a
+Restart the validation server (watch `Plan linter ready: 7 policies`), then submit a
 plan that touches a handler without the spec:
 
 ```bash
@@ -133,14 +133,14 @@ missing step and resubmit:
 ```
 
 **What you should observe**: `PLAN_LOCKED`. Your rule now runs on every plan
-the gateway sees, deterministically.
+the validation server sees, deterministically.
 
 ## Step 6 — Ship it
 
 When the rule is ready for the real corpus: move the two files into `examples/adr/`,
 add a paired test (copy the policy into `internal/linter/testdata/` and
 follow [write-a-rego-plan-policy.md](../how-to/write-a-rego-plan-policy.md),
-step 5), and restart the gateway. If your invariant is compensatory instead
+step 5), and restart the validation server. If your invariant is compensatory instead
 of amplifier, set a measurable `sunset_condition`: the
 [debt report](01-first-planning-cycle.md#step-7--read-the-transition-debt-report)
 will track it until you retire it.

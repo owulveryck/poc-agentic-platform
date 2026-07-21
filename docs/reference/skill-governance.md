@@ -86,11 +86,11 @@ it from body keywords, so the Go and Rego views cannot drift.
 ## Companion compilation (Gate 1 compiles the bundle)
 
 When `rego_policy` is present, `/validate_skill` also **compiles** it with
-the same deterministic engine the gateway uses. A companion that is
+the same deterministic engine the validation server uses. A companion that is
 syntactically broken, lacks a `package` declaration, or calls a
 nondeterministic built-in (`http.send`, `time.now_ns`, …) is refused at
 publish time with a `rego_policy` violation — instead of surfacing later
-at gateway startup or as a `422 SKILL_COMPILE_ERROR` on
+at validation server startup or as a `422 SKILL_COMPILE_ERROR` on
 `/register_skill`.
 
 The verb and secret checks are deliberately naive pattern matches, same

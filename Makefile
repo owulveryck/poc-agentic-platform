@@ -1,4 +1,4 @@
-# PPG — Platform Planning Gateway
+# PPG — a deterministic governance harness for agentic development loops
 #
 # Common workflow:
 #   make quickstart    # build + one-minute guided demo on the examples/ corpus
@@ -36,7 +36,7 @@ build:
 	$(GO) build $(LDFLAGS) -o bin/svc-mock          ./cmd/svc-mock
 	@echo "Built into ./bin/ ($(VERSION))"
 
-## quickstart: Build, start a throwaway gateway on the examples/ demo corpus, and run a guided /enrich + /lock_in_plan + /discover_service tour.
+## quickstart: Build, start a throwaway validation server on the examples/ demo corpus, and run a guided /enrich + /lock_in_plan + /discover_service tour.
 quickstart: build
 	@bash scripts/quickstart.sh
 
@@ -70,7 +70,7 @@ setup-claude-code:
 remove-claude-code:
 	@scripts/remove-claude-code.sh
 
-## setup-claude-code-managed: Install ppg-guard hooks at managed scope (tamper-proof via allowManagedHooksOnly, requires sudo).
+## setup-claude-code-managed: Install ppg-guard hooks at managed scope (allowManagedHooksOnly closes the settings-edit vector; see the how-to for binary/env hardening; requires sudo).
 setup-claude-code-managed:
 	@scripts/setup-claude-code-managed.sh
 

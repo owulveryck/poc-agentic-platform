@@ -55,7 +55,7 @@ tutorial 7):
 1. Copilot calls `get_platform_guidelines_for_intent`, receives
    ADR-042 (egress proxy) and ADR-070 (frozen paths).
 2. Copilot drafts a plan and calls `lock_in_plan`. If the plan lacks
-   a `go test` step, the gateway answers `PLAN_REJECTED` and Copilot
+   a `go test` step, the validation server answers `PLAN_REJECTED` and Copilot
    self-corrects in one round-trip.
 3. On success: `PLAN_LOCKED`, ticket persisted through the TokenStore
    at `$XDG_STATE_HOME/ppg/projects/<slug>/tickets/<sid>`.

@@ -1,8 +1,8 @@
-# Tutorial 14 — With and without the Gateway, on Claude Code
+# Tutorial 14 — With and without the validation server, on Claude Code
 
 > **Goal**: the same story tutorial 11 tells for Copilot desktop —
 > a skill's `SKILL.md` is *soft* guidance a model can be talked out
-> of, and the Platform Planning Gateway is what turns compliance
+> of, and the governance harness is what turns compliance
 > from statistical to guaranteed — but with **Claude Code** as the
 > agent surface, using the design-system skill, and using the
 > repo's own setup/teardown scripts to toggle the platform on and
@@ -34,7 +34,7 @@ knowing before you start:
 - **Platform bootstrapped** — [tutorial 0](00-bootstrap.md) completed
   and [tutorial 10](10-claude-on-governed-workstation.md) applied
   (registers the ppg MCP server and installs the `ppg-guard` hook
-  via `scripts/setup-claude-code.sh`). The gateway is running on
+  via `scripts/setup-claude-code.sh`). The validation server is running on
   `:8765` from tutorial 0.
 - A **small model** available in Claude Code's model selector. As in
   tutorial 11, the smaller the better — Act 2's drift is most
@@ -94,7 +94,7 @@ claude mcp list                                  # → no 'ppg' entry
 jq '.hooks' ~/.claude/settings.json 2>/dev/null  # → no ppg-guard
 ```
 
-Leave the gateway (the HTTP service on `:8765`) running throughout
+Leave the validation server (the HTTP service on `:8765`) running throughout
 — it is a separate process, and it is not what we are toggling. What
 we are toggling is *Claude Code's ability to talk to it*.
 
@@ -112,12 +112,12 @@ auto-discovers skills committed under `.claude/skills/`. Committing
 lands them in the tree, ready to be picked up on the next session
 open.
 
-**Gateway enforcement of the skill's `SKILL.rego`** happens through a
+**Validation server enforcement of the skill's `SKILL.rego`** happens through a
 parallel mechanism: the MCP server (`ppg-mcp-server`) auto-uploads every
-skill it finds under `.claude/skills/` to the gateway via
+skill it finds under `.claude/skills/` to the validation server via
 [`POST /register_skill`](../reference/http-api.md#post-register_skill)
 before each `lock_in_plan`. That's why this tutorial works even when the
-gateway is not started with `-skills` — see
+validation server is not started with `-skills` — see
 [policy views](../reference/policy-views.md#where-a-skillrego-comes-from)
 for the two tiers (operator-provided baseline vs client-uploaded
 per session).
@@ -191,7 +191,7 @@ cd ~/demo
 DRY_RUN=1 "$REPO/scripts/setup-claude-code.sh"
 "$REPO/scripts/setup-claude-code.sh"
 
-# Sanity: the gateway itself was never toggled. Confirm it is up.
+# Sanity: the validation server itself was never toggled. Confirm it is up.
 curl -sf http://localhost:8765/debt_report >/dev/null && echo "gateway OK"
 ```
 
@@ -233,7 +233,7 @@ receive `PLAN_LOCKED` with the capability ticket persisted under
 `$XDG_STATE_HOME/ppg/projects/<slug>/tickets/`. Every subsequent
 `Edit`/`Write` passes through `ppg-guard`'s `PreToolUse` hook,
 which checks both the path scope (from the ticket) and the content
-(POSTed to the gateway's `/verify_artifact`). The result contains
+(POSTed to the validation server's `/verify_artifact`). The result contains
 only `var(--color-*)` references.
 
 ## Act 4 — with the platform, same adversarial prompt
@@ -352,7 +352,7 @@ registered in Claude Code. That single toggle activated:
   the content check via `/verify_artifact` (denials tagged
   `ARCHITECTURAL_INVARIANT_VIOLATION`). The hook fails **closed**
   on infra errors (`PPG_GUARD_ERROR`) — an unreadable payload, an
-  unreachable gateway, or a missing signing key blocks the write.
+  unreachable validation server, or a missing signing key blocks the write.
 - **Plan-altitude closure via ADR-120** — the smart bypass path (model
   re-plans to modify the tokens file itself) is refused at
   `lock_in_plan` time by the `governance_artifacts_immutable` rule.
@@ -372,7 +372,7 @@ server on every `lock_in_plan` call. A ticket minted in one Claude
 session cannot be replayed in another — this closes the replay
 bypass catalogued in [tutorial 12](12-bypassing-the-gateway.md) §A.
 See that tutorial for the full bypass catalogue and how the
-gateway holds against each class.
+governance harness holds against each class.
 
 Without any of these, only the `SKILL.md` body remained — and any
 prose in an agent's context is negotiable.
@@ -414,12 +414,12 @@ the "platform off" state you had between Acts 2 and 3, run
 - [Tutorial 10 — Claude Code on a governed workstation](10-claude-on-governed-workstation.md):
   the standalone recipe for `setup-claude-code.sh` — what it wires,
   why, and how to verify.
-- [Tutorial 11 — With and without the Gateway, on Copilot](11-with-and-without-the-gateway.md):
+- [Tutorial 11 — With and without the validation server, on Copilot](11-with-and-without-the-gateway.md):
   the Copilot desktop version of this same walkthrough.
-- [Tutorial 12 — Bypassing the gateway](12-bypassing-the-gateway.md):
+- [Tutorial 12 — Bypassing the validation server](12-bypassing-the-gateway.md):
   the red-team catalogue (path tricks, ticket replay, out-of-band
-  writes) and how the gateway holds against each.
+  writes) and how the governance harness holds against each.
 
 **✅ Done.** The demo makes one narrow, honest claim: on Claude
 Code exactly as on Copilot, a skill's prose contract is
-*guidance*, and the gateway is what makes it *enforcement*.
+*guidance*, and the governance harness is what makes it *enforcement*.

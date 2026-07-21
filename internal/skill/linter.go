@@ -54,9 +54,9 @@ type validationInput struct {
 // An empty slice means the skill passes all checks and can be published. It
 // fails closed: an evaluation or decode error surfaces as a rejection. When
 // the skill bundles a companion SKILL.rego, Validate also compiles it (with
-// the same deterministic engine the gateway uses), so a broken or
+// the same deterministic engine the validation server uses), so a broken or
 // nondeterministic companion is refused at publish time (Gate 1) instead of
-// surfacing at gateway startup or /register_skill.
+// surfacing at validation server startup or /register_skill.
 func (l *Linter) Validate(s *Skill) []Violation {
 	violations, err := policy.Eval[Violation](l.eval, validationInput{Skill: s, Tier: l.Tier(s)})
 	if err != nil {

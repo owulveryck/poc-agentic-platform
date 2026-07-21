@@ -4,7 +4,7 @@
 > see it rejected with actionable violations, fix it, and watch the security
 > tier change with the tools the skill mentions.
 >
-> Time: ~5 minutes. Prerequisites: the gateway running (tutorial 1, step 1).
+> Time: ~5 minutes. Prerequisites: the validation server running (tutorial 1, step 1).
 > Note the startup line `Skill governance linter ready`: the policies come
 > from the `skill-governance/` directory (`-skill-governance` flag).
 
@@ -115,5 +115,5 @@ the *why* is in
 **✅ Done.** To add your own governance rule, see
 [add-a-skill-governance-rule.md](../how-to/add-a-skill-governance-rule.md).
 To see a validated skill drive a full Claude Code session through every
-gateway, continue with
+control point, continue with
 [tutorial 6](06-skill-to-session-end-to-end.md).

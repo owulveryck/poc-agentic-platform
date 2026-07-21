@@ -30,10 +30,10 @@ the refusal happens *before* anything is executed: zero damage, zero cleanup.
 The guard checks two things on every edit: **which file** (path scope, against
 the ticket — `OUT_OF_PLAN_SCOPE`) and **what content** (the artifact view of the
 policy corpus — `ARCHITECTURAL_INVARIANT_VIOLATION`). For the content half it
-POSTs the proposed bytes to the gateway's `/verify_artifact`, which runs the
+POSTs the proposed bytes to the validation server's `/verify_artifact`, which runs the
 same Rego rules that the plan linter and the apply-time gate use. The guard
 **fails closed**: if it cannot evaluate an edit (unreadable payload, unopenable
-store, unreachable gateway), it blocks with `PPG_GUARD_ERROR` rather than
+store, unreachable validation server), it blocks with `PPG_GUARD_ERROR` rather than
 letting the edit through.
 
 For Claude Code, this runs client-side as a `PreToolUse` hook (`ppg-guard`):
@@ -45,7 +45,7 @@ write-tool set, same content check.
 
 For surfaces with no hook API (the `gh copilot` CLI, Cursor, a human at the
 terminal, CI) the in-loop half is unavailable, so the check moves to **apply
-time**: `ppg-verify` gathers the working-tree diff and asks the gateway's
+time**: `ppg-verify` gathers the working-tree diff and asks the validation server's
 `/verify_changeset` to evaluate the same corpus over the whole changeset —
 exit 1 on a rejection, exit 2 (fail-closed) when it cannot run. Wired as a
 pre-commit / pre-push hook or a CI step, it is the deterministic backstop for

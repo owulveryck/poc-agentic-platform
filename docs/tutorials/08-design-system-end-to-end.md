@@ -12,7 +12,7 @@
 > deprecated-API bans — anywhere the invariant lives in the values.
 >
 > Time: ~15 minutes.
-> Prerequisites: [tutorial 0](00-bootstrap.md) completed. Gateway
+> Prerequisites: [tutorial 0](00-bootstrap.md) completed. Validation server
 > running on `:8765`. `apm` installed.
 
 ## The four commands
@@ -67,7 +67,7 @@ The skill's first phase materializes itself in the project:
 
 There is **no per-skill hook to install**. Enforcement is platform-native:
 the workstation's `ppg-guard` / `ppg-copilot-guard` (wired in tutorial 0)
-already sends every edit's content to the gateway, which evaluates
+already sends every edit's content to the validation server, which evaluates
 **ADR-090 at the artifact altitude** (`/verify_artifact`) and denies any
 raw color or button re-styling outside `design/tokens.css`.
 
@@ -84,7 +84,7 @@ not a script the skill drops.
 
 **What you should observe**: `PLAN_LOCKED`, ticket persisted through
 the TokenStore under `$XDG_STATE_HOME/ppg/projects/<slug>/tickets/`.
-If Copilot forgets the tokens-read step, the gateway answers
+If Copilot forgets the tokens-read step, the validation server answers
 `PLAN_REJECTED` with the `design_tokens_referenced` violation and
 Copilot self-corrects in one round-trip.
 
@@ -170,7 +170,7 @@ thing:
 | Denial semantics | `OUT_OF_PLAN_SCOPE` (this file isn't in the ticket) | `ARCHITECTURAL_INVARIANT_VIOLATION` (this *value* isn't allowed) |
 
 The path scope comes from the ticket; the content invariant is Rego in
-the ADR corpus, evaluated by the gateway at the artifact altitude. There
+the ADR corpus, evaluated by the validation server at the artifact altitude. There
 is no separate shell hook — one guard enforces both, and the same
 ADR-090 rules also run at apply time through `ppg-verify`
 ([gate at apply time](../how-to/gate-changes-at-apply-time.md)).

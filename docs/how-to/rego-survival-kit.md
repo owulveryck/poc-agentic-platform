@@ -3,7 +3,7 @@
 > Solves one problem: writing your first plan or skill policy **without prior
 > Rego knowledge**. This is not a Rego course; it is the 5-minute subset this
 > platform actually uses. Every snippet below was validated against a running
-> gateway. For the full language, see the
+> validation server. For the full language, see the
 > [OPA docs](https://www.openpolicyagent.org/docs/latest/policy-language/).
 
 ## The mental model (read this once)
@@ -178,7 +178,7 @@ schemas: [policy views](../reference/policy-views.md).
 ## The two traps that bite everyone
 
 **Trap 1 — inline negation.** This does not mean "no step is a test step",
-and the gateway will refuse to start:
+and the validation server will refuse to start:
 
 ```rego
 not input.steps[_].tool == "go-test"
@@ -195,7 +195,7 @@ avoided until you know why you want it.
 
 ## Test your rule before shipping it
 
-The fastest loop needs nothing but the gateway: point it at your ADR
+The fastest loop needs nothing but the validation server: point it at your ADR
 directory and submit a plan that should fail.
 
 ```bash
@@ -205,7 +205,7 @@ curl -s -X POST localhost:8765/lock_in_plan -H "Content-Type: application/json" 
 
 (`ppg` comes from `make install` — see the [top-level README](../../README.md#quick-start).)
 
-A malformed rule fails fast: the gateway refuses to start and prints the
+A malformed rule fails fast: the validation server refuses to start and prints the
 Rego error with file and line. A well-formed rule that never fires is the
 case to guard against: always test one plan that **violates** and one that
 **passes**, like the paired tests in `internal/linter/linter_test.go`
@@ -213,7 +213,7 @@ case to guard against: always test one plan that **violates** and one that
 [write-a-rego-plan-policy.md](write-a-rego-plan-policy.md), step 5).
 
 If you have the [`opa` CLI](https://www.openpolicyagent.org/docs/latest/#running-opa)
-installed, you can also evaluate a policy directly, without the gateway:
+installed, you can also evaluate a policy directly, without the validation server:
 
 ```bash
 opa eval -d ADR-0XX.rego -i plan.json 'data.ppg.linter.violation'

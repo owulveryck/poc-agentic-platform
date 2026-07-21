@@ -4,7 +4,7 @@ Everything in this directory is **sample data for a fictional organization**.
 The ADRs (ADR-042 … ADR-120), the service records (`notify-svc`,
 `legacy-mailer`, `payments-gateway`, `stripe-direct`) and the ranking policy
 are invented so the tutorials, `make quickstart`, and the demo scripts run
-out of the box. None of it is product code: the gateway loads whatever
+out of the box. None of it is product code: the validation server loads whatever
 directories you point it at, and an adopting platform team replaces this
 corpus with its own.
 
@@ -16,7 +16,7 @@ corpus with its own.
 | `services/` | A sample service catalog: one `.md` record per shared service (front matter + verbatim API-usage body). Endpoints point at `svc-mock` or fake internal hosts. |
 | `service-policy/` | The sample catalog ranking policy (`package ppg.catalog`, Rego). |
 
-## Run the gateway against it
+## Run the validation server against it
 
 From the repository root:
 

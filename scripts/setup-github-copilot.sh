@@ -102,7 +102,7 @@ print(f'[ppg] wrote {file}  (ppg-dedicated hook file)')
 PY
 
 ok "GitHub Copilot setup complete."
-log "Next: start the gateway ('ppg -addr :8765'). Verify with 'copilot mcp list' (if the CLI is installed), or open the Copilot app and check the tool drawer."
+log "Next: start the validation server ('ppg -addr :8765'). Verify with 'copilot mcp list' (if the CLI is installed), or open the Copilot app and check the tool drawer."
 if ! curl -fsS --max-time 1 "$PPG_URL/enrich" -H 'content-type: application/json' -d '{"intent":"ping","repository_context":{"name":"x","tech_stack":["Go"]}}' >/dev/null 2>&1; then
-    warn "gateway at $PPG_URL is not reachable — start it with 'ppg -addr :8765' before opening Copilot."
+    warn "validation server at $PPG_URL is not reachable — start it with 'ppg -addr :8765' before opening Copilot."
 fi

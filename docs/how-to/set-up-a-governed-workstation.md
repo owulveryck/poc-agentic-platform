@@ -4,7 +4,7 @@
 > governed by default. No per-project ceremony, no forgotten hooks, no
 > `.github/hooks/ppg.json` drifting across N repositories. The
 > workstation becomes a first-class endpoint of your organization's
-> Platform Planning Gateway.
+> governance harness.
 >
 > The reader flow demonstrating the result is
 > [tutorial 9 (Copilot)](../tutorials/09-copilot-on-governed-workstation.md)
@@ -36,13 +36,15 @@ into the *machine* rather than into each *project* means:
   company VPN, the laptop carries a policy stance. New employees
   onboard by receiving a machine already configured; the platform
   team owns the config, not each individual developer.
-- **Trivial upgrades** — a new ADR ships to the gateway, a new skill
+- **Trivial upgrades** — a new ADR ships to the validation server, a new skill
   publishes into the registry; both take effect on the next session,
   with no fan-out PR across N repositories.
 - **MDM-friendly** — the entire configuration is a handful of files
   either under `~/.claude/` / `~/.copilot/` (user scope, per-user push)
-  or under the OS-level managed-settings path (managed scope, root-owned,
-  tamper-proof via `allowManagedHooksOnly`). See
+  or under the OS-level managed-settings path (managed scope, root-owned;
+  `allowManagedHooksOnly` closes the settings-edit vector — see the
+  tamper-model caveat in recipe (A) for the binary and environment vectors
+  it does *not* close). See
   [(A) Managed scope](#a-managed-scope--recommended-for-it-managed-fleets)
   below.
 - **The developer stops seeing the machinery** — `.github/hooks/`,
@@ -66,7 +68,7 @@ completed. This means:
 
 - `ppg`, `ppg-mcp-server`, `ppg-copilot-guard`, and/or `ppg-guard` are
   on `PATH` (typically `~/.local/bin/`).
-- The gateway is running on `:8765` (or is set to auto-start).
+- The validation server is running on `:8765` (or is set to auto-start).
 - MCP is registered at user scope for at least one agent surface.
 
 ## Recipe — Claude Code
@@ -92,7 +94,7 @@ environment. For a hostile-user threat model, additionally:
    `sudo BINDIR=/usr/local/bin make install` — so the user cannot replace
    `ppg-guard` itself (the default `~/.local/bin` is user-writable);
 2. pin `PPG_URL` in the managed hook command so content verification
-   cannot be re-pointed at a rogue gateway; `PPG_TICKET_SECRET` and
+   cannot be re-pointed at a rogue validation server; `PPG_TICKET_SECRET` and
    `PPG_STORE_ROOT` follow the same argument.
 
 The managed setup script refuses to install (unless `FORCE=1`) when the
@@ -262,9 +264,11 @@ Same four steps, different filesystem locations under `~/.copilot/`.
 > edited by the account that runs Copilot. OS-level file-locking
 > (`chattr +i` on Linux, SIP-protected paths on macOS) is **not** a
 > substitute — it breaks Copilot updates and does not prevent replacement
-> at the parent-directory level. For **tamper-proof governance today,
-> use Claude Code at managed scope** (see the (A) recipe above); treat
-> Copilot governance as best-effort until GitHub ships a managed-hooks
+> at the parent-directory level. For the **strongest governance today,
+> use Claude Code at managed scope** (see the (A) recipe above) — and note
+> that even managed scope only resists a hostile user once the operational
+> hardening there (root-owned binaries, pinned `PPG_*` env) is applied;
+> treat Copilot governance as best-effort until GitHub ships a managed-hooks
 > feature. The apply-time backstop (`ppg-verify` in pre-commit / CI)
 > catches escapes on any surface, Copilot included — see
 > [gate-changes-at-apply-time](gate-changes-at-apply-time.md).
@@ -323,7 +327,7 @@ for you (dedicated file, safe to rewrite; a backup was taken if it
 already existed).
 
 Content invariants do not need a project hook: the user-scope guard
-already sends every edit to the gateway's `/verify_artifact`, so an ADR's
+already sends every edit to the validation server's `/verify_artifact`, so an ADR's
 artifact-view rule (e.g. `examples/adr/ADR-090.rego` for the `design-system`
 skill) is enforced machine-wide. Project-level `.github/hooks/*.json`
 still takes precedence when present, so a project can add a bespoke hook
@@ -472,5 +476,5 @@ not config. Wipe manually if fully unwinding:
 rm -rf "${XDG_STATE_HOME:-$HOME/.local/state}/ppg"
 ```
 
-The gateway (`ppg` process) and machine binaries under `~/.local/bin/`
+The validation server (`ppg` process) and machine binaries under `~/.local/bin/`
 survive too — `make uninstall` from the checkout removes the binaries.

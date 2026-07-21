@@ -1,11 +1,11 @@
 ---
 name: ppg-tutorial
-description: Runs the full amplified planning loop of the Platform Planning Gateway end-to-end against a local instance. Use to demonstrate, explore, or test the PPG live. Shows enrich, a deterministic plan rejection with semantic guidance, the capability ticket, an out-of-scope refusal, and the debt report — with the real transcript at every step.
+description: Runs the full amplified planning loop of the validation server end-to-end against a local instance. Use to demonstrate, explore, or test the PPG live. Shows enrich, a deterministic plan rejection with semantic guidance, the capability ticket, an out-of-scope refusal, and the debt report — with the real transcript at every step.
 version: 1.0.0
 argument-hint: "[intent, e.g. Add Stripe as a payment method to the checkout service]"
 ---
 
-Run the full amplified planning cycle of the Platform Planning Gateway (PPG)
+Run the full amplified planning cycle of the validation server (PPG)
 and narrate each step to the user with the actual JSON transcripts. Use Bash
 for every command. Work from the poc-agentic-platform repository root; clone
 https://github.com/owulveryck/poc-agentic-platform first if it is absent.
@@ -13,11 +13,11 @@ https://github.com/owulveryck/poc-agentic-platform first if it is absent.
 The intent for the whole session is $ARGUMENTS; if empty, use:
 "Add Stripe as a payment method to the checkout service".
 
-1. Gateway. If nothing listens on localhost:8765, start it in the
+1. Validation server. If nothing listens on localhost:8765, start it in the
    background: `go run ./cmd/ppg -addr :8765 -adr examples/adr
    -services examples/services -service-policy examples/service-policy`,
    and wait for
-   "Platform Planning Gateway listening".
+   "validation server listening".
 
 2. Enrich. POST the intent to /enrich with repository_context
    {"name": "checkout-service", "tech_stack": ["Go"]}. Show the returned

@@ -73,3 +73,31 @@ Terminology from this ADR on:
 No file-by-file rename list. The naming-alignment task executes this
 decision; this ADR only fixes the target vocabulary so that documents
 written from now on stop deepening the drift.
+
+## Execution (2026-07-21)
+
+The naming-alignment task ran across the repository: prose in the README,
+tutorials, how-to / reference / explanation docs, `AUDIT.md`, script
+comments and message strings, and user-facing Go log / guidance / error
+strings now say **validation server** for `cmd/ppg` and **control point**
+for enforcement points.
+
+Grandfathered as operational identifiers (same spirit as consequence 4 —
+these are wire/tooling names, not vocabulary, and renaming them would
+break installs, links, or muscle memory; revisit at v2):
+
+- **Binary names** (`ppg`, `ppg-guard`, `ppg-copilot-guard`,
+  `ppg-mcp-server`, `ppg-verify`, `ppg-preflight`, `svc-mock`) and the
+  **`PPG`** acronym baked into them.
+- **HTTP routes and MCP tool names.**
+- The **`-gateway`** CLI flag on `ppg-verify` (a deprecated alias of
+  `-server`, kept until v2 per consequence 3) and the internal Go
+  identifiers tied to it (`gatewayURL()`, the `gateway` URL parameter).
+- **Script filenames** `setup-gateway-service.sh` /
+  `remove-gateway-service.sh`, the matching `make` targets, and the
+  launchd/systemd service label **`io.ppg.gateway`** (renaming it would
+  orphan already-installed units).
+- **Unrelated meaning:** the fictional `payments-gateway` demo *service*
+  (a payment gateway) is not this project's "gateway" and is untouched.
+- **Frozen material:** `documentation_french/` (declared frozen) and
+  `CHANGELOG.md` (historical record) are left as-is.

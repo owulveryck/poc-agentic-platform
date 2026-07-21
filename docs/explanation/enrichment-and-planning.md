@@ -8,7 +8,7 @@ architectural decisions apply?"* The mechanics, step by step:
 
 1. The agent sends its intent and repository context
    (`POST /enrich {intent, repository_context}`).
-2. The gateway matches the intent against the **scope selectors** each ADR
+2. The validation server matches the intent against the **scope selectors** each ADR
    declares in its front matter (the intent "Add the Seka payment method"
    contains `payment` → ADR-042 matches). Keyword matching in the PoC,
    embedding-based retrieval in production; the contract is the same.

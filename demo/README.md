@@ -4,9 +4,9 @@ An [APM](https://github.com/microsoft/apm) package containing three skills:
 
 | Skill | Tier | What it does |
 |---|---|---|
-| `ppg-tutorial` | 2 (Bash) | Runs the amplified planning loop demo on its own: gateway, enrich, deterministic rejection, capability ticket, out-of-scope refusal, debt report, and the GitHub Copilot pre-flight variant, narrating every real transcript |
+| `ppg-tutorial` | 2 (Bash) | Runs the amplified planning loop demo on its own: validation server, enrich, deterministic rejection, capability ticket, out-of-scope refusal, debt report, and the GitHub Copilot pre-flight variant, narrating every real transcript |
 | `add-payment-method` | 1 (Edit) | The governed workflow from the companion article: enrich the plan with the platform ADRs, lock it for a capability ticket, implement within the ticket scope. Authored step by step in [tutorial 6](../docs/tutorials/06-skill-to-session-end-to-end.md) |
-| `design-system` | 1 (Edit) | Applies the Deep Umbra design system (canonical `tokens.css` + button rule); every subsequent UI edit is enforced by the platform guard against `examples/adr/ADR-090.rego` at the artifact altitude (`/verify_artifact`) — no per-skill hook. Walkthrough in [tutorial 8](../docs/tutorials/08-design-system-end-to-end.md); the enforcement pattern is generalized in [Enforce a content invariant](../docs/how-to/enforce-a-content-invariant.md). See it demoed with and without the gateway on [Copilot (tutorial 11)](../docs/tutorials/11-with-and-without-the-gateway.md) or [Claude Code (tutorial 14)](../docs/tutorials/14-with-and-without-claude-code.md) |
+| `design-system` | 1 (Edit) | Applies the Deep Umbra design system (canonical `tokens.css` + button rule); every subsequent UI edit is enforced by the platform guard against `examples/adr/ADR-090.rego` at the artifact altitude (`/verify_artifact`) — no per-skill hook. Walkthrough in [tutorial 8](../docs/tutorials/08-design-system-end-to-end.md); the enforcement pattern is generalized in [Enforce a content invariant](../docs/how-to/enforce-a-content-invariant.md). See it demoed with and without the validation server on [Copilot (tutorial 11)](../docs/tutorials/11-with-and-without-the-gateway.md) or [Claude Code (tutorial 14)](../docs/tutorials/14-with-and-without-claude-code.md) |
 
 ## Install
 
@@ -60,7 +60,7 @@ slash-command doesn't fire:
   workflow in `.agents/skills/design-system/SKILL.md`."*
 
 `ppg-tutorial` needs Go 1.25+ and network access to `localhost:8765` (it
-starts the gateway itself if none is running); `add-payment-method` expects
+starts the validation server itself if none is running); `add-payment-method` expects
 the full tutorial-2 or tutorial-7 wiring (MCP server + hooks);
 `design-system` bootstraps itself on first invocation (copies
 `tokens.css` to `design/tokens.css`); its palette invariant is enforced

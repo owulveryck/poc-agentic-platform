@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "AgentPlan",
-  "description": "The structured plan an agent must lock through the Platform Planning Gateway before any execution tool will work.",
+  "description": "The structured plan an agent must lock through the validation server before any execution tool will work.",
   "type": "object",
   "required": ["session_id", "intent", "repository_context", "steps"],
   "properties": {

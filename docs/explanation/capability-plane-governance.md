@@ -5,7 +5,7 @@ session. Skills — `SKILL.md` workflows distributed across the organization —
 are the **capability plane**: what every agent *can* do, everywhere, at
 once. A governed plan built on an ungoverned skill is still a risk: the plan
 was checked, but the instructions it followed were not. `POST /validate_skill`
-extends the gateway to that plane.
+extends the validation server to that plane.
 
 ## What a skill is, and why tool mentions drive the tier
 

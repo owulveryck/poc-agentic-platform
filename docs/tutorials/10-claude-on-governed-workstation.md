@@ -66,7 +66,7 @@ tutorial 2):
 1. Claude calls `get_platform_guidelines_for_intent`, receives
    ADR-042 and ADR-070.
 2. Claude submits its plan through `lock_in_plan`. If the plan lacks
-   a `go test` step, the gateway answers `PLAN_REJECTED` with the
+   a `go test` step, the validation server answers `PLAN_REJECTED` with the
    `go_tests_present` violation, and Claude corrects in one
    round-trip.
 3. On success: `PLAN_LOCKED`, ticket persisted through the TokenStore
@@ -113,11 +113,11 @@ of the how-to.
 The workstation setup above installs skills into `~/.claude/skills/`
 (user-wide). Per-project installs — `apm install ... --target claude`
 inside a project — also work out of the box: the MCP server auto-uploads
-every skill it finds under the project's `.claude/skills/` to the gateway
+every skill it finds under the project's `.claude/skills/` to the validation server
 before each `lock_in_plan` (see
 [policy views](../reference/policy-views.md#where-a-skillrego-comes-from)).
-No `-skills` flag needed, no gateway restart, and — crucially — the same
-mechanism works when the gateway runs elsewhere (a shared team gateway,
+No `-skills` flag needed, no validation server restart, and — crucially — the same
+mechanism works when the validation server runs elsewhere (a shared team validation server,
 a container in a cluster).
 
 **✅ Done.** Same three commands, same one prompt, same drift test

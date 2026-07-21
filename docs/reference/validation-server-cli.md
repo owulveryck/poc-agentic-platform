@@ -48,7 +48,7 @@ timeouts; the API itself is unauthenticated — bind it to localhost.
 Startup logs the readiness lines: `ADR store loaded: N invariants`,
 `Plan linter ready: N policies`, `Skill governance linter ready`,
 `Service catalog loaded: N services`, then
-`Platform Planning Gateway listening on <addr>`.
+`validation server listening on <addr>`.
 
 The service catalog is an optional capability with three configurations:
 
@@ -82,7 +82,7 @@ per-machine `TokenStore` on a successful lock (see
 |---|---|---|---|
 | `--project-dir` | `PPG_PROJECT_DIR` | `os.Getwd()` at spawn | Absolute project directory. The cwd fallback is reliable for Claude Code / Copilot desktop (fresh subprocess per session); set the flag or env explicitly for persistent daemons that survive project switches. |
 | `--store-root` | `PPG_STORE_ROOT` | `$XDG_STATE_HOME/ppg` (fallback `~/.local/state/ppg`) | Per-machine state root shared with the guard binaries. |
-| — | `PPG_URL` | `http://localhost:8765` | Gateway base URL |
+| — | `PPG_URL` | `http://localhost:8765` | Server base URL |
 
 ## `adapters/claudecode/guard` — `ppg-guard` PreToolUse hook
 
@@ -92,13 +92,13 @@ edit_file, plus any name containing `Edit`/`Write`), verifies the target file �
 taken from `file_path`, `path`, or `notebook_path` — against the capability
 ticket loaded from the per-machine `TokenStore` (signature, TTL, path scope,
 session binding). When the path scope passes it **also** verifies the edited
-content: it POSTs the content to the gateway's `/verify_artifact`, and on
+content: it POSTs the content to the validation server's `/verify_artifact`, and on
 `ARTIFACT_REJECTED` blocks with the invariant messages
 (`ARCHITECTURAL_INVARIANT_VIOLATION`). It exits 2 with a semantic message on
 stderr to block the tool call.
 
 The guard **fails closed**: on any error it cannot recover from (unreadable
-payload, unopenable store, unreachable gateway), a PreToolUse edit is blocked
+payload, unopenable store, unreachable validation server), a PreToolUse edit is blocked
 with a message prefixed `PPG_GUARD_ERROR: … (fail-closed)`. `SessionStart` never
 blocks.
 
@@ -106,7 +106,7 @@ blocks.
 |---|---|---|---|
 | `--project-dir` | `PPG_PROJECT_DIR` | payload cwd → `os.Getwd()` | Absolute project directory. Falls back to the hook payload's `cwd`, then the process cwd. |
 | `--store-root` | `PPG_STORE_ROOT` | `$XDG_STATE_HOME/ppg` | Per-machine state root shared with the MCP server. |
-| — | `PPG_URL` | `http://localhost:8765` | Gateway base URL, used to reach `/verify_artifact` for the content check. |
+| — | `PPG_URL` | `http://localhost:8765` | Server base URL, used to reach `/verify_artifact` for the content check. |
 
 ## `adapters/copilot/guard` — `ppg-copilot-guard` PreToolUse hook
 
@@ -141,7 +141,7 @@ reading each changed file's current content; deletions travel as
 | `--gateway` | `PPG_URL` | `http://localhost:8765` | Deprecated alias of `--server` (kept until v2, [ADR-130](../decisions/ADR-130-gateway-naming.md)); `--server` wins when both are set |
 
 Exit codes: `0` = changeset accepted; `1` = rejected (violations printed to
-stderr); `2` = could not run the check (no ticket, gateway unreachable) —
+stderr); `2` = could not run the check (no ticket, validation server unreachable) —
 fail-closed. See the how-to [Gate changes at apply time](../how-to/gate-changes-at-apply-time.md).
 
 ## `adapters/preflight` — black-box pre-flight
@@ -154,7 +154,7 @@ ppg-preflight [-repo <name>] [-stack Go,SQL] "<intent>"
 |---|---|---|
 | `-repo` | `checkout-service` | Sent as `repository_context.name` |
 | `-stack` | `Go` | Comma-separated, sent as `repository_context.tech_stack` |
-| `PPG_URL` | `http://localhost:8765` | Gateway base URL (same convention as the MCP server) |
+| `PPG_URL` | `http://localhost:8765` | Server base URL (same convention as the MCP server) |
 
 Writes the enriched invariants to `.cursorrules` and
 `.github/copilot-instructions.md` in the current directory.

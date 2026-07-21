@@ -86,7 +86,7 @@ func loadCorpus(cfg corpusConfig) (*corpus, error) {
 	log.Printf("Skill governance linter ready")
 
 	// The service catalog is an optional capability: without -services the
-	// gateway serves everything except discovery.
+	// validation server serves everything except discovery.
 	var catStore *catalog.Store
 	var ranker *catalog.Ranker
 	switch {

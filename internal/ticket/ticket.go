@@ -30,7 +30,7 @@ const EnvSecret = "PPG_TICKET_SECRET"
 // EnvSecret, from the per-machine key file (UseKeyFile), or — for processes
 // that configure neither, such as tests — from a random per-process key.
 // A per-process key still verifies everything this process signed, and a
-// gateway restart simply invalidates outstanding tickets (fail closed).
+// validation server restart simply invalidates outstanding tickets (fail closed).
 // Production posture remains asymmetric keys behind a KMS, with rotation.
 var secret = initialSecret()
 
@@ -46,7 +46,7 @@ func initialSecret() []byte {
 // UseKeyFile installs the hex-encoded key stored at path as the signing key,
 // generating and persisting a fresh 32-byte key (0600, parent 0700) on first
 // run. When EnvSecret is set it wins and the file is neither read nor written.
-// The gateway calls this at startup so tickets survive restarts on the same
+// The validation server calls this at startup so tickets survive restarts on the same
 // machine.
 func UseKeyFile(path string) error {
 	if os.Getenv(EnvSecret) != "" {
@@ -86,7 +86,7 @@ func UseKeyFile(path string) error {
 // a leaked ticket is useless in any other session. The wall-clock cap only
 // bounds a same-session leak, so it defaults to a working session rather than
 // the old 15 minutes (which fired shorter than a real session and forced a
-// re-lock mid-task). Operators tighten or loosen it via the gateway's
+// re-lock mid-task). Operators tighten or loosen it via the validation server's
 // -ticket-ttl flag / PPG_TICKET_TTL env.
 var DefaultTTL = 8 * time.Hour
 

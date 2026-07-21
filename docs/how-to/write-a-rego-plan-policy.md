@@ -46,7 +46,7 @@
    `compensatory`, set a measurable `sunset_condition` in the front matter —
    the debt report tracks it.
 
-4. Restart the gateway; the startup log must show the incremented policy
+4. Restart the validation server; the startup log must show the incremented policy
    count (`Plan linter ready: N policies`).
 
 5. Add a test in `internal/linter/linter_test.go` with a copy of the policy

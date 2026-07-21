@@ -4,10 +4,10 @@
 //     purges any leftover tickets in the TokenStore, so a capability never
 //     survives the session that locked it.
 //   - PreToolUse: verifies every file-mutating tool call against the
-//     capability ticket locked through the Platform Planning Gateway —
+//     capability ticket locked through the validation server —
 //     signature, TTL, path scope, session binding — AND the actual edited
 //     content against the artifact-view policy corpus (via POST
-//     /verify_artifact on the gateway).
+//     /verify_artifact on the validation server).
 //
 // Contract (see https://code.claude.com/docs/en/hooks): the hook receives a
 // JSON payload on stdin; exit code 2 blocks the tool call and stderr is fed
@@ -15,12 +15,12 @@
 // guard of the amplified loop, running inside an off-the-shelf agent.
 //
 // The guard fails CLOSED: if it cannot evaluate an edit (unreadable payload,
-// unopenable store, unreachable gateway), it blocks rather than letting the
+// unopenable store, unreachable validation server), it blocks rather than letting the
 // edit through. SessionStart, which is not a security gate, never blocks.
 //
 // Storage lives per-machine under $XDG_STATE_HOME/ppg/projects/<slug>/
 // (see internal/store). The project is resolved from --project-dir >
-// PPG_PROJECT_DIR > the hook payload's cwd > os.Getwd(). The gateway base URL
+// PPG_PROJECT_DIR > the hook payload's cwd > os.Getwd(). The validation server base URL
 // is PPG_URL (default http://localhost:8765).
 package main
 
@@ -98,7 +98,7 @@ func main() {
 		failInfra(isPreTool, "cannot resolve state root: "+err.Error())
 	}
 	// The guard verifies the ticket signature locally: it needs the same
-	// per-machine signing key as the gateway ($PPG_TICKET_SECRET wins).
+	// per-machine signing key as the validation server ($PPG_TICKET_SECRET wins).
 	if err := ticket.UseKeyFile(filepath.Join(root, "ticket.key")); err != nil {
 		failInfra(isPreTool, "cannot load ticket signing key: "+err.Error())
 	}
@@ -135,7 +135,7 @@ func failInfra(isPreTool bool, msg string) {
 	if isPreTool {
 		fmt.Fprintln(os.Stderr, "PPG_GUARD_ERROR: "+msg+
 			" — blocking (fail-closed): the guard cannot verify this edit. "+
-			"Fix the gateway/state setup, or re-lock your plan, and retry.")
+			"Fix the validation server/state setup, or re-lock your plan, and retry.")
 		os.Exit(2)
 	}
 	fmt.Fprintln(os.Stderr, "ppg-guard: "+msg)
@@ -257,7 +257,7 @@ func decide(payload []byte, rawTicket string, verify artifactVerifier) (bool, st
 	if rawTicket == "" {
 		return true, "No capability ticket for this session. " +
 			"Lock a plan first: call the lock_in_plan tool (or POST /lock_in_plan on the " +
-			"Platform Planning Gateway) — the returned execution_ticket is persisted for you."
+			"validation server) — the returned execution_ticket is persisted for you."
 	}
 
 	rel := relativeTarget(target, in.CWD)
@@ -314,7 +314,7 @@ func relativeTarget(filePath, cwd string) string {
 	return filepath.ToSlash(rel)
 }
 
-// gatewayURL is the Platform Planning Gateway base URL (PPG_URL, default
+// gatewayURL is the validation server base URL (PPG_URL, default
 // http://localhost:8765) — the same convention as the MCP server.
 func gatewayURL() string {
 	if u := os.Getenv("PPG_URL"); u != "" {
@@ -325,7 +325,7 @@ func gatewayURL() string {
 
 var httpClient = &http.Client{Timeout: 5 * time.Second}
 
-// verifyArtifactRemote asks the gateway to evaluate the artifact-view policy
+// verifyArtifactRemote asks the validation server to evaluate the artifact-view policy
 // against the edited content. A transport error is returned (fail-closed);
 // a policy rejection is returned as violation messages.
 func verifyArtifactRemote(gateway, ticket, path, content string) ([]string, error) {
@@ -345,7 +345,7 @@ func verifyArtifactRemote(gateway, ticket, path, content string) ([]string, erro
 		Guidance string `json:"guidance"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return nil, fmt.Errorf("decoding gateway response: %w", err)
+		return nil, fmt.Errorf("decoding validation server response: %w", err)
 	}
 	switch out.Status {
 	case "ARTIFACT_OK":
@@ -360,6 +360,6 @@ func verifyArtifactRemote(gateway, ticket, path, content string) ([]string, erro
 		}
 		return msgs, nil
 	default:
-		return nil, fmt.Errorf("unexpected gateway status %q (HTTP %d)", out.Status, resp.StatusCode)
+		return nil, fmt.Errorf("unexpected validation server status %q (HTTP %d)", out.Status, resp.StatusCode)
 	}
 }

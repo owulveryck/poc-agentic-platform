@@ -29,7 +29,7 @@ hook_body() {
 # ppg apply-time backstop — installed by scripts/setup-git-backstop.sh.
 # Verifies the staged diff against the locked plan's scope and the policy
 # corpus (changeset altitude). Exit 2 = the check could not run (no ticket,
-# gateway down): fail closed, the commit is blocked too.
+# validation server down): fail closed, the commit is blocked too.
 $VERIFY --staged || exit 1
 EOF
 }

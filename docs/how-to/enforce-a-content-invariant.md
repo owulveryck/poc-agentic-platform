@@ -20,7 +20,7 @@ dual-representation ADR (Markdown body + paired `.rego`) — and add a
 free, at two altitudes:
 
 - **In-loop** — the standard `ppg-guard` / `ppg-copilot-guard` sends
-  every edit's content to the gateway's `/verify_artifact`, which runs
+  every edit's content to the validation server's `/verify_artifact`, which runs
   your rule. On a violation the edit is blocked before the bytes hit
   disk, with your message fed back to the model.
 - **Apply-time** — `ppg-verify` sends the whole working-tree diff to
@@ -123,7 +123,7 @@ enforcement:
 1. Drop `examples/adr/ADR-XXX-your-invariant.md` (front matter + invariant prose)
    and `examples/adr/ADR-XXX.rego` (package `ppg.linter`, your `input.view ==
    "artifact"` rule) next to the existing ADRs.
-2. Restart the gateway — it compiles every `examples/adr/*.rego` into the corpus
+2. Restart the validation server — it compiles every `examples/adr/*.rego` into the corpus
    at startup. Confirm with the `Plan linter ready: N policies` line.
 3. That's it. `ppg-guard` / `ppg-copilot-guard` now block violating edits
    in-loop via `/verify_artifact`; `ppg-verify` catches them at apply
@@ -141,7 +141,7 @@ the decision. Two ways:
 - **Unit-test the Rego** with fixtures for each view — a clean artifact,
   a violating artifact, and a changeset with one bad file. This is how
   the platform's own policies are tested (`internal/linter`).
-- **Exercise the endpoints** against a running gateway:
+- **Exercise the endpoints** against a running validation server:
 
   ```bash
   # An in-loop artifact check (ticket from a locked plan)
@@ -157,7 +157,7 @@ The Rego route is the paved road: one rule, enforced at every altitude,
 tested and versioned with the ADR corpus. Reach for a bespoke
 `PreToolUse` hook only when the check genuinely cannot be expressed
 against the corpus — e.g. it needs a real parser (CSS AST, TS
-type-checker), or must query external state the gateway does not see.
+type-checker), or must query external state the validation server does not see.
 
 The contract of such a hook is the platform's own hook contract: read a
 JSON payload on **stdin**, decide, and either exit 2 with a stderr

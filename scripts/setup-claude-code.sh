@@ -121,7 +121,7 @@ print(f'[ppg] wrote {file}  (added: {", ".join(changed)})')
 PY
 
 ok "Claude Code setup complete."
-log "Next: start the gateway ('ppg -addr :8765') and run 'claude mcp list' — you should see 'ppg  connected'."
+log "Next: start the validation server ('ppg' — binds 127.0.0.1:8765 by default) and run 'claude mcp list' — you should see 'ppg  connected'."
 if ! curl -fsS --max-time 1 "$PPG_URL/enrich" -H 'content-type: application/json' -d '{"intent":"ping","repository_context":{"name":"x","tech_stack":["Go"]}}' >/dev/null 2>&1; then
-    warn "gateway at $PPG_URL is not reachable — start it with 'ppg -addr :8765' before opening claude."
+    warn "validation server at $PPG_URL is not reachable — start it with 'ppg' (binds 127.0.0.1:8765 by default) before opening claude."
 fi

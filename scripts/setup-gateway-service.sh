@@ -4,7 +4,8 @@
 # macOS (LaunchAgent), systemd --user on Linux.
 #
 # Every argument is passed through to ppg verbatim. Defaults to
-# '-addr :8765'. Examples:
+# '-addr 127.0.0.1:8765' (loopback — the API is unauthenticated; pass an
+# explicit host only behind a trusted network or an auth proxy). Examples:
 #
 #   scripts/setup-gateway-service.sh -adr "$HOME/corpus/adr"
 #   scripts/setup-gateway-service.sh -adr "$HOME/corpus/adr" \
@@ -18,7 +19,7 @@ source "$(dirname "$0")/lib.sh"
 
 PPG=$(need_binary ppg)
 ARGS=("$@")
-[ ${#ARGS[@]} -eq 0 ] && ARGS=(-addr :8765)
+[ ${#ARGS[@]} -eq 0 ] && ARGS=(-addr 127.0.0.1:8765)
 
 case "$(uname -s)" in
 Darwin)

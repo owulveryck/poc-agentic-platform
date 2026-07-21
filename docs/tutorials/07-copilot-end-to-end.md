@@ -1,12 +1,12 @@
 # Tutorial — govern a live GitHub Copilot session
 
 > **Goal**: wire the official GitHub Copilot desktop app (or the
-> `gh copilot` CLI / VS Code Copilot Chat) to the gateway and watch both
+> `gh copilot` CLI / VS Code Copilot Chat) to the validation server and watch both
 > pillars work end to end: the plan is enriched and locked through MCP
 > tools, and an out-of-plan edit is blocked by a hook *before* it executes.
 >
 > Time: ~10 minutes. Prerequisites: [tutorial 0](00-bootstrap.md) completed
-> (gateway running on `:8765`; `ppg-copilot-guard` and `ppg-mcp-server` on
+> (validation server running on `:8765`; `ppg-copilot-guard` and `ppg-mcp-server` on
 > `PATH`; `copilot mcp list` shows `ppg` as connected — or for VS Code
 > readers, see the note below).
 >
@@ -134,7 +134,7 @@ Open `~/ppg-copilot-demo` as a folder in the Copilot app and prompt:
    ADR-042 (egress proxy) and ADR-070 (frozen paths) — the same payload
    you saw in [tutorial 1, step 2](01-first-planning-cycle.md).
 2. Copilot drafts a plan and submits it through `lock_in_plan`. If the
-   plan misses a `go test` step, the gateway answers `PLAN_REJECTED`
+   plan misses a `go test` step, the validation server answers `PLAN_REJECTED`
    with the `go_tests_present` violation and Copilot self-corrects in
    one round-trip.
 

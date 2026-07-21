@@ -19,7 +19,7 @@
 //   - enrich never returns recipes ("edit file X at line Y"): only semantic
 //     invariants. No business pattern is hard-coded here — architects
 //     declare both the invariants and their scope selectors in the ADR
-//     store (see internal/adr), and the gateway only retrieves them.
+//     store (see internal/adr), and the validation server only retrieves them.
 //
 // Durability: amplifier / declarative. The smarter the model, the better
 // it exploits the same invariants.

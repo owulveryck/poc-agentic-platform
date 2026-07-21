@@ -1,8 +1,8 @@
-# Tutorial 11 — With and without the Gateway: a side-by-side demo
+# Tutorial 11 — With and without the validation server: a side-by-side demo
 
 > **Goal**: a live demo, dos-à-dos, showing that a skill's `SKILL.md`
 > alone is only *soft* guidance a model can be talked out of, and that
-> the Platform Planning Gateway is what turns compliance from
+> the governance harness is what turns compliance from
 > statistical to guaranteed. Same skill, same prompts, two projects,
 > two outcomes.
 >
@@ -23,7 +23,7 @@ is present. The prompts are identical; the outcomes are not.
 
 The point it makes: a `SKILL.md` body is a prose contract. A capable
 model honors it; a small model, or the same model under an adversarial
-prompt, does not. The gateway is what makes the design system
+prompt, does not. The governance harness is what makes the design system
 non-negotiable regardless of model or user prompt.
 
 ## Prerequisites
@@ -36,7 +36,7 @@ non-negotiable regardless of model or user prompt.
 - **Platform bootstrapped** on this machine — [tutorial 0](00-bootstrap.md)
   completed and the how-to
   [set-up-a-governed-workstation](../how-to/set-up-a-governed-workstation.md)
-  applied for the Copilot recipe. The gateway is running
+  applied for the Copilot recipe. The validation server is running
   ([tutorial 0, step 4](00-bootstrap.md)).
 
 > **Note on APM source**: if the `design-system` skill isn't yet
@@ -168,7 +168,7 @@ fi
 mv ~/.copilot.saved ~/.copilot
 ```
 
-Confirm the gateway is running:
+Confirm the validation server is running:
 
 ```bash
 curl -sf http://localhost:8765/debt_report >/dev/null && echo "gateway OK"
@@ -203,7 +203,7 @@ as MCP tools (registered user-scope in `~/.copilot/mcp-config.json`
 by the how-to). The workflow runs full: enrich → read tokens →
 plan → lock → apply. Every edit passes through `ppg-copilot-guard`,
 which checks both the path scope and the content — it POSTs the bytes
-to the gateway's `/verify_artifact`, where ADR-090's artifact rule
+to the validation server's `/verify_artifact`, where ADR-090's artifact rule
 runs. The result contains only `var(--color-*)` references.
 
 Prompt 2 (identical to Act 2):
@@ -215,7 +215,7 @@ Prompt 2 (identical to Act 2):
 **What you should observe**: `ppg-copilot-guard` refuses the first
 `Edit` containing `#FF69B4` with the semantic message
 `ARCHITECTURAL_INVARIANT_VIOLATION` (ADR-090's design-token rule,
-evaluated by the gateway at the artifact altitude). Copilot surfaces
+evaluated by the validation server at the artifact altitude). Copilot surfaces
 the refusal reason to you and stops trying — per the contract in
 `~/.copilot/copilot-instructions.md`, it doesn't retry.
 
@@ -286,6 +286,6 @@ fi
   platform back."
 
 **✅ Done.** The demo makes one narrow, honest claim: a skill's
-prose contract is *guidance*, and the gateway is what makes it
+prose contract is *guidance*, and the governance harness is what makes it
 *enforcement*. Everything else in the platform is a consequence of
 this distinction.

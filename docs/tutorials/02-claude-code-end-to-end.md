@@ -1,11 +1,11 @@
 # Tutorial — govern a live Claude Code session
 
-> **Goal**: wire a stock Claude Code session to the gateway and watch both
+> **Goal**: wire a stock Claude Code session to the validation server and watch both
 > pillars work end to end: the plan is enriched and locked through MCP tools,
 > and an out-of-plan edit is blocked by a hook *before* it executes.
 >
 > Time: ~10 minutes. Prerequisites: [tutorial 0](00-bootstrap.md) completed
-> (gateway running on `:8765`; `ppg-guard` and `ppg-mcp-server` on `PATH`;
+> (validation server running on `:8765`; `ppg-guard` and `ppg-mcp-server` on `PATH`;
 > `claude mcp list` shows `ppg` as connected).
 
 ## Step 1 — Create a scratch target project
@@ -77,7 +77,7 @@ Start `claude` in `~/ppg-demo` and prompt:
    invariant (egress proxy) and the ADR-070 frozen paths — the same payload
    you saw in [tutorial 1, step 2](01-first-planning-cycle.md).
 2. Claude submits its plan through `lock_in_plan`. If the plan misses a
-   `go test` step, the gateway answers `PLAN_REJECTED` with the
+   `go test` step, the validation server answers `PLAN_REJECTED` with the
    `go_tests_present` violation, and Claude corrects its plan on its own —
    this self-correction in one or two iterations is the expected behavior.
 

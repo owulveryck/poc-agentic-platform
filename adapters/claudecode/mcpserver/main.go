@@ -1,7 +1,7 @@
-// Command mcpserver exposes the Platform Planning Gateway to Claude Code as
+// Command mcpserver exposes the validation server to Claude Code as
 // a stdio MCP server (https://modelcontextprotocol.io/).
 //
-// Two tools bridge to the gateway's HTTP API:
+// Two tools bridge to the validation server's HTTP API:
 //
 //   - get_platform_guidelines_for_intent → POST $PPG_URL/enrich
 //   - lock_in_plan                       → POST $PPG_URL/lock_in_plan
@@ -188,7 +188,7 @@ func stampSessionID(p *plan.Plan, ss store.SessionStore) bool {
 	return true
 }
 
-// forward posts the payload to the gateway and returns the raw JSON response
+// forward posts the payload to the validation server and returns the raw JSON response
 // as tool output — including 4xx payloads, so the model reads the semantic
 // violations and self-corrects instead of receiving an opaque error.
 func forward(ctx context.Context, route string, body []byte, onSuccess func([]byte)) (*mcp.CallToolResult, any, error) {
@@ -204,12 +204,12 @@ func forward(ctx context.Context, route string, body []byte, onSuccess func([]by
 
 // lockWithRegistrationRetry uploads any local skills for sessionID (via the
 // content-hash cache), forwards the plan body to /lock_in_plan, and — if the
-// gateway responds with any unknown_skill violations — invalidates those cache
+// validation server responds with any unknown_skill violations — invalidates those cache
 // entries, re-uploads, and forwards exactly once more. Bounded at one retry so
 // a permanently-missing skill still surfaces the semantic error to the model
 // instead of looping.
 //
-// The retry is what makes the MCP self-heal a gateway restart: without it,
+// The retry is what makes the MCP self-heal a validation server restart: without it,
 // the cache would suppress re-uploads and every subsequent lock in this MCP
 // session would fail with unknown_skill until the skill's content changed on
 // disk.
@@ -257,7 +257,7 @@ func forwardOnce(ctx context.Context, route string, body []byte) ([]byte, int, e
 	return raw, resp.StatusCode, nil
 }
 
-// wrapResult renders a gateway response as an MCP tool result.
+// wrapResult renders a validation server response as an MCP tool result.
 func wrapResult(raw []byte, status int) *mcp.CallToolResult {
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{&mcp.TextContent{Text: string(raw)}},
@@ -267,7 +267,7 @@ func wrapResult(raw []byte, status int) *mcp.CallToolResult {
 
 // unknownSkillsIn scans a lock_in_plan response body for violations tagged
 // unknown_skill and returns the skill names those violations refer to. It
-// also matches the plain sentinel with no name (defensive: a future gateway
+// also matches the plain sentinel with no name (defensive: a future validation server
 // version might reword the message). An empty return means no retry is
 // needed.
 func unknownSkillsIn(raw []byte) []string {
@@ -311,7 +311,7 @@ func quotedName(msg string) string {
 }
 
 // skillRegistrationCache remembers the sha256 of (SKILL.md ‖ SKILL.rego) for
-// every skill we have uploaded to the gateway this MCP process's lifetime.
+// every skill we have uploaded to the validation server this MCP process's lifetime.
 // A restart re-uploads everything — cheap and self-healing.
 type skillRegistrationCache struct {
 	mu   sync.Mutex
@@ -331,7 +331,7 @@ func (c *skillRegistrationCache) shouldSkip(sessionID, name string, digest [32]b
 
 // forget drops the cache entry for (sessionID, name) so the next
 // registerLocalSkills call re-uploads it. Used by the lock_in_plan retry
-// path when the gateway reports unknown_skill — evidence that the gateway
+// path when the validation server reports unknown_skill — evidence that the validation server
 // was restarted (or purged) mid-session and the cache is stale. An empty
 // name (returned by unknownSkillsIn when the message can't be parsed)
 // forgets *every* skill for the session, forcing a full re-upload.
@@ -352,7 +352,7 @@ func (c *skillRegistrationCache) forget(sessionID, name string) {
 
 // discoverSkillDirs returns the skill package roots scanned before every
 // lock, in ascending precedence order — later directories win on a duplicate
-// skill name because the gateway's session tier is last-write-wins, so a
+// skill name because the validation server's session tier is last-write-wins, so a
 // project-local package overrides a user-wide install of the same skill:
 //
 //  1. ~/.claude/skills         — user-wide installs (apm --target claude
@@ -375,7 +375,7 @@ func discoverSkillDirs(projectDir string) []string {
 
 // registerLocalSkills scans every skill root (see discoverSkillDirs) and
 // POSTs /register_skill for each skill package found. Order matters: the
-// gateway's session tier is last-write-wins, so the last root in the slice
+// validation server's session tier is last-write-wins, so the last root in the slice
 // has the highest precedence.
 func registerLocalSkills(ctx context.Context, sessionID string, skillDirs []string, cache *skillRegistrationCache) {
 	for _, dir := range skillDirs {
@@ -385,8 +385,8 @@ func registerLocalSkills(ctx context.Context, sessionID string, skillDirs []stri
 
 // scanSkillDir walks one skill root at depth 1 and POSTs /register_skill for
 // every `<name>/` that contains a SKILL.md — with or without a SKILL.rego.
-// Bad rego surfaces as a 422 from the gateway; we log and continue so a
-// broken skill doesn't take down the entire lock_in_plan flow (the gateway
+// Bad rego surfaces as a 422 from the validation server; we log and continue so a
+// broken skill doesn't take down the entire lock_in_plan flow (the validation server
 // still fail-closes at evaluation time because the skill is not registered).
 func scanSkillDir(ctx context.Context, sessionID, skillsDir string, cache *skillRegistrationCache) {
 	entries, err := os.ReadDir(skillsDir)

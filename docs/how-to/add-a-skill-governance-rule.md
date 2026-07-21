@@ -40,7 +40,7 @@
    using the 2× test; a compensatory rule should carry its sunset condition
    in a comment until the report tracks skill policies).
 
-4. Restart the gateway (add `-skill-governance <dir>` if you use a
+4. Restart the validation server (add `-skill-governance <dir>` if you use a
    non-default directory) and verify with curl:
 
    ```bash

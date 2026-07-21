@@ -10,7 +10,7 @@
 #   - ppg-guard refuses code that reaches for a forbidden provider (ADR-110)
 #     and passes code that calls the sanctioned gateway.
 #
-# HERMETIC: its own gateway on a free port (your :8765 stays up), its own
+# HERMETIC: its own validation server on a free port (your :8765 stays up), its own
 # svc-mock, its own PPG_STORE_ROOT and temp git project — all removed on exit.
 # It drives the INSTALLED binaries, so a green run proves the real behavior.
 #
@@ -51,7 +51,7 @@ GW_PID=$!
 svc-mock -addr "127.0.0.1:$MOCK_PORT" -name notify-svc >"$TMP/mock.log" 2>&1 &
 MOCK_PID=$!
 for _ in $(seq 1 50); do curl -sf "$GW/debt_report" >/dev/null 2>&1 && break; sleep 0.1; done
-curl -sf "$GW/debt_report" >/dev/null 2>&1 || { echo "gateway never came up"; cat "$TMP/gateway.log"; exit 3; }
+curl -sf "$GW/debt_report" >/dev/null 2>&1 || { echo "validation server never came up"; cat "$TMP/gateway.log"; exit 3; }
 for _ in $(seq 1 50); do curl -sf "$MOCK/healthz" >/dev/null 2>&1 && break; sleep 0.1; done
 
 pass=0; fail=0
@@ -69,7 +69,7 @@ disc() { curl -s -H 'content-type: application/json' -d "$1" "$GW/discover_servi
 pyget() { printf '%s' "$1" | python3 -c "import sys,json; d=json.load(sys.stdin); print($2)"; }
 
 echo
-echo "Service Catalog demo — gateway $GW, notify-svc mock $MOCK"
+echo "Service Catalog demo — validation server $GW, notify-svc mock $MOCK"
 echo
 
 echo "── discovery: policy-ranked recommendation ──"

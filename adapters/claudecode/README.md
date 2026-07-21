@@ -1,12 +1,12 @@
 # Claude Code adapter — MCP planning + hook gating
 
-This adapter wires a **stock Claude Code** session to the Platform Planning
-Gateway, materializing both pillars without modifying the agent:
+This adapter wires a **stock Claude Code** session to the governance
+harness, materializing both pillars without modifying the agent:
 
 | Pillar | Mechanism | Component |
 |---|---|---|
 | 1 — Amplified planning | MCP tools (`get_platform_guidelines_for_intent`, `find_platform_service`, `lock_in_plan`) | [`mcpserver/`](mcpserver/) |
-| 2 — In-tool gating | `PreToolUse` hook on `Edit\|Write` (exit 2 blocks, stderr goes to the model); gates path scope **and** content (via the gateway's `/verify_artifact`) | [`guard/`](guard/) |
+| 2 — In-tool gating | `PreToolUse` hook on `Edit\|Write` (exit 2 blocks, stderr goes to the model); gates path scope **and** content (via the validation server's `/verify_artifact`) | [`guard/`](guard/) |
 
 The two are connected by the per-machine **TokenStore** (default
 `$XDG_STATE_HOME/ppg/projects/<slug>/tickets/<session_id>`): a successful
@@ -28,7 +28,7 @@ A fully worked, tested session is in the
    make install
    ```
 
-2. **Start the gateway** (`-adr` is required; point it at your ADR
+2. **Start the validation server** (`-adr` is required; point it at your ADR
    corpus — here the fictional demo corpus, from the repository root):
 
    ```bash
@@ -107,7 +107,7 @@ operationally:
 - **The environment.** The guard reads `PPG_URL` (where content checks
   are sent), `PPG_TICKET_SECRET` (the ticket signing key), and
   `PPG_STORE_ROOT` (where tickets are read) from the user's environment.
-  A user can re-point verification at a rogue gateway or mint their own
+  A user can re-point verification at a rogue validation server or mint their own
   tickets. Pin these in the managed hook command for fleet deployments.
 
 Automated via `sudo make setup-claude-code-managed` (see
@@ -134,7 +134,7 @@ end-to-end tutorial uses this scope.
   `CLAUDE.md`. See [How the agent knows what plan to submit](../../docs/explanation/enrichment-and-planning.md#how-the-agent-knows-what-plan-to-submit).)
 - Every `Edit`/`Write` first passes through `ppg-guard`. It checks the
   target path against the ticket scope, then — when the path is allowed —
-  sends the edited content to the gateway's `/verify_artifact` for the
+  sends the edited content to the validation server's `/verify_artifact` for the
   content policy. In scope and clean: silent. Out of scope, the tool call
   is **blocked before execution** and Claude reads:
 
@@ -148,7 +148,7 @@ end-to-end tutorial uses this scope.
   A path that is in scope but whose content breaks an invariant is blocked
   the same way, prefixed `ARCHITECTURAL_INVARIANT_VIOLATION`. The guard
   **fails closed**: if it cannot evaluate an edit (unreadable payload,
-  unopenable store, unreachable gateway) it blocks with `PPG_GUARD_ERROR:
+  unopenable store, unreachable validation server) it blocks with `PPG_GUARD_ERROR:
   … (fail-closed)` rather than letting it through.
 
   Deterministic refusal, semantic guidance, zero damage — pillar 2, running
@@ -164,7 +164,7 @@ end-to-end tutorial uses this scope.
   stamps it into the plan, and the guard blocks any use of the ticket
   from another session (`SESSION_MISMATCH`). See
   [capability-ticket.md](../../docs/reference/capability-ticket.md).
-- `PPG_URL` overrides the gateway address for both the MCP server and
+- `PPG_URL` overrides the validation server address for both the MCP server and
   `ppg-guard` — the guard POSTs edited content to `/verify_artifact` for
   the content check (default `http://localhost:8765`).
   `PPG_PROJECT_DIR` overrides the project directory for the MCP server

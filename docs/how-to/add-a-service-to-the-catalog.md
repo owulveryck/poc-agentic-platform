@@ -32,7 +32,7 @@
 2. Pick `selectors` carefully. Retrieval is **case-insensitive substring** on
    the capability and the selectors (same as the ADR store), so `"db"` would
    match "add" — prefer distinctive multi-word terms.
-3. Restart the gateway (it loads `examples/services/*.md` at startup). Confirm the log
+3. Restart the validation server (it loads `examples/services/*.md` at startup). Confirm the log
    line `Service catalog loaded: N services`.
 4. Verify:
 
@@ -59,7 +59,7 @@ refuse it. This is the one place with two sources of truth kept in sync by hand:
    (the testdata mirror is required; see [AUDIT.md](../../AUDIT.md)).
 3. Add a case to `internal/linter/linter_test.go`
    (`TestADR110ArtifactRejectsForbiddenProvider`).
-4. `go test ./internal/linter/` and restart the gateway.
+4. `go test ./internal/linter/` and restart the validation server.
 
 ## Change the ranking policy
 
@@ -72,7 +72,7 @@ high-cost one — edit the `decide`/`score_for` rules there, mirror the file int
 ## Rollback
 
 Delete the `examples/services/<id>.md` file (and any ADR-110 marker you added, plus its
-testdata mirror), restart the gateway. Discovery stops returning the service.
+testdata mirror), restart the validation server. Discovery stops returning the service.
 
 ## What you lose (be honest)
 

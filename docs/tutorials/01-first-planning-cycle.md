@@ -13,7 +13,7 @@
 - `make install` from the repo root — puts `ppg` and the adapters under
   `~/.local/bin`.
 
-## Step 1 — Start the gateway
+## Step 1 — Start the validation server
 
 From the repo root (`-adr` is required; `examples/` is the fictional demo
 corpus):
@@ -32,7 +32,7 @@ Ticket signing key: ~/.local/state/ppg/ticket.key
 Skill governance linter ready
 Service catalog loaded: 4 services
 Capability ticket TTL: 8h0m0s (bounded by the session)
-Platform Planning Gateway listening on :8765
+validation server listening on :8765
 ```
 
 Keep this terminal open.

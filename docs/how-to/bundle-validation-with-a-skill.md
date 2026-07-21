@@ -113,7 +113,7 @@ PY
 
 `SKILL_VALID` + a tier, or `SKILL_REJECTED` + the violations. The gate
 also **compiles** the companion: broken or nondeterministic Rego is
-refused at publish time, not discovered at gateway startup. Wire the same
+refused at publish time, not discovered at validation server startup. Wire the same
 call into CI per
 [gate skill publication in CI](gate-skill-publication-in-ci.md).
 

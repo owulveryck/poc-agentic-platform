@@ -52,8 +52,8 @@ if [ -n "$trust_verdict" ]; then
 fi
 
 # --- Optional PPG_URL pinning: wrap the guard in a root-owned launcher that
-# fixes the gateway address, so the user environment cannot re-point content
-# verification at a rogue gateway. Usage: PPG_PIN_URL=http://host:8765.
+# fixes the validation server address, so the user environment cannot re-point content
+# verification at a rogue validation server. Usage: PPG_PIN_URL=http://host:8765.
 if [ -n "${PPG_PIN_URL:-}" ]; then
     WRAPPER="$(dirname "$TARGET")/ppg-guard-pinned.sh"
     if [ "$DRY_RUN" = "1" ]; then
@@ -63,7 +63,7 @@ if [ -n "${PPG_PIN_URL:-}" ]; then
         cat > "$WRAPPER" <<WRAP
 #!/bin/sh
 # Root-owned launcher written by setup-claude-code-managed.sh: pins the
-# gateway address so the user environment cannot re-point verification.
+# validation server address so the user environment cannot re-point verification.
 PPG_URL='$PPG_PIN_URL' export PPG_URL
 exec '$GUARD' "\$@"
 WRAP

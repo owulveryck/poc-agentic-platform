@@ -1,4 +1,4 @@
-# Tutorial 12 — try to bypass the gateway (and watch it hold)
+# Tutorial 12 — try to bypass the validation server (and watch it hold)
 
 > **Goal**: put on the red team's hat. Run, end to end, every trick an
 > agent (or a user driving one) might use to slip an unplanned change past
@@ -37,7 +37,7 @@ Everything below is asserted by a hermetic harness. From the repo root:
 bash scripts/redteam-bypass.sh
 ```
 
-It starts its **own** throwaway gateway on a free port (your `:8765` stays
+It starts its **own** throwaway validation server on a free port (your `:8765` stays
 up), keeps all ticket/session state under a temporary `PPG_STORE_ROOT`
 (your real `$XDG_STATE_HOME/ppg` is never touched), works in a temp git
 project, and drives the **installed** binaries (`ppg-guard`, `ppg-verify`)
@@ -158,7 +158,7 @@ a documented weakness — see *Honest limits* — but even a correctly
 re-signed forgery is still bounded by session binding and the apply-time
 changeset check.)
 
-### A9 — take the gateway down to skip the content check
+### A9 — take the validation server down to skip the content check
 
 If the content check cannot run, does the edit slip through? No — the guard
 **fails closed**:
@@ -196,8 +196,15 @@ project, and plugin hooks entirely**. A bypass entry planted in
 `~/.claude/settings.json` or a repo-committed `.claude/settings.json` is
 silently dropped. The managed file is `root:root`; removing it requires
 local root — outside the agent's authority by construction. **Hard
-refusal**: this closes A10 for real, not softly. This is why an
-IT-managed fleet should always deploy via the managed recipe.
+refusal on this vector**: managed scope closes the settings-edit attack
+for real, not softly. It does *not*, by itself, close the two other
+vectors a hostile user still controls — replacing the `ppg-guard` binary
+(user-writable under the default `~/.local/bin` install) and re-pointing
+`PPG_URL` / `PPG_TICKET_SECRET` / `PPG_STORE_ROOT` in the environment; see
+the [tamper-model caveat in recipe (A)](../how-to/set-up-a-governed-workstation.md#a-managed-scope--recommended-for-it-managed-fleets)
+for the operational hardening (root-owned binaries, pinned env) that closes
+them. This is why an IT-managed fleet should always deploy via the managed
+recipe *and* apply that hardening.
 
 ## Group B — refused at lock time
 
@@ -296,7 +303,7 @@ honest*, not *airtight*.
 ## Cleanup
 
 `scripts/redteam-bypass.sh` removes its temp project, temp state, and
-throwaway gateway on exit — nothing to undo. If you ran the manual
+throwaway validation server on exit — nothing to undo. If you ran the manual
 walkthrough in a scratch project, `rm -rf` it as in
 [tutorial 2, step 6](02-claude-code-end-to-end.md).
 

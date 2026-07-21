@@ -5,7 +5,7 @@
 > here.
 >
 > What this tutorial installs is **per-machine**, not per-project: the
-> gateway, the adapter binaries, and the MCP server registration.
+> validation server, the adapter binaries, and the MCP server registration.
 > Per-project wiring (hooks, contract file, skills) is covered in the
 > tutorial you're running that day.
 >
@@ -39,8 +39,8 @@ make install
 
 That produces:
 
-- `ppg` — the gateway.
-- `ppg-mcp-server` — bridges the gateway's HTTP API to agents that
+- `ppg` — the validation server.
+- `ppg-mcp-server` — bridges the validation server's HTTP API to agents that
   speak MCP (Claude Code, Copilot CLI/desktop, VS Code Copilot Chat).
 - `ppg-guard` — PreToolUse hook for Claude Code.
 - `ppg-copilot-guard` — PreToolUse hook for the GitHub Copilot surfaces.
@@ -134,7 +134,7 @@ Note: Claude Code does NOT expand `${cwd}` in user-scope MCP env values
 — the string is stored and passed literally. Don't put `"${cwd}"` in
 `--env` there; rely on the cwd fallback instead.
 
-## Step 4 — Start the gateway (one terminal, leave it running)
+## Step 4 — Start the validation server (one terminal, leave it running)
 
 From the repo root (`-adr` is required; `examples/` is the fictional demo
 corpus — point the flags at your own directories once you have them):
@@ -153,17 +153,17 @@ Ticket signing key: ~/.local/state/ppg/ticket.key
 Skill governance linter ready
 Service catalog loaded: 4 services
 Capability ticket TTL: 8h0m0s (bounded by the session)
-Platform Planning Gateway listening on :8765
+validation server listening on :8765
 ```
 
 Every downstream tutorial expects this on `:8765`. Keep this terminal
-open — or run the gateway as a launchd/systemd service (see the
+open — or run the validation server as a launchd/systemd service (see the
 appendix below).
 
 ## Step 5 — Sanity-check the whole wiring
 
 One tool call from each agent surface confirms binaries + registration
-+ gateway are working end-to-end.
++ validation server are working end-to-end.
 
 ### From Copilot
 
@@ -225,7 +225,7 @@ Ships three skills: `ppg-tutorial`, `add-payment-method`, and
 | Clone `poc-agentic-platform` | `git init` a target project |
 | Build the seven binaries onto `PATH` | Enable hooks in `.github/hooks/` (Copilot) or `.claude/settings.json` (Claude) |
 | Register the MCP server (user scope) | Preflight `.github/copilot-instructions.md` for the current intent |
-| Start the gateway (`ppg -addr :8765 -adr …`, step 4) | (Optionally) `apm install` a skill |
+| Start the validation server (`ppg -addr :8765 -adr …`, step 4) | (Optionally) `apm install` a skill |
 
 ## Troubleshooting
 
@@ -289,10 +289,10 @@ Common failure modes we've hit while shipping the tutorials:
   under `/usr/local/bin/` which is on the macOS login PATH by
   default.
 
-- **`PPG_URL` mismatch.** If you started the gateway on a different
+- **`PPG_URL` mismatch.** If you started the validation server on a different
   port than the MCP server was registered with, the MCP call succeeds
   but returns nothing. Re-register the MCP server with the correct
-  `--env PPG_URL=…`, or restart the gateway on the expected port.
+  `--env PPG_URL=…`, or restart the validation server on the expected port.
 
 - **Startup shows fewer than `8 invariants`.** You are on a
   checkout that predates the latest ADRs (ADR-110, ADR-120). `git pull`.

@@ -1,6 +1,6 @@
 // Command ppg-verify is the apply-time / CI backstop of the platform. It
 // gathers the working-tree changeset, loads the active capability ticket from
-// the per-machine store, and asks the gateway to evaluate the changeset-view
+// the per-machine store, and asks the validation server to evaluate the changeset-view
 // policy (POST /verify_changeset) over the ACTUAL diff — the enforcement leg
 // that covers surfaces with no in-loop hook (the gh copilot CLI, Cursor, a
 // human at the terminal, CI).
@@ -12,7 +12,7 @@
 //	ppg-verify --plan plan.json   # also confirm the plan hash matches the ticket
 //
 // Exit codes: 0 = changeset accepted; 1 = rejected (violations printed);
-// 2 = could not run the check (no ticket, gateway unreachable) — fail closed.
+// 2 = could not run the check (no ticket, validation server unreachable) — fail closed.
 package main
 
 import (
@@ -48,7 +48,7 @@ func main() {
 	}
 
 	// -server wins over the deprecated -gateway alias; both default to
-	// $PPG_URL / localhost via gatewayURL().
+	// $PPG_URL / localhost via validation serverURL().
 	serverURL := *server
 	if serverURL == "" {
 		serverURL = *gateway
@@ -208,14 +208,14 @@ func gatewayURL() string {
 
 var httpClient = &http.Client{Timeout: 10 * time.Second}
 
-// verifyChangeset posts the changeset to the gateway and returns its status and
+// verifyChangeset posts the changeset to the validation server and returns its status and
 // any violation messages. A transport error is returned (fail closed).
 func verifyChangeset(gateway, ticket string, files []changedFile, planHash string) (string, []string, error) {
 	body, _ := json.Marshal(map[string]any{"ticket": ticket, "files": files, "plan_hash": planHash})
 	resp, err := httpClient.Post(strings.TrimRight(gateway, "/")+"/verify_changeset",
 		"application/json", bytes.NewReader(body))
 	if err != nil {
-		return "", nil, fmt.Errorf("gateway unreachable at %s: %w", gateway, err)
+		return "", nil, fmt.Errorf("validation server unreachable at %s: %w", gateway, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -229,7 +229,7 @@ func verifyChangeset(gateway, ticket string, files []changedFile, planHash strin
 		Got      string `json:"got"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return "", nil, fmt.Errorf("decoding gateway response: %w", err)
+		return "", nil, fmt.Errorf("decoding validation server response: %w", err)
 	}
 	var msgs []string
 	for _, v := range out.Violations {

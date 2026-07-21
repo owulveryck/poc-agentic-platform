@@ -13,7 +13,7 @@ import (
 )
 
 // conflictThreshold is the number of CONSECUTIVE plan rejections with an
-// identical violation policy-id set after which the gateway stops answering
+// identical violation policy-id set after which the validation server stops answering
 // "fix the violations and resubmit" and escalates with POLICY_CONFLICT.
 //
 // Rationale: an agent that is genuinely iterating changes the violation set
