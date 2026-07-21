@@ -6,8 +6,8 @@ title Refus déterministe — hors du scope du plan
 
 actor "Développeur" as Dev
 participant "Agent" as Agent
-participant "PreToolUse hook\n(ppg-copilot-guard\nou ppg-guard)" as Hook
-database ".ppg-ticket\n(JWT)" as Ticket
+participant "PreToolUse hook\n(ppg-guard ou\nppg-copilot-guard)" as Hook
+database "Magasin d'état\n(ticket JWT)" as Ticket
 
 Dev -> Agent : "Modifie aussi internal/auth/login.go"
 
@@ -35,8 +35,9 @@ Agent -> Dev : "Cette modification n'est pas dans le plan.\n Voulez-vous re-plan
 note over Hook, Ticket #E6F4EA
   Le hook effectue aussi trois autres vérifications :
   signature HMAC (ticket non falsifié),
-  TTL (< 15 min), session_id (le ticket meurt
-  avec la session qui l'a verrouillé).
+  TTL (8 h par défaut — la session reste
+  la borne principale), session_id (le ticket
+  meurt avec la session qui l'a verrouillé).
 end note
 
 @enduml

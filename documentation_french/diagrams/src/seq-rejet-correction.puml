@@ -6,7 +6,7 @@ title Rejet et correction — le linter parle, l'agent corrige
 
 participant "Agent" as Agent
 participant "ppg-mcp-server" as MCP
-participant "Gateway PPG\n(linter Rego)" as PPG
+participant "Serveur de validation\n(linter Rego)" as PPG
 
 Agent -> MCP : lock_in_plan(plan sans étape de test)
 MCP -> PPG : POST /lock_in_plan
@@ -29,9 +29,16 @@ PPG --> MCP : PLAN_LOCKED + execution_ticket
 MCP --> Agent : ticket disponible
 
 note over Agent, PPG #E6F4EA
-  La rétroaction est sémantique : la gateway
+  La rétroaction est sémantique : le serveur
   dit CE qui manque, pas seulement "non".
   En pratique, 1 à 2 itérations suffisent.
+end note
+
+note over Agent, PPG #FFF0F0
+  Et si l'agent bute 3 fois sur un jeu de
+  violations identique, le serveur escalade :
+  409 POLICY_CONFLICT — blocage dur, sortie
+  uniquement humaine (ppg escalations resolve).
 end note
 
 @enduml

@@ -3,34 +3,38 @@
 
 title Déploiement — tout tourne sur le laptop du développeur\n<size:12>topologie physique : où vit concrètement chaque conteneur</size>
 
-Deployment_Node(laptop, "Laptop du développeur", "macOS / Linux / WSL2") {
+Deployment_Node(laptop, "Laptop du développeur (machine gouvernée)", "macOS / Linux / WSL2") {
 
     Deployment_Node(agentApp, "Application agent", "Copilot Desktop / Claude Code CLI / VS Code") {
         Container(chat, "Boucle de chat", "Runtime propriétaire de l'agent")
         Container(mcpClient, "Client MCP", "Intégré au runtime")
-        Container(hookRuntime, "Runtime des hooks", "Intégré au runtime")
+        Container(hookRuntime, "Runtime des hooks", "Configurés au niveau machine (make setup-claude-code, éventuellement gérés par root)")
     }
 
-    Deployment_Node(bin, "~/.local/bin (sur PATH)", "Binaires installés une fois par le tutoriel 0") {
-        Container(ppgBin, "ppg", "Binaire Go", "Le service gateway (source : ./cmd/ppg)")
+    Deployment_Node(bin, "~/.local/bin (sur PATH)", "Binaires installés une fois par make install") {
+        Container(ppgBin, "ppg", "Binaire Go", "Le serveur de validation (source : ./cmd/ppg)")
         Container(mcpBin, "ppg-mcp-server", "Binaire Go", "Sous-processus lancé par le client MCP de l'agent")
-        Container(guardBin, "ppg-copilot-guard", "Binaire Go", "Sous-processus lancé par le runtime des hooks à chaque PreToolUse")
+        Container(guardBin, "ppg-guard / ppg-copilot-guard", "Binaires Go", "Sous-processus lancés par le runtime des hooks à chaque PreToolUse")
+        Container(verifyBin, "ppg-verify", "Binaire Go", "Backstop à l'application : pre-commit / CI, vérifie le diff complet")
     }
 
     Deployment_Node(procs, "Processus en cours", "Terminal utilisateur en arrière-plan") {
-        Container(ppgRunning, "ppg -addr :8765", "Instance longue-durée du binaire ppg", "Écoute HTTP sur le loopback")
+        Container(ppgRunning, "ppg -adr examples/adr (ou -skills ...)", "Instance longue-durée du binaire ppg", "Écoute HTTP sur 127.0.0.1:8765 ; recharge son corpus sur SIGHUP")
+    }
+
+    Deployment_Node(stateRoot, "$XDG_STATE_HOME/ppg", "Magasin d'état par machine (repli ~/.local/state/ppg)") {
+        Container(state, "projects/<slug>/", "session + tickets/<session_id>", "Session active et ticket JWT, fichiers 0600 ; purgés à chaque nouvelle session")
+        Container(key, "ticket.key", "Clé HMAC par machine", "Générée au premier lancement (sauf $PPG_TICKET_SECRET) ; partagée serveur/gardes")
     }
 
     Deployment_Node(project, "~/mon-projet", "Un dépôt gouverné parmi d'autres") {
-        Container(skillDir, ".agents/skills/design-system/", "Dossier installé par APM", "SKILL.md, SKILL.rego, tokens.css, hooks/design-guard.sh")
-        Container(hooksDir, ".github/hooks/*.json", "Déclarations des hooks", "Enregistre ppg-copilot-guard et design-guard.sh sur PreToolUse")
-        Container(contractFile, ".github/copilot-instructions.md", "Contrat prose", "Lu par l'agent au démarrage")
-        Container(state, ".ppg-ticket + .ppg-session", "Fichiers d'état", "Écrits pendant la session, gitignored")
+        Container(skillDir, ".claude/skills/design-system/ (ou .agents/skills/)", "Dossier installé par APM", "SKILL.md + SKILL.rego + ressources (tokens.css)")
+        Container(contractFile, ".github/copilot-instructions.md ou CLAUDE.md", "Contrat prose", "Lu par l'agent au démarrage")
         Container(appCode, "Code applicatif", "Sources", "Ce que l'agent est autorisé à modifier — dans les limites du ticket")
     }
 
     Deployment_Node(checkout, "~/src/poc-agentic-platform", "Checkout git — source de la plateforme") {
-        Container(adrCorpus, "adr/", "Fichiers .md + .rego", "Corpus lu par la gateway au démarrage")
+        Container(adrCorpus, "examples/adr/", "Fichiers .md + .rego (optionnel)", "Corpus lu par le serveur de validation au démarrage — le harnais fonctionne aussi sans")
         Container(skillGovDir, "skill-governance/", "Fichiers .rego", "Règles de publication des skills")
         Container(demoPkg, "demo/", "Paquet APM source", "Contient les skills ppg-tutorial, add-payment-method, design-system")
     }
@@ -42,12 +46,14 @@ Deployment_Node(remote, "GitHub (ou autre git remote)", "Le seul composant hors 
 
 Rel(mcpClient, mcpBin, "Lance en sous-processus", "stdio")
 Rel(hookRuntime, guardBin, "Lance sur PreToolUse", "JSON stdin/stdout")
-Rel(hookRuntime, skillDir, "Lance aussi les hooks livrés par le skill")
-Rel(mcpBin, ppgRunning, "Relaie", "HTTP :8765")
+Rel(mcpBin, ppgRunning, "Relaie + téléverse les SKILL.rego", "HTTP :8765")
+Rel(guardBin, ppgRunning, "POST /verify_artifact", "HTTP :8765")
+Rel(verifyBin, ppgRunning, "POST /verify_changeset", "HTTP :8765")
 Rel(ppgRunning, adrCorpus, "Lit au démarrage")
 Rel(ppgRunning, skillGovDir, "Lit au démarrage")
-Rel(mcpBin, state, "Écrit .ppg-ticket")
-Rel(guardBin, state, "Lit .ppg-ticket + .ppg-session")
+Rel(mcpBin, state, "Écrit le ticket")
+Rel(guardBin, state, "Lit session + ticket")
+Rel(mcpBin, skillDir, "Découvre les skills installés")
 Rel(chat, contractFile, "Lit")
 Rel(remote, checkout, "git clone une fois")
 Rel(remote, skillDir, "apm install")

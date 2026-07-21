@@ -1,0 +1,80 @@
+@startuml seq-skill-sans-adr
+!include octo-theme.puml
+hide footbox
+autonumber
+
+title Skill sans ADR — chaque règle voyage avec le skill
+
+actor "Développeur" as User
+box "Poste de travail — tout tourne en local" #F8F9FB
+  participant "Claude Code\n<size:11><i>suit SKILL.md</i></size>" as Agent
+  participant "ppg-guard\n<size:11><i>hook (SessionStart,</i></size>\n<size:11><i>PreToolUse Edit|Write)</i></size>" as Guard
+  participant "ppg-mcp-server\n<size:11><i>MCP stdio</i></size>" as MCP
+  database "Magasin d'état\n<size:11>$XDG_STATE_HOME/ppg</size>" as Store
+  participant "ppg-verify\n<size:11><i>pre-commit / CI</i></size>" as Verify
+end box
+box "HTTP — localhost dans la PoC,\npeut être un service distant partagé" #DAF6F9
+  participant "Serveur de validation :8765\n<size:11><i>OPA embarqué — zéro ADR</i></size>" as PPG <<accent>>
+end box
+
+== Démarrage de session ==
+Guard -> Store : enregistre la session_id,\npurge les tickets restants
+
+== Planification amplifiée ==
+User -> Agent : /design-system "construis une landing page"
+Agent -> MCP : get_platform_guidelines_for_intent
+MCP -> PPG : POST /enrich
+PPG --> Agent : invariants\n<size:11>(vides : aucun corpus ADR chargé)</size>
+
+== Verrouillage du plan ==
+Agent -> MCP : lock_in_plan(plan structuré)
+MCP -> Store : injecte la vraie session_id
+MCP -[#00D2DD]> PPG : POST /register_skill\n<b>SKILL.md + SKILL.rego</b>\n<size:11>(téléversement lié à la session)</size>
+MCP -> PPG : POST /lock_in_plan
+PPG -> PPG : OPA : règles vue « plan »\ndu SKILL.rego téléversé
+
+alt <color:#EA4335>le plan viole une règle du skill</color>
+  PPG --> Agent : <color:#EA4335><b>422 PLAN_REJECTED</b></color> {violations}\n<size:11>l'agent corrige le plan et re-soumet</size>
+else plan conforme
+  PPG --> MCP : <color:#34A853><b>200 PLAN_LOCKED</b></color> + ticket JWT\n{session_id, plan_hash, skill_id, scope}
+  MCP -> Store : persiste l'execution_ticket
+end
+
+== Éditions gouvernées ==
+Agent -> Guard : Edit / Write\n<size:11>(PreToolUse se déclenche)</size>
+Guard -> Store : charge le ticket
+Guard -> Guard : vérifications locales : signature,\nTTL, scope des chemins, session
+Guard -[#00D2DD]> PPG : POST /verify_artifact {ticket, path, content}
+PPG -> PPG : OPA : règles vue « artifact »\ndu même SKILL.rego
+
+alt artefact conforme
+  PPG --> Guard : 200 ARTIFACT_OK
+  Guard --> Agent : <color:#34A853><b>exit 0 — l'édition passe</b></color>
+else <color:#EA4335>violation</color>
+  PPG --> Guard : 422 ARTIFACT_REJECTED
+  Guard --> Agent : <color:#EA4335><b>exit 2 — édition bloquée</b></color>\n<size:11>OUT_OF_PLAN_SCOPE / SESSION_MISMATCH /</size>\n<size:11>ARCHITECTURAL_INVARIANT_VIOLATION</size>
+end
+
+== Filet à l'application — pre-commit / CI ==
+User -> Verify : git commit\n<size:11>(le hook pre-commit lance <b>ppg-verify --staged</b>)</size>
+Verify -> Store : charge le ticket de la session active\n<size:11>(le même magasin que le MCP)</size>
+Verify -> Verify : git status --porcelain,\nlit l'état final des fichiers
+Verify -[#00D2DD]> PPG : POST /verify_changeset\n<size:11>{ticket, fichiers — états finaux, plan_hash}</size>
+PPG -> PPG : OPA : règles vue « changeset »\ndu même SKILL.rego\n<size:11>(sélection via les claims : session_id, skill_id)</size>
+
+alt changeset conforme
+  PPG --> Verify : <color:#34A853><b>OK — le commit passe</b></color>
+else <color:#EA4335>violation ou substitution de plan</color>
+  PPG --> Verify : <color:#EA4335><b>422 rejeté / 409 PLAN_SUBSTITUTION</b></color>
+end
+
+note over Guard, PPG #DAF6F9
+  Le hook et le serveur MCP ne se parlent jamais : ils ne partagent
+  que le magasin d'état et le serveur. Tout le Rego est évalué côté
+  serveur — en mode « skill seul », 100 % de la policy vient du skill.
+  Le hook est la boucle rapide en session ; /verify_changeset est le
+  contrôle qui fait foi — il revérifie l'état final des fichiers,
+  quel que soit le chemin par lequel les octets sont arrivés.
+end note
+
+@enduml
