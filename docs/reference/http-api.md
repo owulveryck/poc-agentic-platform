@@ -62,32 +62,42 @@ string. The linter fails closed: an undecodable policy evaluation result is
 reported as a `linter_eval_error` violation, never as a pass.
 
 Response (`409 POLICY_CONFLICT`) — the **livelock escalation**. When a
-session's plans are rejected 3 consecutive times with a byte-identical
-violation policy-id set, "fix and resubmit" stops being honest guidance:
+session's plans are rejected 3 times with a byte-identical violation
+policy-id set — consecutive or not, so alternating between two plan shapes
+does not evade the count — "fix and resubmit" stops being honest guidance:
 either the policies are mutually unsatisfiable for this intent, or the
-required plan shape is unreachable from the agent's approach. The validation server
-switches to a hard block carrying:
+required plan shape is unreachable from the agent's approach. The
+validation server switches to a hard block carrying:
 
 | Field | Description |
 |---|---|
+| `conflict_id` | Stable id of the violation set (12-hex hash) — the handle for `ppg escalations show/resolve` |
 | `policy_ids` | The sorted, deduplicated ids of the stable violation set |
 | `policy_sources` | Per id: `adr` (ADR corpus), `skill` (a companion SKILL.rego), or `built-in` (linter rule) — who must be in the room |
-| `consecutive_rejections` | The streak length |
+| `rejections` | How many times this violation set has been rejected |
 | `escalation_log` | Path of the append-only JSONL record written for the platform team (`$XDG_STATE_HOME/ppg/escalations.jsonl`) |
 
-The block persists for the same violation set; a submission hitting a
-*different* set resets to the normal `422` path, and a successful lock
-clears the streak. This detects the livelock **symptom** — general
-unsatisfiability of a Rego corpus is undecidable and is not claimed. The
-escalation log is the capitalization loop: each record is a conflict a
-human must resolve, and the resolution belongs back in the corpus so the
-same conflict cannot recur.
+Once escalated, the conflict blocks **every session** that produces the
+same violation set (a fresh session does not reopen it), and it survives
+server restarts (state in `$XDG_STATE_HOME/ppg/conflicts.json`). A
+successful lock clears a session's *pre-escalation* counters — progress
+proof — but never an escalated conflict: the only way out is a human
+running [`ppg escalations resolve`](validation-server-cli.md#ppg-escalations)
+after fixing the corpus, adopted by the server on SIGHUP. This detects
+the livelock **symptom** — general unsatisfiability of a Rego corpus is
+undecidable and is not claimed. The escalation log plus the `ppg
+escalations` CLI are the capitalization loop: each record is a conflict a
+human resolves, and the resolution belongs back in the corpus so the same
+conflict cannot recur. See the how-to
+[Resolve a policy conflict](../how-to/resolve-a-policy-conflict.md).
 
 ## `POST /register_skill`
 
 Client-uploaded, session-scoped skill companion. The MCP server calls this
-before every `/lock_in_plan` for every skill it finds under the project's
-`.claude/skills/`; it is idempotent by content hash. Enables enforcement of
+before every `/lock_in_plan` for every skill it finds under `~/.claude/skills/`
+(user-wide), the project's `.agents/skills/`, and the project's
+`.claude/skills/` (ascending precedence — project wins on name collision); it
+is idempotent by content hash. Enables enforcement of
 a locally-installed `SKILL.rego` against a validation server that does **not** share
 the client's filesystem — the target scenario for a shared / remote validation server.
 See [policy views](policy-views.md) for how the operator (`-skills`) and

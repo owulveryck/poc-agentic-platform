@@ -136,11 +136,12 @@ Note: Claude Code does NOT expand `${cwd}` in user-scope MCP env values
 
 ## Step 4 — Start the validation server (one terminal, leave it running)
 
-From the repo root (`-adr` is required; `examples/` is the fictional demo
-corpus — point the flags at your own directories once you have them):
+From the repo root (`-adr` is optional — [tutorial 15](15-skill-only-enforcement.md)
+runs without it; `examples/` is the fictional demo corpus — point the flags
+at your own directories once you have them):
 
 ```bash
-ppg -addr :8765 -adr examples/adr \
+ppg -addr 127.0.0.1:8765 -adr examples/adr \
     -services examples/services -service-policy examples/service-policy
 ```
 
@@ -225,7 +226,7 @@ Ships three skills: `ppg-tutorial`, `add-payment-method`, and
 | Clone `poc-agentic-platform` | `git init` a target project |
 | Build the seven binaries onto `PATH` | Enable hooks in `.github/hooks/` (Copilot) or `.claude/settings.json` (Claude) |
 | Register the MCP server (user scope) | Preflight `.github/copilot-instructions.md` for the current intent |
-| Start the validation server (`ppg -addr :8765 -adr …`, step 4) | (Optionally) `apm install` a skill |
+| Start the validation server (`ppg -addr 127.0.0.1:8765 -adr …`, step 4) | (Optionally) `apm install` a skill |
 
 ## Troubleshooting
 

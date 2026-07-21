@@ -196,6 +196,21 @@ the [multi-user posture note](http-api.md#authentication--multi-user-posture)
 for what an enterprise multi-tenant deployment would add (mTLS, signed
 manifests).
 
+## Built-in rules
+
+Three rules are synthesized by the validation server itself rather than
+loaded from the corpus — they guard the enforcement *mechanism*, not a
+domain invariant, so they exist even with zero ADRs and zero skills (see
+[ADR-140](../decisions/ADR-140-wide-scope-cap-structural.md) for the
+boundary rationale). They report like any other policy (`policy_id` in
+violations, `built-in` in `policy_sources`):
+
+| Policy id | View | Fires when |
+|---|---|---|
+| `scope_breadth_cap` | plan | A step's `targets` include `.`/`*` — the derived ticket would be allow-all. Toggled off only by the server flag `-allow-wide-scope` |
+| `unknown_skill` | all | The plan/ticket declares a `skill_id` with no registered companion in either the operator or the session tier — fail-closed |
+| `linter_eval_error` | all | An OPA evaluation failed or returned an undecodable result — reported as a violation, never as a pass |
+
 ## Failure modes
 
 | Situation | Outcome |

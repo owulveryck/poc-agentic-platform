@@ -67,7 +67,7 @@ pkill -f 'ppg -addr' || true
 # Start it with no ADR corpus. NO -skills flag either: the MCP server
 # uploads the design-system SKILL.rego automatically before lock_in_plan
 # (see docs/reference/policy-views.md — session-scoped tier).
-ppg -addr :8765 > /tmp/ppg-skill-only.log 2>&1 &
+ppg -addr 127.0.0.1:8765 > /tmp/ppg-skill-only.log 2>&1 &
 
 # Confirm it is up with no ADRs and no operator-provided skills.
 sleep 1 && grep -E 'ADR store|Plan linter ready' /tmp/ppg-skill-only.log
@@ -150,7 +150,7 @@ DRY_RUN=1 "$REPO/scripts/setup-claude-code.sh"   # preview
 "$REPO/scripts/setup-claude-code.sh"             # apply
 
 # Sanity: the validation server is still the skill-only one from setup.
-curl -sf http://localhost:8765/debt_report >/dev/null && echo "gateway OK"
+curl -sf http://localhost:8765/debt_report >/dev/null && echo "validation server OK"
 ```
 
 **Close and reopen Claude Code** — MCP servers and hooks are read at
@@ -301,7 +301,7 @@ cd ~ && rm -rf ~/demo
 # service instead — the service manager would respawn a pkill'd process.)
 pkill -f 'ppg -addr' || true
 cd "$REPO"
-ppg -addr :8765 -adr examples/adr \
+ppg -addr 127.0.0.1:8765 -adr examples/adr \
   > /tmp/ppg.log 2>&1 &
 ```
 

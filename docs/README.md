@@ -65,6 +65,7 @@ sequence below is the workstation path:
 - [Bundle validation with a skill](how-to/bundle-validation-with-a-skill.md) — author a SKILL.md + SKILL.rego package whose enforcement travels with it (the tutorial-15 shape)
 - [Add a skill governance rule](how-to/add-a-skill-governance-rule.md) — extend the *registry publish gate* (`skill-governance/*.rego`), not an individual skill's policy
 - [Gate skill publication in CI](how-to/gate-skill-publication-in-ci.md)
+- [Resolve a policy conflict](how-to/resolve-a-policy-conflict.md) — the human half of `POLICY_CONFLICT`: inspect the escalation with `ppg escalations`, fix the corpus, close the conflict so it cannot recur
 - [Add a service to the catalog](how-to/add-a-service-to-the-catalog.md) — make a shared capability discoverable and, when needed, enforced
 
 ## Reference — information-oriented

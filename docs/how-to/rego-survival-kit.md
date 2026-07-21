@@ -199,7 +199,7 @@ The fastest loop needs nothing but the validation server: point it at your ADR
 directory and submit a plan that should fail.
 
 ```bash
-ppg -addr :8765 -adr examples/adr     # watch: "Plan linter ready: N policies"
+ppg -addr 127.0.0.1:8765 -adr examples/adr     # watch: "Plan linter ready: N policies"
 curl -s -X POST localhost:8765/lock_in_plan -H "Content-Type: application/json" -d @bad_plan.json
 ```
 

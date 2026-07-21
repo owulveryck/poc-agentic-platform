@@ -14,6 +14,7 @@ Tools and the `ppg-guard` hook verify it before acting.
 | `iat` / `exp` | int | Issued at / expiry. The wall-clock TTL is a configurable cap (validation server `-ticket-ttl` flag / `PPG_TICKET_TTL` env, default `8h`); the session is the primary bound (see below) |
 | `session_id` | string | Session the ticket is bound to; the `ppg-guard` hook rejects the ticket from any other session (`SESSION_MISMATCH`) |
 | `plan_hash` | sha256 hex | Canonical fingerprint of the locked plan |
+| `skill_id` | string (omitted when empty) | The skill the locked plan declared, if any; the guards, Smart Tools and `/verify_changeset` thread it back into artifact/changeset-view policy evaluation as the declared skill (other registered companions still apply by union) |
 | `scope.allow_modify` | string[] | Files the agent may modify (from plan step `targets`; a prefix ending in `*` allows the subtree) |
 | `scope.allow_tool` | string[] | Tools the agent may invoke (from plan step `tool` fields) |
 

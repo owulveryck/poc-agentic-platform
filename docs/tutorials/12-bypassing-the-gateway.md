@@ -70,7 +70,7 @@ the hook fails closed and points you at the paved road.
 
 ```
 No capability ticket for this session. Lock a plan first: call the
-lock_in_plan tool (or POST /lock_in_plan on the Platform Planning Gateway)
+lock_in_plan tool (or POST /lock_in_plan on the validation server)
 — the returned execution_ticket is persisted for you.
 ```
 

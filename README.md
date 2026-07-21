@@ -6,6 +6,10 @@ server, installed at the **machine** level, so that the artifacts an agent
 produces **provably respect your rules** *within the governed channel* —
 without asking a second LLM to police the first one.
 
+(The name is a historical acronym — *Platform Planning Gateway* — kept as
+a brand; per [ADR-130](docs/decisions/ADR-130-gateway-naming.md) the central
+component is now called the *validation server*.)
+
 Companion repository of
 [The Amplified Agentic Loop](https://blog.owulveryck.info/2026/07/07/amplified-agentic-loop.html)
 and *The Governed Skills Registry* (draft). Vocabulary follows
@@ -70,6 +74,18 @@ tools, and at apply time); the **decision is centralized** in one
 validation server, so every control point renders identical verdicts from
 a single policy corpus.
 
+**And when rules contradict each other, the answer is: no action.** A
+prompt cannot override a policy — the developer typing "I want them pink"
+gets the same refusal on every retry. When an agent livelocks against the
+same rejections, the server escalates deterministically
+(`409 POLICY_CONFLICT`), naming the clashing policies and appending the
+case to an escalation log; `ppg escalations` is how a human inspects the
+log, fixes the corpus, and closes the conflict — and once fixed,
+that conflict never recurs. That is the monotonic improvement loop: every
+escape becomes a permanent policy, not a lost prompt. (Coverage today is
+the livelock case; general contradiction detection is undecidable and not
+claimed — see the status table.)
+
 ## Governed-machine mode (the reference mode)
 
 Install once per workstation; every project on the machine is governed:
@@ -119,7 +135,7 @@ honestly documented limit.
 | Validation-server API authentication | 🟡 none by design; binds `127.0.0.1:8765` by default — a networked or multi-user deployment must front it with an auth proxy (see PoC boundaries) |
 | Managed-mode tamper resistance | 🟡 managed scope closes the settings-edit vector; the guard binary (root-owned install) and `PPG_*` env pinning must be hardened operationally against a hostile user (see [set-up-a-governed-workstation](docs/how-to/set-up-a-governed-workstation.md)) |
 | Skill validation regardless of declared `skill_id` | 🟡 content-view (artifact/changeset) rules always apply; a skill's plan-view *ordering/workflow* rule is enforced only for a plan that declares its `skill_id` |
-| Conflict between validations → blocking escalation | 🟡 deterministic *livelock* escalation (`POLICY_CONFLICT` after repeated identical rejections, with the clashing policy ids and an escalation log); general unsatisfiability detection is undecidable and not claimed |
+| Conflict between validations → blocking escalation | 🟡 deterministic *livelock* escalation: `POLICY_CONFLICT` after 3 rejections with an identical violation set (consecutive or not), blocking every session, surviving restarts, closed only by `ppg escalations resolve`; general unsatisfiability detection is undecidable and not claimed |
 | Terminal/Bash writes | 🟡 out of hook reach by design; `ppg-verify` covers them at apply time (`scripts/setup-git-backstop.sh` wires it as a pre-commit hook) |
 
 `AUDIT.md` tracks conformance claim by claim. Known PoC boundaries:

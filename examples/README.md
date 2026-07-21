@@ -21,7 +21,7 @@ corpus with its own.
 From the repository root:
 
 ```bash
-ppg -addr :8765 -adr examples/adr \
+ppg -addr 127.0.0.1:8765 -adr examples/adr \
     -services examples/services -service-policy examples/service-policy
 ```
 

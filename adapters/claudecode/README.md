@@ -32,7 +32,7 @@ A fully worked, tested session is in the
    corpus — here the fictional demo corpus, from the repository root):
 
    ```bash
-   ppg -addr :8765 -adr examples/adr
+   ppg -addr 127.0.0.1:8765 -adr examples/adr
    ```
 
 3. **Register the MCP server** in the target project:

@@ -6,7 +6,7 @@
 
 1. Install the binaries (`make install` from the repo — puts `ppg`,
    `ppg-preflight`, and the guards under `~/.local/bin`). Start the
-   validation server (`ppg -addr :8765 -adr examples/adr` from the repo root,
+   validation server (`ppg -addr 127.0.0.1:8765 -adr examples/adr` from the repo root,
    default port `:8765`). Run the pre-flight
    with your intent:
 

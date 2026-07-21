@@ -3,7 +3,7 @@
   font-family="'Outfit','Helvetica Neue',Arial,sans-serif">
   <title>PPG — animated tour of tutorials 01→06</title>
   <desc>A 120-second looping SVG that plays through the six tutorials of the
-  Platform Planning Gateway proof of concept. It shows the amplified agentic
+  PPG proof of concept. It shows the amplified agentic
   loop end to end: intent enrichment against the ADR store, deterministic plan
   linting, capability tickets, in-tool guards, skill governance and ADR
   authoring — culminating in the tutorial 6 climax where a governed skill
@@ -63,11 +63,11 @@
       <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.7972;0.8006;0.9994;1.0000;1" dur="120.0s" repeatCount="indefinite"/>
     </rect>
 
-    <text x="30" y="28" fill="#FFFFFF" font-size="20" font-weight="700">Platform Planning Gateway — the amplified agentic loop</text>
+    <text x="30" y="28" fill="#FFFFFF" font-size="20" font-weight="700">PPG — the amplified agentic loop</text>
 
     <!-- Per-act "what this tutorial validates" line -->
     <g font-size="13" font-weight="600" fill="#FFD966" text-anchor="middle">
-      <text x="800" y="50" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.0000;0.0006;0.1994;0.2028;1" dur="120.0s" repeatCount="indefinite"/>✓ validated: the gateway loop itself — guidance in, plan linted against ADRs, out-of-scope calls refused, drift measured</text>
+      <text x="800" y="50" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.0000;0.0006;0.1994;0.2028;1" dur="120.0s" repeatCount="indefinite"/>✓ validated: the governed loop itself — guidance in, plan linted against ADRs, out-of-scope calls refused, drift measured</text>
       <text x="800" y="50" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.1972;0.2006;0.3994;0.4028;1" dur="120.0s" repeatCount="indefinite"/>✓ validated: a real Claude Code session — locked plan, scoped ticket, every Edit checked by the hook, session binding</text>
       <text x="800" y="50" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.3972;0.4006;0.5106;0.5139;1" dur="120.0s" repeatCount="indefinite"/>✓ validated: invariants still reach a black-box agent via generated files — guidance only, no hard enforcement</text>
       <text x="800" y="50" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.5083;0.5117;0.6439;0.6472;1" dur="120.0s" repeatCount="indefinite"/>✓ validated: a skill's structure, description and security tier — plus its companion Rego policy — before publication</text>
@@ -151,7 +151,7 @@
   <g id="ppg-container">
     <rect x="420" y="240" width="770" height="310" rx="14" ry="14"
           fill="#E8F0FE" stroke="#6D9EEB" stroke-width="2" stroke-dasharray="6 4"/>
-    <text x="805" y="270" fill="#263967" font-size="17" font-weight="700" text-anchor="middle">Platform Planning Gateway (:8765)</text>
+    <text x="805" y="270" fill="#263967" font-size="17" font-weight="700" text-anchor="middle">Validation server (127.0.0.1:8765)</text>
 
     <!-- Endpoint chips row 1 -->
     <g font-size="14" font-weight="600" text-anchor="middle">
@@ -307,11 +307,11 @@
     <text x="90" y="203" font-size="11" fill="#8691AB" font-family="monospace">~/poc-agentic-platform</text>
 
     <g font-family="monospace" font-size="11" fill="#00D2DD">
-      <text x="55" y="225" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.0022;0.0056;0.0611;0.0644;1" dur="120.0s" repeatCount="indefinite"/>$ go run ./cmd/ppg -addr :8765</text>
+      <text x="55" y="225" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.0022;0.0056;0.0611;0.0644;1" dur="120.0s" repeatCount="indefinite"/>$ go run ./cmd/ppg -addr 127.0.0.1:8765</text>
       <text x="55" y="240" opacity="0" fill="#DAF6F9"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.0100;0.0133;0.0611;0.0644;1" dur="120.0s" repeatCount="indefinite"/>ADR store loaded: 4 invariants</text>
       <text x="55" y="255" opacity="0" fill="#DAF6F9"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.0133;0.0167;0.0611;0.0644;1" dur="120.0s" repeatCount="indefinite"/>Plan linter ready: 4 policies</text>
       <text x="55" y="270" opacity="0" fill="#DAF6F9"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.0167;0.0200;0.0611;0.0644;1" dur="120.0s" repeatCount="indefinite"/>Skill governance linter ready</text>
-      <text x="55" y="285" opacity="0" fill="#DAF6F9"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.0200;0.0233;0.0611;0.0644;1" dur="120.0s" repeatCount="indefinite"/>Platform Planning Gateway listening on :8765</text>
+      <text x="55" y="285" opacity="0" fill="#DAF6F9"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.0200;0.0233;0.0611;0.0644;1" dur="120.0s" repeatCount="indefinite"/>validation server listening on 127.0.0.1:8765</text>
       <text x="55" y="240" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.0600;0.0633;0.0967;0.1000;1" dur="120.0s" repeatCount="indefinite"/>$ curl -X POST :8765/enrich  #intent=Seka payment</text>
       <text x="55" y="240" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.0956;0.0989;0.1267;0.1300;1" dur="120.0s" repeatCount="indefinite"/>$ curl -X POST :8765/lock_in_plan  #3 steps</text>
       <text x="55" y="240" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.1256;0.1289;0.1556;0.1589;1" dur="120.0s" repeatCount="indefinite"/>$ curl -X POST :8765/tools/patch_code  #drift</text>
@@ -686,7 +686,7 @@
   <g opacity="0">
     <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.6833;0.6867;0.7000;0.7033;1" dur="120.0s" repeatCount="indefinite"/>
     <rect x="420" y="240" width="770" height="34" rx="14" fill="#00D2DD" opacity="0.35"/>
-    <text x="805" y="262" font-size="12" fill="#0E2356" font-weight="700" text-anchor="middle">gateway restart · ADR store loaded: 5 invariants · Plan linter ready: 5 policies</text>
+    <text x="805" y="262" font-size="12" fill="#0E2356" font-weight="700" text-anchor="middle">validation server restart · ADR store loaded: 5 invariants · Plan linter ready: 5 policies</text>
   </g>
   <g opacity="0">
     <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.7022;0.7056;0.7167;0.7200;1" dur="120.0s" repeatCount="indefinite"/>
@@ -822,8 +822,8 @@
 
     <!-- Act lines -->
     <g font-size="14" font-weight="700" fill="#0E2356">
-      <text x="62" y="678" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.0022;0.0056;0.1933;0.1967;1" dur="120.0s" repeatCount="indefinite"/>Act 1 — the manual cycle: every call goes through the gateway (curl)</text>
-      <text x="62" y="678" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.2022;0.2056;0.3989;0.4022;1" dur="120.0s" repeatCount="indefinite"/>Act 2 — the gateway inside a live Claude Code session (MCP + hook)</text>
+      <text x="62" y="678" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.0022;0.0056;0.1933;0.1967;1" dur="120.0s" repeatCount="indefinite"/>Act 1 — the manual cycle: every call goes through the validation server (curl)</text>
+      <text x="62" y="678" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.2022;0.2056;0.3989;0.4022;1" dur="120.0s" repeatCount="indefinite"/>Act 2 — the validation server inside a live Claude Code session (MCP + hook)</text>
       <text x="62" y="678" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.4033;0.4067;0.5056;0.5089;1" dur="120.0s" repeatCount="indefinite"/>Act 3 — Copilot preflight: only the soft half applies</text>
       <text x="62" y="678" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.5133;0.5167;0.6422;0.6456;1" dur="120.0s" repeatCount="indefinite"/>Act 4 — the skills registry publication gate</text>
       <text x="62" y="678" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.6450;0.6483;0.7978;0.8011;1" dur="120.0s" repeatCount="indefinite"/>Act 5 — write an ADR twice: prose for the agent, Rego for the linter</text>
@@ -834,14 +834,14 @@
     <g opacity="0">
       <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.0022;0.0056;0.0589;0.0622;1" dur="120.0s" repeatCount="indefinite"/>
       <text x="612" y="645" font-size="12" font-weight="700" fill="#7B61FF" text-anchor="end">step 1 / 7</text>
-      <text x="62" y="708" font-size="14" font-weight="500" fill="#7B61FF">The developer starts the gateway. It loads the ADR store (the</text>
+      <text x="62" y="708" font-size="14" font-weight="500" fill="#7B61FF">The developer starts the validation server. It loads the ADR store (the</text>
       <text x="62" y="730" font-size="14" font-weight="500" fill="#7B61FF">architecture decisions) and compiles the OPA policy linters.</text>
     </g>
     <g opacity="0">
       <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.0622;0.0656;0.0756;0.0789;1" dur="120.0s" repeatCount="indefinite"/>
       <text x="612" y="645" font-size="12" font-weight="700" fill="#7B61FF" text-anchor="end">step 2 / 7</text>
       <text x="62" y="708" font-size="14" font-weight="500" fill="#7B61FF">curl POST /enrich — the developer sends a raw intent ("Seka payment").</text>
-      <text x="62" y="730" font-size="14" font-weight="500" fill="#7B61FF">The gateway searches the ADR store for matching invariants…</text>
+      <text x="62" y="730" font-size="14" font-weight="500" fill="#7B61FF">The validation server searches the ADR store for matching invariants…</text>
     </g>
     <g opacity="0">
       <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.0789;0.0822;0.0933;0.0967;1" dur="120.0s" repeatCount="indefinite"/>
@@ -870,7 +870,7 @@
     <g opacity="0">
       <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.1800;0.1833;0.1933;0.1967;1" dur="120.0s" repeatCount="indefinite"/>
       <text x="612" y="645" font-size="12" font-weight="700" fill="#7B61FF" text-anchor="end">step 7 / 7</text>
-      <text x="62" y="708" font-size="14" font-weight="500" fill="#7B61FF">GET /debt_report: the gateway also measures how often sessions</text>
+      <text x="62" y="708" font-size="14" font-weight="500" fill="#7B61FF">GET /debt_report: the validation server also measures how often sessions</text>
       <text x="62" y="730" font-size="14" font-weight="500" fill="#7B61FF">drift from their plans — governance observes as well as blocks.</text>
     </g>
 
@@ -878,7 +878,7 @@
     <g opacity="0">
       <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.2078;0.2111;0.2378;0.2411;1" dur="120.0s" repeatCount="indefinite"/>
       <text x="612" y="645" font-size="12" font-weight="700" fill="#7B61FF" text-anchor="end">step 1 / 7</text>
-      <text x="62" y="708" font-size="14" font-weight="500" fill="#7B61FF">Same loop, now inside Claude Code. The gateway is wired in as an</text>
+      <text x="62" y="708" font-size="14" font-weight="500" fill="#7B61FF">Same loop, now inside Claude Code. The validation server is wired in as an</text>
       <text x="62" y="730" font-size="14" font-weight="500" fill="#7B61FF">MCP server plus a PreToolUse hook — the developer just prompts.</text>
     </g>
     <g opacity="0">
@@ -890,7 +890,7 @@
     <g opacity="0">
       <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.2544;0.2578;0.2656;0.2689;1" dur="120.0s" repeatCount="indefinite"/>
       <text x="612" y="645" font-size="12" font-weight="700" fill="#7B61FF" text-anchor="end">step 3 / 7</text>
-      <text x="62" y="708" font-size="14" font-weight="500" fill="#7B61FF">The gateway returns ADR-042 + ADR-070 and the agent reasons over</text>
+      <text x="62" y="708" font-size="14" font-weight="500" fill="#7B61FF">The validation server returns ADR-042 + ADR-070 and the agent reasons over</text>
       <text x="62" y="730" font-size="14" font-weight="500" fill="#7B61FF">these invariants while it writes its implementation plan.</text>
     </g>
     <g opacity="0">
@@ -922,7 +922,7 @@
     <g opacity="0">
       <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.4033;0.4067;0.4100;0.4133;1" dur="120.0s" repeatCount="indefinite"/>
       <text x="612" y="645" font-size="12" font-weight="700" fill="#7B61FF" text-anchor="end">step 1 / 4</text>
-      <text x="62" y="708" font-size="14" font-weight="500" fill="#7B61FF">GitHub Copilot cannot call the gateway from inside its loop — it is</text>
+      <text x="62" y="708" font-size="14" font-weight="500" fill="#7B61FF">GitHub Copilot cannot call the validation server from inside its loop — it is</text>
       <text x="62" y="730" font-size="14" font-weight="500" fill="#7B61FF">a black box. So a preflight adapter runs before the session instead.</text>
     </g>
     <g opacity="0">
@@ -981,12 +981,12 @@
       <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.6633;0.6667;0.6800;0.6833;1" dur="120.0s" repeatCount="indefinite"/>
       <text x="612" y="645" font-size="12" font-weight="700" fill="#7B61FF" text-anchor="end">step 2 / 6</text>
       <text x="62" y="708" font-size="14" font-weight="500" fill="#7B61FF">Both files are simply copied into the ADR store directory that</text>
-      <text x="62" y="730" font-size="14" font-weight="500" fill="#7B61FF">the gateway reads.</text>
+      <text x="62" y="730" font-size="14" font-weight="500" fill="#7B61FF">the validation server reads.</text>
     </g>
     <g opacity="0">
       <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.6833;0.6867;0.6989;0.7022;1" dur="120.0s" repeatCount="indefinite"/>
       <text x="612" y="645" font-size="12" font-weight="700" fill="#7B61FF" text-anchor="end">step 3 / 6</text>
-      <text x="62" y="708" font-size="14" font-weight="500" fill="#7B61FF">After a restart the gateway loads 5 invariants and 5 plan policies:</text>
+      <text x="62" y="708" font-size="14" font-weight="500" fill="#7B61FF">After a restart the validation server loads 5 invariants and 5 plan policies:</text>
       <text x="62" y="730" font-size="14" font-weight="500" fill="#7B61FF">the new rule is live in every half of the loop at once.</text>
     </g>
     <g opacity="0">

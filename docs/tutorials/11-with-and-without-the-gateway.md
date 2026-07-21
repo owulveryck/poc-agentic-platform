@@ -2,8 +2,9 @@
 
 > **Goal**: a live demo, dos-à-dos, showing that a skill's `SKILL.md`
 > alone is only *soft* guidance a model can be talked out of, and that
-> the governance harness is what turns compliance from
-> statistical to guaranteed. Same skill, same prompts, two projects,
+> the governance harness is what turns compliance, within the
+> governed channel, from statistical to deterministic (a blocking
+> refusal, not a probability). Same skill, same prompts, two projects,
 > two outcomes.
 >
 > Time: ~10 min running the demo, ~5 min beforehand for setup.
@@ -171,7 +172,7 @@ mv ~/.copilot.saved ~/.copilot
 Confirm the validation server is running:
 
 ```bash
-curl -sf http://localhost:8765/debt_report >/dev/null && echo "gateway OK"
+curl -sf http://localhost:8765/debt_report >/dev/null && echo "validation server OK"
 ```
 
 ## Act 3 — with the platform, same prompts, deterministic outcome

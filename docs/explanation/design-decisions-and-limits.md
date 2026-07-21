@@ -65,13 +65,21 @@ atomic-rename writes, so concurrent sessions cannot corrupt or half-purge state
   ADR-120 forbids writes to it) by rule design plus a dedicated test —
   i.e. by policy-author discipline, not by mechanism. General
   unsatisfiability checking is undecidable; the implemented mitigation is
-  the deterministic *livelock* escalation: 3 consecutive rejections of a
-  session with a byte-identical violation set flip the response to a
-  hard-blocking `409 POLICY_CONFLICT` naming the clashing policies and
-  their sources (adr / skill / built-in), and append a record to
+  the deterministic *livelock* escalation: 3 rejections with a
+  byte-identical violation set — counted per set within a session,
+  consecutive or not, so alternating plan shapes does not evade it — flip
+  the response to a hard-blocking `409 POLICY_CONFLICT` naming the
+  clashing policies, their sources (adr / skill / built-in), and a stable
+  `conflict_id`, and append a record to
   `$XDG_STATE_HOME/ppg/escalations.jsonl` for the humans who own the
-  rules — see [error codes](../reference/error-codes.md). This detects
-  the livelock *symptom*, not unsatisfiability in general.
+  rules. An escalated conflict blocks every session producing that set,
+  survives restarts (`conflicts.json` in the state root), and is closed
+  only by `ppg escalations resolve` + SIGHUP after the corpus fix — see
+  [error codes](../reference/error-codes.md) and the how-to
+  [Resolve a policy conflict](../how-to/resolve-a-policy-conflict.md).
+  This detects the livelock *symptom*, not unsatisfiability in general:
+  an agent whose every submission produces a *genuinely different*
+  violation set still livelocks undetected.
 - **Session-scoped skill registration is memory-only and single-tenant.**
   The `POST /register_skill` endpoint stores companion Rego per session in
   a process-local map (`internal/linter/linter.go` — `sessionSkills`); a

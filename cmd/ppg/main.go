@@ -11,6 +11,11 @@
 //	GET  /services/{id}    — one catalog record
 //	GET  /debt_report      — transition-debt governance report
 //	POST /validate_skill   — enterprise skill governance linter (structure + security tier)
+//
+// It also carries the escalation consumer CLI — the human half of the
+// POLICY_CONFLICT loop:
+//
+//	ppg escalations list|show|resolve
 package main
 
 import (
@@ -23,6 +28,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"syscall"
@@ -44,6 +50,12 @@ import (
 )
 
 func main() {
+	// Subcommand dispatch before flag.Parse: `ppg escalations …` is the
+	// offline consumer of the conflict state — it never starts the server.
+	if len(os.Args) > 1 && os.Args[1] == "escalations" {
+		os.Exit(runEscalations(os.Args[2:]))
+	}
+
 	addr := flag.String("addr", "127.0.0.1:8765",
 		"listen address; defaults to loopback because the API is unauthenticated — pass an explicit host (e.g. :8765) only behind a trusted network or an auth proxy")
 	adrDir := flag.String("adr", "", "path to the ADR store (optional; omit to run on skill companions and built-in rules only; demo corpus: examples/adr)")
@@ -91,11 +103,12 @@ func main() {
 
 	// The conflict detector is created ONCE for the process lifetime, not per
 	// mux: buildMux runs again on every SIGHUP reload, so a detector owned by
-	// the mux would have its livelock streaks silently wiped on each reload —
+	// the mux would have its livelock counters silently wiped on each reload —
 	// and a reload is exactly how a human applies the corpus fix, which would
 	// reset the counter just as the conflict is being resolved. Threading one
-	// detector through install keeps streak state stable across reloads.
-	conflicts := newConflictDetector()
+	// detector through install keeps counter state stable across reloads, and
+	// the state file keeps it stable across restarts.
+	conflicts := newConflictDetector(filepath.Join(stateRoot, "conflicts.json"))
 
 	// The ticket signing key is never hardcoded: $PPG_TICKET_SECRET wins,
 	// else a per-machine key is generated once under the state root.
@@ -152,6 +165,11 @@ func main() {
 			nc.lint.AdoptSessions(c.lint)
 			c = nc
 			install(nc)
+			// Adopt conflict resolutions recorded by `ppg escalations
+			// resolve` — resolving a conflict rides the same SIGHUP ritual
+			// as capitalizing the corpus fix. Live rejection counters are
+			// kept.
+			conflicts.syncFromDisk()
 			log.Printf("SIGHUP: corpus reloaded")
 		}
 	}()
@@ -260,39 +278,46 @@ func handleLockInPlan(lint *linter.Linter, ttl time.Duration, conflicts *conflic
 		}
 		if violations := lint.Validate(&p); len(violations) > 0 {
 			ids := violationPolicyIDs(violations)
-			streak := conflicts.observeRejection(p.SessionID, ids)
-			if streak >= conflictThreshold {
-				// Livelock: the violation set has been byte-identical for
-				// conflictThreshold consecutive submissions. "Fix and
-				// resubmit" is no longer honest guidance — escalate to the
-				// humans who own the clashing rules, and keep blocking.
+			ts := time.Now().UTC().Format(time.RFC3339)
+			rejections, cid, blocked := conflicts.observeRejection(p.SessionID, ids, ts)
+			if blocked {
+				// Livelock: this exact violation set has been rejected
+				// conflictThreshold times without a successful lock in
+				// between (or was already escalated — by any session).
+				// "Fix and resubmit" is no longer honest guidance —
+				// escalate to the humans who own the clashing rules, and
+				// keep blocking until `ppg escalations resolve`.
 				sources := policySources(lint, ids)
 				appendEscalation(escalationLog, map[string]any{
-					"ts":                     time.Now().UTC().Format(time.RFC3339),
-					"session_id":             p.SessionID,
-					"intent":                 p.Intent,
-					"skill_id":               p.SkillID,
-					"plan_steps":             p.Steps,
-					"consecutive_rejections": streak,
-					"policy_ids":             ids,
-					"policy_sources":         sources,
-					"violations":             violations,
+					"ts":             ts,
+					"conflict_id":    cid,
+					"session_id":     p.SessionID,
+					"intent":         p.Intent,
+					"skill_id":       p.SkillID,
+					"plan_steps":     p.Steps,
+					"rejections":     rejections,
+					"policy_ids":     ids,
+					"policy_sources": sources,
+					"violations":     violations,
 				})
-				log.Printf("POLICY_CONFLICT: session %s rejected %d consecutive times with identical violation set %v — escalation recorded in %s",
-					p.SessionID, streak, ids, escalationLog)
+				log.Printf("POLICY_CONFLICT %s: violation set %v rejected %d times (session %s) — escalation recorded in %s",
+					cid, ids, rejections, p.SessionID, escalationLog)
 				httpError(w, http.StatusConflict, map[string]any{
-					"status":                 "POLICY_CONFLICT",
-					"violations":             violations,
-					"policy_ids":             ids,
-					"policy_sources":         sources,
-					"consecutive_rejections": streak,
-					"escalation_log":         escalationLog,
-					"guidance": "STOP resubmitting. This session's plans were rejected with a byte-identical violation set " +
-						"multiple consecutive times: either these policies are mutually unsatisfiable for this intent, or the " +
-						"required plan shape is not reachable from the current approach. This is now a human decision — " +
-						"review the policies in policy_ids with their owners (policy_sources says whether each comes from " +
-						"the ADR corpus, a skill companion, or a built-in rule), or change the intent. The escalation was " +
-						"recorded for the platform team; the validation server keeps answering POLICY_CONFLICT for this violation set.",
+					"status":         "POLICY_CONFLICT",
+					"conflict_id":    cid,
+					"violations":     violations,
+					"policy_ids":     ids,
+					"policy_sources": sources,
+					"rejections":     rejections,
+					"escalation_log": escalationLog,
+					"guidance": "STOP resubmitting. Plans were rejected with this exact violation set " + strconv.Itoa(conflictThreshold) +
+						"+ times without a successful lock in between: either these policies are mutually unsatisfiable for this " +
+						"intent, or the required plan shape is not reachable from the current approach. This is now a human " +
+						"decision — review the policies in policy_ids with their owners (policy_sources says whether each comes " +
+						"from the ADR corpus, a skill companion, or a built-in rule), or change the intent. The escalation was " +
+						"recorded; a human inspects it with `ppg escalations list` / `ppg escalations show " + cid + "`, fixes " +
+						"the corpus, then runs `ppg escalations resolve " + cid + "` and reloads the server (SIGHUP). Until " +
+						"then the validation server keeps answering POLICY_CONFLICT for this violation set, from every session.",
 				})
 				return
 			}

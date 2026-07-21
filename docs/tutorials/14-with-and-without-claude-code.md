@@ -2,8 +2,9 @@
 
 > **Goal**: the same story tutorial 11 tells for Copilot desktop —
 > a skill's `SKILL.md` is *soft* guidance a model can be talked out
-> of, and the governance harness is what turns compliance
-> from statistical to guaranteed — but with **Claude Code** as the
+> of, and the governance harness is what turns compliance, within
+> the governed channel, from statistical to deterministic — but with
+> **Claude Code** as the
 > agent surface, using the design-system skill, and using the
 > repo's own setup/teardown scripts to toggle the platform on and
 > off without disturbing the rest of your Claude configuration.
@@ -192,7 +193,7 @@ DRY_RUN=1 "$REPO/scripts/setup-claude-code.sh"
 "$REPO/scripts/setup-claude-code.sh"
 
 # Sanity: the validation server itself was never toggled. Confirm it is up.
-curl -sf http://localhost:8765/debt_report >/dev/null && echo "gateway OK"
+curl -sf http://localhost:8765/debt_report >/dev/null && echo "validation server OK"
 ```
 
 The setup script re-registers `mcpServers.ppg` in `~/.claude.json`

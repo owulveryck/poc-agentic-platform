@@ -17,15 +17,8 @@ by default; override with `BINDIR`).
 
 | Flag | Default | Description |
 |---|---|---|
-| `-addr` | `:8765` | Listen address |
+| `-addr` | `127.0.0.1:8765` | Listen address (loopback by default — the API is unauthenticated) |
 | `-adr` | *(none — optional)* | Path to the ADR store (Markdown + paired `.rego` files). Omit it to run on skill companions and built-in rules only (the [tutorial 15](../tutorials/15-skill-only-enforcement.md) shape). When given, startup fails if the directory contains no `*.md` (a typo'd path, not a valid corpus). The fictional demo corpus is `examples/adr` |
-
-**Hot reload**: `kill -HUP <pid>` rebuilds the whole corpus (ADRs, plan
-policies, operator skills, skill-governance policies, service catalog)
-from disk and swaps it atomically — capitalizing a new or extended policy
-does not require a restart. Fail-safe: if the reload fails (e.g. a
-half-written `.rego`), the previous corpus keeps serving and the error is
-logged. Session-scoped skill registrations survive the swap.
 | `-skill-governance` | `skill-governance` | Path to the skill governance Rego policy directory |
 | `-skills` | *(none)* | **Operator baseline** for Gate 3: path to the published skills directory (one subdir per skill with `SKILL.md` [+ `SKILL.rego`]). Loaded once at startup. Entries here win over client uploads on name collision. Skills installed locally by users (e.g. `apm install ... --target claude`) do NOT need this flag — the MCP server uploads them per-session via [`POST /register_skill`](http-api.md#post-register_skill), so a plan declaring `skill_id` finds its companion either in the operator tier or in the session-scoped tier. With both empty for a given name, the plan is rejected (`unknown_skill`, fail-closed) |
 | `-services` | *(none — catalog disabled)* | Path to the service catalog (`*.md` records). Omitted: `/discover_service` answers `SERVICE_CATALOG_UNAVAILABLE` |
@@ -33,6 +26,13 @@ logged. Session-scoped skill registrations survive the swap.
 | `-ticket-ttl` | `0` | Capability ticket wall-clock lifetime (a Go duration, e.g. `8h`, `30m`). `0` means use `$PPG_TICKET_TTL`, else the built-in default `8h`. The session still bounds the ticket regardless. |
 | `-allow-wide-scope` | `false` | Accept plan targets like `.` or `*` whose derived ticket would be allow-all. Off by default: the built-in `scope_breadth_cap` rejects them at lock time |
 | `-version` | `false` | Print the version and exit (all seven binaries accept it) |
+
+**Hot reload**: `kill -HUP <pid>` rebuilds the whole corpus (ADRs, plan
+policies, operator skills, skill-governance policies, service catalog)
+from disk and swaps it atomically — capitalizing a new or extended policy
+does not require a restart. Fail-safe: if the reload fails (e.g. a
+half-written `.rego`), the previous corpus keeps serving and the error is
+logged. Session-scoped skill registrations survive the swap.
 
 The ticket lifetime resolves as `-ticket-ttl` (when > 0) > `$PPG_TICKET_TTL`
 > built-in `8h`; a malformed `PPG_TICKET_TTL` is a startup error. Startup logs
@@ -49,6 +49,26 @@ Startup logs the readiness lines: `ADR store loaded: N invariants`,
 `Plan linter ready: N policies`, `Skill governance linter ready`,
 `Service catalog loaded: N services`, then
 `validation server listening on <addr>`.
+
+### `ppg escalations`
+
+The consumer of the `POLICY_CONFLICT` loop — the same binary, run as a CLI
+(it never starts the server). It reads the escalation log
+(`escalations.jsonl`) and the livelock state (`conflicts.json`) under the
+per-machine state root (`$PPG_STORE_ROOT`, else `$XDG_STATE_HOME/ppg`):
+
+```bash
+ppg escalations list [-all]                 # open conflicts (-all: resolved too)
+ppg escalations show <conflict_id>          # every recorded escalation for one conflict
+ppg escalations resolve <conflict_id> -note "fixed ADR-060 wording"
+```
+
+`resolve` removes the conflict from the livelock state and appends a
+`type: "resolution"` record (with the note) to the escalation log. The
+running server adopts the resolution on its next SIGHUP reload — resolving
+a conflict rides the same ritual as capitalizing the corpus fix itself.
+All three subcommands accept `-store-root DIR`. See the how-to
+[Resolve a policy conflict](../how-to/resolve-a-policy-conflict.md).
 
 The service catalog is an optional capability with three configurations:
 

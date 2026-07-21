@@ -273,7 +273,7 @@ echo "── Group C — escapes the in-loop hook, caught at APPLY time ──"
 # C1: write an out-of-scope file via Bash (the PreToolUse matcher is Edit|Write
 # only, so ppg-guard never sees this). ppg-verify catches it at commit time.
 printf 'package auth // sneaked in via shell\n' >>"$PROJ/internal/auth/login.go"
-V_OUT="$(cd "$PROJ" && ppg-verify --store-root "$STATE" --project-dir "$PROJ" --gateway "$GW" 2>&1)"; V_RC=$?
+V_OUT="$(cd "$PROJ" && ppg-verify --store-root "$STATE" --project-dir "$PROJ" --server "$GW" 2>&1)"; V_RC=$?
 check "C1 Bash write out-of-scope → ppg-verify refuses at apply time" "$V_RC" "1" "$V_OUT" "not part of the locked plan"
 (cd "$PROJ" && git checkout -q -- internal/auth/login.go)
 
@@ -285,7 +285,7 @@ cat >"$TMP/other-plan.json" <<JSON
  "steps":[{"id":"s1","action":"patch the payment router","tool":"patch_code","targets":["internal/payment"]},
           {"id":"s2","action":"go test ./...","tool":"go-test","targets":["internal/payment"]}]}
 JSON
-V_OUT="$(cd "$PROJ" && ppg-verify --store-root "$STATE" --project-dir "$PROJ" --gateway "$GW" --plan "$TMP/other-plan.json" 2>&1)"; V_RC=$?
+V_OUT="$(cd "$PROJ" && ppg-verify --store-root "$STATE" --project-dir "$PROJ" --server "$GW" --plan "$TMP/other-plan.json" 2>&1)"; V_RC=$?
 check "C2 plan substitution → ppg-verify refuses (PLAN_SUBSTITUTION)" "$V_RC" "1" "$V_OUT" "PLAN_SUBSTITUTION"
 (cd "$PROJ" && git checkout -q -- internal/payment/router.go)
 

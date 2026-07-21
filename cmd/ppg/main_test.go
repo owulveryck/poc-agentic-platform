@@ -57,7 +57,7 @@ func testServer(t *testing.T) (*httptest.Server, string) {
 		t.Fatalf("catalog.NewRanker: %v", err)
 	}
 
-	srv := httptest.NewServer(buildMux(store, lint, skillLint, catStore, ranker, time.Hour, newConflictDetector(), filepath.Join(t.TempDir(), "escalations.jsonl")))
+	srv := httptest.NewServer(buildMux(store, lint, skillLint, catStore, ranker, time.Hour, newConflictDetector(""), filepath.Join(t.TempDir(), "escalations.jsonl")))
 	t.Cleanup(srv.Close)
 
 	planJSON := `{"session_id":"11111111-1111-1111-1111-111111111111","intent":"build a landing page","repository_context":{"name":"web","tech_stack":["Go"]},"steps":[{"id":"s1","action":"read design tokens","tool":"Read","targets":["design/tokens.css"]},{"id":"s2","action":"write styles","tool":"Write","targets":["index.css"]},{"id":"s3","action":"go test","tool":"go-test","targets":["x_test.go"]}]}`
@@ -164,7 +164,7 @@ func TestVerifyArtifactRejectsSkillCompanionViolation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("catalog.NewRanker: %v", err)
 	}
-	srv := httptest.NewServer(buildMux(store, lint, skillLint, catStore, ranker, time.Hour, newConflictDetector(), filepath.Join(t.TempDir(), "escalations.jsonl")))
+	srv := httptest.NewServer(buildMux(store, lint, skillLint, catStore, ranker, time.Hour, newConflictDetector(""), filepath.Join(t.TempDir(), "escalations.jsonl")))
 	t.Cleanup(srv.Close)
 
 	// Plan reads design/tokens.css (ADR-090 plan rule) and writes a .tsx
@@ -239,7 +239,7 @@ func TestRegisterSkillThenVerifyArtifact(t *testing.T) {
 	if err != nil {
 		t.Fatalf("catalog.NewRanker: %v", err)
 	}
-	srv := httptest.NewServer(buildMux(store, lint, skillLint, catStore, ranker, time.Hour, newConflictDetector(), filepath.Join(t.TempDir(), "escalations.jsonl")))
+	srv := httptest.NewServer(buildMux(store, lint, skillLint, catStore, ranker, time.Hour, newConflictDetector(""), filepath.Join(t.TempDir(), "escalations.jsonl")))
 	t.Cleanup(srv.Close)
 
 	const session = "33333333-3333-3333-3333-333333333333"
@@ -405,10 +405,12 @@ func TestDiscoverServiceDeniesForbidden(t *testing.T) {
 // TestPolicyConflictLivelockEscalation drives the livelock detector end to
 // end: the same rejected plan submitted conflictThreshold times flips the
 // response from 422 PLAN_REJECTED ("fix and resubmit") to 409
-// POLICY_CONFLICT (a hard block naming the policies and their sources),
-// appends an escalation record, and keeps answering 409 for the same
-// violation set. A different violation set — or a successful lock — resets
-// the streak.
+// POLICY_CONFLICT (a hard block naming the policies, their sources, and a
+// stable conflict_id), appends an escalation record, and keeps answering
+// 409 for the same violation set — including after a successful lock: an
+// escalated conflict is closed by a human (`ppg escalations resolve`),
+// never by agent behavior. A different violation set is counted on its own
+// (422 until its own threshold).
 func TestPolicyConflictLivelockEscalation(t *testing.T) {
 	store, err := adr.Load("../../examples/adr")
 	if err != nil {
@@ -423,7 +425,7 @@ func TestPolicyConflictLivelockEscalation(t *testing.T) {
 		t.Fatalf("skill.NewLinter: %v", err)
 	}
 	escLog := filepath.Join(t.TempDir(), "escalations.jsonl")
-	srv := httptest.NewServer(buildMux(store, lint, skillLint, nil, nil, time.Hour, newConflictDetector(), escLog))
+	srv := httptest.NewServer(buildMux(store, lint, skillLint, nil, nil, time.Hour, newConflictDetector(""), escLog))
 	t.Cleanup(srv.Close)
 
 	// A Go plan with no test step: rejected by ADR-060 (go_tests_present),
@@ -471,18 +473,133 @@ func TestPolicyConflictLivelockEscalation(t *testing.T) {
 		t.Fatalf("escalation log missing the session record: %s", raw)
 	}
 
-	// A different violation set resets the streak back to 422.
+	// A different violation set is counted separately: first hit is 422.
 	otherPlan := `{"session_id":"22222222-2222-2222-2222-222222222222","intent":"broad refactor","repository_context":{"name":"pay","tech_stack":["Go"]},"steps":[{"id":"s1","action":"edit everything","tool":"Edit","targets":["."]}]}`
 	if status, body := post(t, srv.URL+"/lock_in_plan", otherPlan); status != http.StatusUnprocessableEntity {
-		t.Fatalf("different violation set must reset to 422, got %d %s", status, body)
+		t.Fatalf("a different violation set's first rejection must be 422, got %d %s", status, body)
 	}
 
-	// A successful lock clears the streak entirely.
+	// A successful lock clears the session's pre-escalation counters but
+	// NOT the escalated conflict: the same bad plan stays blocked until a
+	// human resolves it.
 	goodPlan := `{"session_id":"22222222-2222-2222-2222-222222222222","intent":"patch the payment router","repository_context":{"name":"pay","tech_stack":["Go"]},"steps":[{"id":"s1","action":"edit code","tool":"Edit","targets":["internal/payment/router.go"]},{"id":"s2","action":"go test","tool":"go-test","targets":["internal/payment/router_test.go"]}]}`
 	if status, body := post(t, srv.URL+"/lock_in_plan", goodPlan); status != http.StatusOK {
 		t.Fatalf("good plan must lock, got %d %s", status, body)
 	}
-	if status, _ := post(t, srv.URL+"/lock_in_plan", badPlan); status != http.StatusUnprocessableEntity {
-		t.Fatalf("streak must be cleared after a successful lock, got %d", status)
+	if status, _ := post(t, srv.URL+"/lock_in_plan", badPlan); status != http.StatusConflict {
+		t.Fatalf("escalated conflict must survive a successful lock, got %d", status)
+	}
+
+	// Another session hitting the same wall is blocked immediately: an
+	// escalated conflict is global, so session rotation does not reopen it.
+	badPlanOtherSession := strings.Replace(badPlan, "22222222-2222-2222-2222-222222222222", "33333333-3333-3333-3333-333333333333", 1)
+	if status, body := post(t, srv.URL+"/lock_in_plan", badPlanOtherSession); status != http.StatusConflict {
+		t.Fatalf("escalated conflict must block other sessions too, got %d %s", status, body)
+	}
+}
+
+// TestPolicyConflictAlternatingSets closes the alternation escape: an agent
+// alternating between two plan shapes (two different violation sets) must
+// still escalate once one set has been rejected conflictThreshold times —
+// rejections are counted per violation set, consecutive or not.
+func TestPolicyConflictAlternatingSets(t *testing.T) {
+	store, err := adr.Load("../../examples/adr")
+	if err != nil {
+		t.Fatalf("adr.Load: %v", err)
+	}
+	lint, err := linter.New(store, "../../examples/adr")
+	if err != nil {
+		t.Fatalf("linter.New: %v", err)
+	}
+	skillLint, err := skill.NewLinter("../../skill-governance")
+	if err != nil {
+		t.Fatalf("skill.NewLinter: %v", err)
+	}
+	escLog := filepath.Join(t.TempDir(), "escalations.jsonl")
+	srv := httptest.NewServer(buildMux(store, lint, skillLint, nil, nil, time.Hour, newConflictDetector(""), escLog))
+	t.Cleanup(srv.Close)
+
+	// Set A: Go plan with no test step (go_tests_present).
+	planA := `{"session_id":"44444444-4444-4444-4444-444444444444","intent":"patch the payment router","repository_context":{"name":"pay","tech_stack":["Go"]},"steps":[{"id":"s1","action":"edit code","tool":"Edit","targets":["internal/payment/router.go"]}]}`
+	// Set B: over-broad target on top (scope_breadth_cap joins the set).
+	planB := `{"session_id":"44444444-4444-4444-4444-444444444444","intent":"broad refactor","repository_context":{"name":"pay","tech_stack":["Go"]},"steps":[{"id":"s1","action":"edit everything","tool":"Edit","targets":["."]}]}`
+
+	// A B A B — under the old consecutive-streak rule every submission
+	// would reset the other's counter and nothing would ever escalate.
+	for i := 0; i < conflictThreshold-1; i++ {
+		if status, body := post(t, srv.URL+"/lock_in_plan", planA); status != http.StatusUnprocessableEntity {
+			t.Fatalf("planA round %d: want 422, got %d %s", i+1, status, body)
+		}
+		if status, body := post(t, srv.URL+"/lock_in_plan", planB); status != http.StatusUnprocessableEntity {
+			t.Fatalf("planB round %d: want 422, got %d %s", i+1, status, body)
+		}
+	}
+	status, body := post(t, srv.URL+"/lock_in_plan", planA)
+	if status != http.StatusConflict || !strings.Contains(body, "POLICY_CONFLICT") {
+		t.Fatalf("planA's %dth rejection must escalate despite alternation, got %d %s", conflictThreshold, status, body)
+	}
+}
+
+// TestConflictDetectorPersistence closes the restart escape: rejection
+// counters and escalated conflicts survive a detector rebuild from the same
+// state file, and `resolve` (the ppg escalations path) is the only way an
+// escalated set comes back.
+func TestConflictDetectorPersistence(t *testing.T) {
+	statePath := filepath.Join(t.TempDir(), "conflicts.json")
+	ids := []string{"go_tests_present"}
+
+	d1 := newConflictDetector(statePath)
+	for i := 1; i < conflictThreshold; i++ {
+		if _, _, blocked := d1.observeRejection("sess-1", ids, "2026-07-21T00:00:00Z"); blocked {
+			t.Fatalf("rejection %d must not block yet", i)
+		}
+	}
+
+	// Simulated restart: a fresh detector on the same file continues the
+	// count instead of starting over.
+	d2 := newConflictDetector(statePath)
+	count, cid, blocked := d2.observeRejection("sess-1", ids, "2026-07-21T00:01:00Z")
+	if !blocked || count != conflictThreshold {
+		t.Fatalf("rejection %d after restart must escalate, got count=%d blocked=%v", conflictThreshold, count, blocked)
+	}
+
+	// Another restart: the escalation itself persists, and blocks any
+	// session immediately.
+	d3 := newConflictDetector(statePath)
+	if _, _, blocked := d3.observeRejection("sess-other", ids, "2026-07-21T00:02:00Z"); !blocked {
+		t.Fatal("escalated conflict must survive restart and block other sessions")
+	}
+
+	// observeSuccess does not clear the escalation.
+	d3.observeSuccess("sess-1")
+	d3.observeSuccess("sess-other")
+	if _, _, blocked := d3.observeRejection("sess-1", ids, "2026-07-21T00:03:00Z"); !blocked {
+		t.Fatal("a successful lock must not clear an escalated conflict")
+	}
+
+	// resolve closes it (the `ppg escalations resolve` path) — and the
+	// count restarts from scratch afterwards.
+	if _, ok := d3.resolve(cid); !ok {
+		t.Fatalf("resolve(%s) must find the escalated conflict", cid)
+	}
+	if count, _, blocked := d3.observeRejection("sess-1", ids, "2026-07-21T00:04:00Z"); blocked || count != 1 {
+		t.Fatalf("after resolve the set must count from 1 again, got count=%d blocked=%v", count, blocked)
+	}
+
+	// syncFromDisk drops an escalation resolved on disk by another process
+	// (the CLI) while keeping live counters.
+	d4 := newConflictDetector(statePath)
+	d4.observeRejection("sess-2", ids, "2026-07-21T00:05:00Z")
+	d4.observeRejection("sess-2", ids, "2026-07-21T00:06:00Z")
+	if _, _, blocked := d4.observeRejection("sess-2", ids, "2026-07-21T00:07:00Z"); !blocked {
+		t.Fatal("third rejection must escalate")
+	}
+	cli := newConflictDetector(statePath)
+	if _, ok := cli.resolve(conflictID("go_tests_present")); !ok {
+		t.Fatal("CLI-side resolve must find the escalated conflict")
+	}
+	d4.syncFromDisk()
+	if count, _, blocked := d4.observeRejection("sess-2", ids, "2026-07-21T00:08:00Z"); blocked {
+		t.Fatalf("after CLI resolve + SIGHUP sync the set must not be blocked, got count=%d", count)
 	}
 }

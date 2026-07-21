@@ -14,7 +14,7 @@ The intent for the whole session is $ARGUMENTS; if empty, use:
 "Add Stripe as a payment method to the checkout service".
 
 1. Validation server. If nothing listens on localhost:8765, start it in the
-   background: `go run ./cmd/ppg -addr :8765 -adr examples/adr
+   background: `go run ./cmd/ppg -addr 127.0.0.1:8765 -adr examples/adr
    -services examples/services -service-policy examples/service-policy`,
    and wait for
    "validation server listening".

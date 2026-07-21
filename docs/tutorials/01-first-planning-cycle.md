@@ -19,7 +19,7 @@ From the repo root (`-adr` is required; `examples/` is the fictional demo
 corpus):
 
 ```bash
-ppg -addr :8765 -adr examples/adr \
+ppg -addr 127.0.0.1:8765 -adr examples/adr \
     -services examples/services -service-policy examples/service-policy
 ```
 
