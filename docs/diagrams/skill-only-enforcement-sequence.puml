@@ -1,0 +1,79 @@
+@startuml skill-only-enforcement-sequence
+!include octo-theme.puml
+hide footbox
+autonumber
+
+title Skill-only enforcement — every rule travels with the skill
+
+actor User
+box "Developer workstation — everything runs locally" #F8F9FB
+  participant "Claude Code\n<size:11><i>follows SKILL.md</i></size>" as Agent
+  participant "ppg-guard\n<size:11><i>hook (SessionStart,</i></size>\n<size:11><i>PreToolUse Edit|Write)</i></size>" as Guard
+  participant "ppg-mcp-server\n<size:11><i>stdio MCP</i></size>" as MCP
+  database "Ticket store\n<size:11>$XDG_STATE_HOME/ppg</size>" as Store
+  participant "ppg-verify\n<size:11><i>pre-commit / CI</i></size>" as Verify
+end box
+box "HTTP — localhost in the PoC,\ncan be a shared remote service" #DAF6F9
+  participant "PPG server :8765\n<size:11><i>embedded OPA</i></size>" as PPG <<accent>>
+end box
+
+== Session start ==
+Guard -> Store : record session_id,\npurge leftover tickets
+
+== Amplified planning ==
+User -> Agent : /design-system "build a landing page"
+Agent -> MCP : get_platform_guidelines_for_intent
+MCP -> PPG : POST /enrich
+PPG --> Agent : invariants\n<size:11>(empty: no ADR corpus loaded)</size>
+
+== Plan lock ==
+Agent -> MCP : lock_in_plan(structured plan)
+MCP -> Store : stamp real session_id
+MCP -[#00D2DD]> PPG : POST /register_skill\n<b>SKILL.md + SKILL.rego</b>\n<size:11>(session-scoped upload)</size>
+MCP -> PPG : POST /lock_in_plan
+PPG -> PPG : OPA: plan-view rules\nfrom the uploaded SKILL.rego
+
+alt <color:#EA4335>plan violates a skill rule</color>
+  PPG --> Agent : <color:#EA4335><b>422 PLAN_REJECTED</b></color> {violations}\n<size:11>agent fixes the plan and resubmits</size>
+else plan compliant
+  PPG --> MCP : <color:#34A853><b>200 PLAN_LOCKED</b></color> + JWT ticket\n{session_id, plan_hash, skill_id, scope}
+  MCP -> Store : persist execution_ticket
+end
+
+== Governed edits ==
+Agent -> Guard : Edit / Write\n<size:11>(PreToolUse fires)</size>
+Guard -> Store : load ticket
+Guard -> Guard : local checks: signature,\nTTL, path scope, session binding
+Guard -[#00D2DD]> PPG : POST /verify_artifact {ticket, path, content}
+PPG -> PPG : OPA: artifact-view rules\nfrom the same SKILL.rego
+
+alt artifact compliant
+  PPG --> Guard : 200 ARTIFACT_OK
+  Guard --> Agent : <color:#34A853><b>exit 0 — edit proceeds</b></color>
+else <color:#EA4335>violation</color>
+  PPG --> Guard : 422 ARTIFACT_REJECTED
+  Guard --> Agent : <color:#EA4335><b>exit 2 — edit blocked</b></color>\n<size:11>OUT_OF_PLAN_SCOPE / SESSION_MISMATCH /</size>\n<size:11>ARCHITECTURAL_INVARIANT_VIOLATION</size>
+end
+
+== Apply-time backstop — pre-commit / CI ==
+User -> Verify : git commit\n<size:11>(pre-commit hook runs <b>ppg-verify --staged</b>)</size>
+Verify -> Store : load ticket of the active session\n<size:11>(same store the MCP wrote to)</size>
+Verify -> Verify : git status --porcelain,\nread final file contents
+Verify -[#00D2DD]> PPG : POST /verify_changeset\n<size:11>{ticket, files — final states, plan_hash}</size>
+PPG -> PPG : OPA: changeset-view rules\nfrom the same SKILL.rego\n<size:11>(selected via ticket claims: session_id, skill_id)</size>
+
+alt changeset compliant
+  PPG --> Verify : <color:#34A853><b>OK — commit lands</b></color>
+else <color:#EA4335>violation or plan substitution</color>
+  PPG --> Verify : <color:#EA4335><b>422 rejected / 409 PLAN_SUBSTITUTION</b></color>
+end
+
+note over Guard, PPG #DAF6F9
+  The hook and the MCP server never talk to each other: they share
+  only the ticket store and the server. All Rego is evaluated server-side —
+  in skill-only mode, 100% of the policy comes from the skill package.
+  The hook is the fast in-session loop; /verify_changeset is the
+  authoritative gate — it re-checks final file states however the bytes got there.
+end note
+
+@enduml
