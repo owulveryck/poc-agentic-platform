@@ -87,8 +87,12 @@ Start `claude` in `~/ppg-demo` and prompt:
    A rejection loop means the plan does not satisfy that criterion, however
    plausible its steps look; do not guess along other dimensions.
 3. On success the response is `PLAN_LOCKED` and the ticket is persisted
-   under `$XDG_STATE_HOME/ppg/projects/<slug>/tickets/<sid>`. Inspect its
-   claims (adjust `SID` to the session id printed by Claude Code):
+   under `$XDG_STATE_HOME/ppg/projects/<slug>/tickets/<sid>`. 
+
+   You can ask Claude to display all informations : 
+   > What the content of the last ticket submited ?
+   
+   Or inspect its claims (adjust `SID` to the session id printed by Claude Code):
 
    ```bash
    SLUG=$(printf '%s' "$PWD" | base64 | tr '+/' '-_' | tr -d '=')
