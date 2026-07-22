@@ -11,10 +11,15 @@
 >
 > Prerequisites: Go 1.25+, one of:
 > - the official **GitHub Copilot desktop app** and/or `gh copilot` CLI,
-> - **VS Code** + the GitHub Copilot extensions,
+> - **VS Code** + the [GitHub Copilot extensions](https://github.com/microsoft/vscode-copilot-chat),
 > - the **Claude Code** CLI.
+> - Python 3
 > If you want to install skills (tutorials 6, 8), also
-> [APM](https://github.com/microsoft/apm) ≥ 0.23.
+> [APM](https://microsoft.github.io/apm/quickstart/) ≥ 0.23.
+>
+> If you use macOS, you can install : 
+> - [Go with brew](https://formulae.brew.sh/formula/go).
+> - [VS Code with brew](brew install --cask visual-studio-code)
 
 ## Step 1 — Clone the platform once
 
@@ -166,6 +171,16 @@ appendix below).
 One tool call from each agent surface confirms binaries + registration
 + validation server are working end-to-end.
 
+### From Claude Code
+
+Same prompt in a `claude` session:
+
+```
+ Call the ppg MCP tool get_platform_guidelines_for_intent with intent
+ "add an external payment provider to legacy checkout" and repository_context {"name":"bootstrap-check",
+ "tech_stack":["Go"]}. Show me the JSON result.
+```
+
 ### From Copilot
 
 Open any folder in the Copilot app (or start `gh copilot`).
@@ -192,16 +207,6 @@ least ADR-042 and ADR-070. If you get "tool not found" or "not
 available":
 - **Are you in Agent mode?** — most likely cause (see above).
 - Otherwise, recheck step 3 (absolute path in the MCP config).
-
-### From Claude Code
-
-Same prompt in a `claude` session:
-
-```
-> Call the ppg MCP tool get_platform_guidelines_for_intent with intent
-> "add an external payment provider to legacy checkout" and repository_context {"name":"bootstrap-check",
-> "tech_stack":["Go"]}. Show me the JSON result.
-```
 
 Same expected output.
 
