@@ -284,11 +284,11 @@ func aggregate(events []journal.Event) reportData {
 
 // renderReport prints the tabwriter tables (the escalations CLI style).
 func renderReport(out *os.File, data reportData) {
-	fmt.Fprintf(out, "%d event(s)\n\nSESSIONS\n", data.EventCount)
+	_, _ = fmt.Fprintf(out, "%d event(s)\n\nSESSIONS\n", data.EventCount)
 	w := tabwriter.NewWriter(out, 2, 4, 2, ' ', 0)
-	fmt.Fprintln(w, "SESSION\tFIRST\tTURNS\tINTENTS\tREJECTED\tMAX-REJECT-RUN\tBLOCKS\tALLOWS\tVERIFIES\tFLAGS")
+	_, _ = fmt.Fprintln(w, "SESSION\tFIRST\tTURNS\tINTENTS\tREJECTED\tMAX-REJECT-RUN\tBLOCKS\tALLOWS\tVERIFIES\tFLAGS")
 	for _, s := range data.Sessions {
-		fmt.Fprintf(w, "%.8s\t%s\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%s\n",
+		_, _ = fmt.Fprintf(w, "%.8s\t%s\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%s\n",
 			s.SessionID, s.First.Format("2006-01-02 15:04"), s.Turns, s.Intents,
 			s.PlanRejected, s.MaxRejectRun, s.Blocks, s.Allows, s.Verifies,
 			strings.Join(s.Flags, ","))
@@ -296,7 +296,7 @@ func renderReport(out *os.File, data reportData) {
 	_ = w.Flush()
 
 	if len(data.BlocksByReason) > 0 {
-		fmt.Fprintln(out, "\nGUARD BLOCKS BY REASON")
+		_, _ = fmt.Fprintln(out, "\nGUARD BLOCKS BY REASON")
 		w = tabwriter.NewWriter(out, 2, 4, 2, ' ', 0)
 		reasons := make([]string, 0, len(data.BlocksByReason))
 		for r := range data.BlocksByReason {
@@ -304,22 +304,22 @@ func renderReport(out *os.File, data reportData) {
 		}
 		sort.Strings(reasons)
 		for _, r := range reasons {
-			fmt.Fprintf(w, "%s\t%d\n", r, data.BlocksByReason[r])
+			_, _ = fmt.Fprintf(w, "%s\t%d\n", r, data.BlocksByReason[r])
 		}
 		_ = w.Flush()
 	}
 
 	if len(data.TopInvariants) > 0 {
-		fmt.Fprintln(out, "\nTOP VIOLATED INVARIANTS")
+		_, _ = fmt.Fprintln(out, "\nTOP VIOLATED INVARIANTS")
 		w = tabwriter.NewWriter(out, 2, 4, 2, ' ', 0)
-		fmt.Fprintln(w, "POLICY\tCOUNT\tSEEN IN")
+		_, _ = fmt.Fprintln(w, "POLICY\tCOUNT\tSEEN IN")
 		for _, pc := range data.TopInvariants {
-			fmt.Fprintf(w, "%s\t%d\t%s\n", pc.PolicyID, pc.Count, strings.Join(pc.Events, ","))
+			_, _ = fmt.Fprintf(w, "%s\t%d\t%s\n", pc.PolicyID, pc.Count, strings.Join(pc.Events, ","))
 		}
 		_ = w.Flush()
 	}
 
 	if data.Substitutions > 0 {
-		fmt.Fprintf(out, "\n%d PLAN SUBSTITUTION(S) — a plan hash presented at verify time did not match the ticket.\n", data.Substitutions)
+		_, _ = fmt.Fprintf(out, "\n%d PLAN SUBSTITUTION(S) — a plan hash presented at verify time did not match the ticket.\n", data.Substitutions)
 	}
 }
