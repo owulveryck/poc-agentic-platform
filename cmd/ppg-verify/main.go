@@ -27,6 +27,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/owulveryck/poc-agentic-platform/internal/journal"
 	"github.com/owulveryck/poc-agentic-platform/internal/plan"
 	"github.com/owulveryck/poc-agentic-platform/internal/store"
 	"github.com/owulveryck/poc-agentic-platform/internal/version"
@@ -80,13 +81,40 @@ func run(staged bool, planFile, projectDirFlag, storeRootFlag, gateway string) e
 	if err != nil {
 		return fmt.Errorf("cannot open store: %w", err)
 	}
+
+	// Decision-event journal: one ppg.verify.run per terminal outcome. The
+	// ERROR outcomes (no ticket, unreachable server) are exactly the windows
+	// where changes could be applied unverified — the server cannot journal
+	// those, only this backstop can. Pre-store failures stay unjournaled.
+	jw := journal.Open(root, "ppg-verify", projectDir)
+	mode := "worktree"
+	if staged {
+		mode = "staged"
+	}
+	sid, _ := st.GetActive()
+	emitRun := func(severity, outcome, status string, fileCount int) {
+		jw.Emit(journal.Event{
+			Name:      journal.EventVerifyRun,
+			Severity:  severity,
+			SessionID: sid,
+			Attrs: map[string]any{
+				"mode":       mode,
+				"outcome":    outcome,
+				"status":     status,
+				"file_count": fileCount,
+			},
+		})
+	}
+
 	ticket, err := activeTicket(st)
 	if err != nil {
+		emitRun(journal.SeverityError, "error", "NO_TICKET", 0)
 		return err
 	}
 
 	files, err := changedFiles(staged)
 	if err != nil {
+		emitRun(journal.SeverityError, "error", "CHANGESET_UNREADABLE", 0)
 		return fmt.Errorf("computing changeset: %w", err)
 	}
 	if len(files) == 0 {
@@ -98,19 +126,23 @@ func run(staged bool, planFile, projectDirFlag, storeRootFlag, gateway string) e
 	if planFile != "" {
 		planHash, err = hashPlan(planFile)
 		if err != nil {
+			emitRun(journal.SeverityError, "error", "PLAN_UNREADABLE", len(files))
 			return err
 		}
 	}
 
 	status, violations, err := verifyChangeset(gateway, ticket, files, planHash)
 	if err != nil {
+		emitRun(journal.SeverityError, "error", "SERVER_UNREACHABLE", len(files))
 		return err
 	}
 	if status == "CHANGESET_OK" {
+		emitRun(journal.SeverityInfo, "ok", status, len(files))
 		fmt.Printf("ppg-verify: OK — %d file(s) verified against the locked plan.\n", len(files))
 		return nil
 	}
 	// Rejected: print the reasons and exit 1 (distinct from the fail-closed 2).
+	emitRun(journal.SeverityWarn, "rejected", status, len(files))
 	fmt.Fprintf(os.Stderr, "ppg-verify: %s\n", status)
 	for _, v := range violations {
 		fmt.Fprintln(os.Stderr, "  - "+v)

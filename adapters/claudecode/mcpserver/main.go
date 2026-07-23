@@ -48,6 +48,7 @@ import (
 	"sync"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/owulveryck/poc-agentic-platform/internal/journal"
 	"github.com/owulveryck/poc-agentic-platform/internal/plan"
 	"github.com/owulveryck/poc-agentic-platform/internal/store"
 	"github.com/owulveryck/poc-agentic-platform/internal/version"
@@ -107,6 +108,12 @@ func main() {
 		log.Fatalf("ppg-mcp-server: cannot open store: %v", err)
 	}
 
+	// Decision-event journal (see internal/journal). The MCP server emits only
+	// client-side facts the validation server cannot see: the loop-entry
+	// intent (with its session id), retries, ticket persistence, transport
+	// failures. Lock verdicts belong to the server, which owns them.
+	jw := journal.Open(root, "ppg-mcp-server", projectDir)
+
 	server := mcp.NewServer(&mcp.Implementation{Name: "ppg", Version: version.String()}, nil)
 
 	mcp.AddTool(server, &mcp.Tool{
@@ -114,14 +121,25 @@ func main() {
 		Description: "Retrieve the architectural invariants (ADRs) and guardrails the platform " +
 			"associates with an intent. ALWAYS call this before planning.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args guidelinesArgs) (*mcp.CallToolResult, any, error) {
+		// Loop-entry marker: the server's /enrich request carries no session
+		// id, so this client event is what ties the intent to the session.
+		jw.Emit(journal.Event{
+			Name:      journal.EventIntentDeclared,
+			SessionID: activeSession(st),
+			Attrs:     map[string]any{"intent": args.Intent, "repo": args.RepositoryName},
+		})
+		// The session id rides along so the server can attribute its
+		// ppg.enrich.served event to the real agent session (the loop view
+		// shows the MCP→platform exchange under that session).
 		body, _ := json.Marshal(map[string]any{
-			"intent": args.Intent,
+			"intent":     args.Intent,
+			"session_id": activeSession(st),
 			"repository_context": map[string]any{
 				"name":       args.RepositoryName,
 				"tech_stack": args.TechStack,
 			},
 		})
-		return forward(ctx, "/enrich", body, nil)
+		return forward(ctx, "/enrich", body, nil, jw)
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
@@ -136,12 +154,13 @@ func main() {
 		body, _ := json.Marshal(map[string]any{
 			"capability": args.Capability,
 			"intent":     args.Intent,
+			"session_id": activeSession(st),
 			"repository_context": map[string]any{
 				"name":       args.RepositoryName,
 				"tech_stack": args.TechStack,
 			},
 		})
-		return forward(ctx, "/discover_service", body, nil)
+		return forward(ctx, "/discover_service", body, nil, jw)
 	})
 
 	skillsCache := &skillRegistrationCache{seen: map[string][32]byte{}}
@@ -155,12 +174,18 @@ func main() {
 	}, func(ctx context.Context, req *mcp.CallToolRequest, p plan.Plan) (*mcp.CallToolResult, any, error) {
 		stampSessionID(&p, st)
 		body, _ := json.Marshal(p)
-		raw, status, err := lockWithRegistrationRetry(ctx, p.SessionID, skillDirs, skillsCache, body)
+		raw, status, err := lockWithRegistrationRetry(ctx, p.SessionID, skillDirs, skillsCache, body, jw)
 		if err != nil {
+			jw.Emit(journal.Event{
+				Name:      journal.EventClientError,
+				Severity:  journal.SeverityError,
+				SessionID: p.SessionID,
+				Attrs:     map[string]any{"route": "/lock_in_plan", "kind": "transport"},
+			})
 			return nil, nil, err
 		}
 		if status == http.StatusOK {
-			saveTicket(st, p.SessionID)(raw)
+			saveTicket(st, p.SessionID, jw)(raw)
 		}
 		return wrapResult(raw, status), nil, nil
 	})
@@ -188,12 +213,27 @@ func stampSessionID(p *plan.Plan, ss store.SessionStore) bool {
 	return true
 }
 
+// activeSession returns the SessionStore's active session id, or "" when none
+// is recorded yet (e.g. the guard's SessionStart hook has not fired).
+func activeSession(ss store.SessionStore) string {
+	sid, err := ss.GetActive()
+	if err != nil {
+		return ""
+	}
+	return sid
+}
+
 // forward posts the payload to the validation server and returns the raw JSON response
 // as tool output — including 4xx payloads, so the model reads the semantic
 // violations and self-corrects instead of receiving an opaque error.
-func forward(ctx context.Context, route string, body []byte, onSuccess func([]byte)) (*mcp.CallToolResult, any, error) {
+func forward(ctx context.Context, route string, body []byte, onSuccess func([]byte), jw *journal.Writer) (*mcp.CallToolResult, any, error) {
 	raw, status, err := forwardOnce(ctx, route, body)
 	if err != nil {
+		jw.Emit(journal.Event{
+			Name:     journal.EventClientError,
+			Severity: journal.SeverityError,
+			Attrs:    map[string]any{"route": route, "kind": "transport"},
+		})
 		return nil, nil, err
 	}
 	if status == http.StatusOK && onSuccess != nil {
@@ -213,7 +253,7 @@ func forward(ctx context.Context, route string, body []byte, onSuccess func([]by
 // the cache would suppress re-uploads and every subsequent lock in this MCP
 // session would fail with unknown_skill until the skill's content changed on
 // disk.
-func lockWithRegistrationRetry(ctx context.Context, sessionID string, skillDirs []string, cache *skillRegistrationCache, body []byte) ([]byte, int, error) {
+func lockWithRegistrationRetry(ctx context.Context, sessionID string, skillDirs []string, cache *skillRegistrationCache, body []byte, jw *journal.Writer) ([]byte, int, error) {
 	if sessionID != "" {
 		registerLocalSkills(ctx, sessionID, skillDirs, cache)
 	}
@@ -233,6 +273,13 @@ func lockWithRegistrationRetry(ctx context.Context, sessionID string, skillDirs 
 	}
 	registerLocalSkills(ctx, sessionID, skillDirs, cache)
 	log.Printf("ppg-mcp-server: retrying lock_in_plan after re-registering %v", unknown)
+	// Client-side self-heal fact: the lock verdicts themselves are journaled
+	// by the server, never re-emitted here.
+	jw.Emit(journal.Event{
+		Name:      journal.EventLockRetry,
+		SessionID: sessionID,
+		Attrs:     map[string]any{"unknown_skill_count": len(unknown)},
+	})
 	return forwardOnce(ctx, "/lock_in_plan", body)
 }
 
@@ -454,10 +501,11 @@ func skillNameFromMD(raw []byte, fallback string) string {
 // saveTicket returns an onSuccess closure that decodes the execution
 // ticket out of the lock_in_plan response and persists it through ts,
 // keyed by sessionID (the id the ticket was issued for).
-func saveTicket(ts store.TokenStore, sessionID string) func([]byte) {
+func saveTicket(ts store.TokenStore, sessionID string, jw *journal.Writer) func([]byte) {
 	return func(raw []byte) {
 		var out struct {
 			ExecutionTicket string `json:"execution_ticket"`
+			PlanHash        string `json:"plan_hash"`
 		}
 		if err := json.Unmarshal(raw, &out); err != nil || out.ExecutionTicket == "" {
 			return
@@ -468,6 +516,13 @@ func saveTicket(ts store.TokenStore, sessionID string) func([]byte) {
 		}
 		if err := ts.Put(sessionID, out.ExecutionTicket); err != nil {
 			log.Printf("ppg-mcp-server: cannot persist ticket: %v", err)
+			return
 		}
+		// Client-side fact: the ticket reached the store the guard reads.
+		jw.Emit(journal.Event{
+			Name:      journal.EventTicketSaved,
+			SessionID: sessionID,
+			Attrs:     map[string]any{"plan_hash": out.PlanHash},
+		})
 	}
 }

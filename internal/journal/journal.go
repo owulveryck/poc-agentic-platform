@@ -20,9 +20,15 @@
 //	Attrs     -> LogRecord.Attributes (dotted, semconv-style names)
 //
 // Privacy contract: events carry paths, hashes, policy ids, byte counts and
-// the plan intent — NEVER file contents, edit payloads, or violation message
-// bodies (those may quote file content). The intent is already persisted in
-// escalations.jsonl, so it introduces no new exposure class.
+// the plan intent — NEVER file contents, edit payloads, or the execution
+// ticket. When payload capture is enabled (the default; see EnvPayloads),
+// decision events additionally carry bounded "request"/"response"/"reply"
+// attributes: the submitted plan, the returned verdict (violations,
+// guidance), and the guard's model-facing block message. This is the same
+// exposure class as escalations.jsonl, which already persists full plans and
+// violations — with the caveat that violation MESSAGES may quote governed
+// content; disable with PPG_TELEMETRY_PAYLOADS=off before pointing an
+// exporter at an environment where that matters.
 //
 // Emission is best-effort by design: a telemetry failure is logged to stderr
 // and never fails, delays, or alters the caller's decision — the same
@@ -42,6 +48,12 @@ import (
 // EnvDisable is the kill switch: PPG_TELEMETRY=off|0|false disables
 // emission entirely (Open returns nil, no file is ever created).
 const EnvDisable = "PPG_TELEMETRY"
+
+// EnvPayloads is the payload-capture kill switch:
+// PPG_TELEMETRY_PAYLOADS=off|0|false keeps emitting decision events but
+// strips the request/response/reply attributes (see the privacy contract
+// above). Payload capture is on by default — this is a local PoC journal.
+const EnvPayloads = "PPG_TELEMETRY_PAYLOADS"
 
 // FileName is the journal file, a sibling of escalations.jsonl under the
 // store root.
@@ -85,7 +97,16 @@ type Writer struct {
 
 // Disabled reports whether the kill switch turns telemetry off.
 func Disabled() bool {
-	switch os.Getenv(EnvDisable) {
+	return envOff(EnvDisable)
+}
+
+// PayloadsDisabled reports whether request/response/reply capture is off.
+func PayloadsDisabled() bool {
+	return envOff(EnvPayloads)
+}
+
+func envOff(name string) bool {
+	switch os.Getenv(name) {
 	case "off", "0", "false":
 		return true
 	}

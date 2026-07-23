@@ -38,6 +38,7 @@ import (
 	"github.com/owulveryck/poc-agentic-platform/internal/catalog"
 	"github.com/owulveryck/poc-agentic-platform/internal/debt"
 	"github.com/owulveryck/poc-agentic-platform/internal/enrich"
+	"github.com/owulveryck/poc-agentic-platform/internal/journal"
 	"github.com/owulveryck/poc-agentic-platform/internal/linter"
 	"github.com/owulveryck/poc-agentic-platform/internal/plan"
 	"github.com/owulveryck/poc-agentic-platform/internal/skill"
@@ -51,14 +52,20 @@ import (
 
 func main() {
 	// Subcommand dispatch before flag.Parse: `ppg escalations …` is the
-	// offline consumer of the conflict state — it never starts the server.
+	// offline consumer of the conflict state, `ppg report` the offline
+	// consumer of the decision-event journal — neither starts the server.
 	if len(os.Args) > 1 && os.Args[1] == "escalations" {
 		os.Exit(runEscalations(os.Args[2:]))
+	}
+	if len(os.Args) > 1 && os.Args[1] == "report" {
+		os.Exit(runReport(os.Args[2:]))
 	}
 
 	addr := flag.String("addr", "127.0.0.1:8765",
 		"listen address; defaults to loopback because the API is unauthenticated — pass an explicit host (e.g. :8765) only behind a trusted network or an auth proxy")
 	adrDir := flag.String("adr", "", "path to the ADR store (optional; omit to run on skill companions and built-in rules only; demo corpus: examples/adr)")
+	designTokens := flag.String("design-tokens", "design/tokens.css",
+		"path to the canonical design tokens injected into the live dashboard (absent file: unstyled dashboard)")
 	skillGovDir := flag.String("skill-governance", "skill-governance", "path to the skill governance Rego policy directory")
 	skillsDir := flag.String("skills", "", "path to the published skills directory (one subdir per skill with SKILL.md [+ SKILL.rego]); enables Gate 3 for plans that declare skill_id")
 	servicesDir := flag.String("services", "", "path to the service catalog directory (optional; omit to disable /discover_service)")
@@ -100,6 +107,13 @@ func main() {
 	// escalationLog is the POLICY_CONFLICT paper trail (JSONL, append-only):
 	// every livelock escalation lands here for the humans who own the rules.
 	escalationLog := filepath.Join(stateRoot, "escalations.jsonl")
+
+	// jw is the decision-event journal (see internal/journal): one wide JSONL
+	// event per governance decision, shared with the guards and ppg-verify.
+	// Opened once for the process lifetime — it only holds a path, so it is
+	// safe to capture across SIGHUP corpus reloads. nil (telemetry disabled)
+	// is a valid, inert writer.
+	jw := journal.Open(stateRoot, "ppg", "")
 
 	// The conflict detector is created ONCE for the process lifetime, not per
 	// mux: buildMux runs again on every SIGHUP reload, so a detector owned by
@@ -145,7 +159,7 @@ func main() {
 			}
 			return msgs
 		})
-		handler.mux.Store(buildMux(c.store, c.lint, c.skillLint, c.catStore, c.ranker, ttl, conflicts, escalationLog))
+		handler.mux.Store(buildMux(c.store, c.lint, c.skillLint, c.catStore, c.ranker, ttl, conflicts, escalationLog, jw))
 	}
 	install(c)
 
@@ -174,13 +188,23 @@ func main() {
 		}
 	}()
 
+	// The live-observation routes are mounted OUTSIDE the reloadable corpus
+	// mux: they depend only on the immutable journal path, so a SIGHUP corpus
+	// reload never interrupts a running event stream.
+	root := http.NewServeMux()
+	root.HandleFunc("GET /events", servePage(*designTokens, dashboardHTML))
+	root.HandleFunc("GET /events/loop", servePage(*designTokens, loopHTML))
+	root.HandleFunc("GET /events/stream", handleEventStream(filepath.Join(stateRoot, journal.FileName), streamPollInterval))
+	root.Handle("/", handler)
+
 	log.Printf("Capability ticket TTL: %s (bounded by the session)", ttl)
+	log.Printf("Live dashboard: http://%s/events", *addr)
 	log.Printf("validation server listening on %s", *addr)
 	// The validation server accepts untrusted POSTed plans/artifacts: bound both the
 	// request body size and the connection lifetimes.
 	srv := &http.Server{
 		Addr:              *addr,
-		Handler:           http.MaxBytesHandler(handler, maxRequestBody),
+		Handler:           http.MaxBytesHandler(root, maxRequestBody),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       time.Minute,
 		WriteTimeout:      time.Minute,
@@ -206,15 +230,15 @@ const maxRequestBody = 16 << 20 // 16 MiB
 // are read-only after construction — except the conflict detector, which is
 // internally synchronized — so the returned mux is safe to serve
 // concurrently (see cmd/ppg/main_test.go, which exercises it under -race).
-func buildMux(store *adr.Store, lint *linter.Linter, skillLint *skill.Linter, catStore *catalog.Store, ranker *catalog.Ranker, ttl time.Duration, conflicts *conflictDetector, escalationLog string) *http.ServeMux {
+func buildMux(store *adr.Store, lint *linter.Linter, skillLint *skill.Linter, catStore *catalog.Store, ranker *catalog.Ranker, ttl time.Duration, conflicts *conflictDetector, escalationLog string, jw *journal.Writer) *http.ServeMux {
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /enrich", handleEnrich(store))
-	mux.HandleFunc("POST /lock_in_plan", handleLockInPlan(lint, ttl, conflicts, escalationLog))
-	mux.HandleFunc("POST /register_skill", handleRegisterSkill(lint))
-	mux.HandleFunc("POST /tools/{name}", handleTool)
-	mux.HandleFunc("POST /verify_artifact", handleVerifyArtifact(lint))
-	mux.HandleFunc("POST /verify_changeset", handleVerifyChangeset(lint))
-	mux.HandleFunc("POST /discover_service", handleDiscoverService(catStore, ranker))
+	mux.HandleFunc("POST /enrich", handleEnrich(store, jw))
+	mux.HandleFunc("POST /lock_in_plan", handleLockInPlan(lint, ttl, conflicts, escalationLog, jw))
+	mux.HandleFunc("POST /register_skill", handleRegisterSkill(lint, jw))
+	mux.HandleFunc("POST /tools/{name}", handleTool(jw))
+	mux.HandleFunc("POST /verify_artifact", handleVerifyArtifact(lint, jw))
+	mux.HandleFunc("POST /verify_changeset", handleVerifyChangeset(lint, jw))
+	mux.HandleFunc("POST /discover_service", handleDiscoverService(catStore, ranker, jw))
 	mux.HandleFunc("GET /services", handleListServices(catStore))
 	mux.HandleFunc("GET /services/{id}", handleGetService(catStore))
 	mux.HandleFunc("GET /debt_report", handleDebtReport(lint.Registry))
@@ -243,9 +267,10 @@ func resolveTicketTTL(flagValue time.Duration) (time.Duration, error) {
 	return ticket.DefaultTTL, nil
 }
 
-func handleEnrich(store *adr.Store) http.HandlerFunc {
+func handleEnrich(store *adr.Store, jw *journal.Writer) http.HandlerFunc {
 	type request struct {
 		Intent            string           `json:"intent"`
+		SessionID         string           `json:"session_id"`
 		RepositoryContext plan.RepoContext `json:"repository_context"`
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -258,11 +283,24 @@ func handleEnrich(store *adr.Store) http.HandlerFunc {
 			httpError(w, http.StatusBadRequest, map[string]any{"error": "intent is required"})
 			return
 		}
-		writeJSON(w, http.StatusOK, enrich.Enrich(store, req.Intent, req.RepositoryContext))
+		out := enrich.Enrich(store, req.Intent, req.RepositoryContext)
+		// session_id is optional in the request (the MCP server sends its
+		// active session); when present, the event is attributed to that
+		// session — the per-session loop view shows the exchange.
+		jw.Emit(journal.Event{
+			Name:      journal.EventEnrichServed,
+			SessionID: req.SessionID,
+			Attrs: map[string]any{
+				"intent":          req.Intent,
+				"repo":            req.RepositoryContext.Name,
+				"invariant_count": len(out.AmplifierContext.ArchitecturalInvariants),
+			},
+		})
+		writeJSON(w, http.StatusOK, out)
 	}
 }
 
-func handleLockInPlan(lint *linter.Linter, ttl time.Duration, conflicts *conflictDetector, escalationLog string) http.HandlerFunc {
+func handleLockInPlan(lint *linter.Linter, ttl time.Duration, conflicts *conflictDetector, escalationLog string, jw *journal.Writer) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var p plan.Plan
 		if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
@@ -270,10 +308,20 @@ func handleLockInPlan(lint *linter.Linter, ttl time.Duration, conflicts *conflic
 			return
 		}
 		if err := p.ValidateStructure(); err != nil {
-			httpError(w, http.StatusBadRequest, map[string]any{
+			resp := map[string]any{
 				"status": "PLAN_MALFORMED",
 				"error":  err.Error(),
+			}
+			attrs := map[string]any{"reason": err.Error()}
+			attachPayload(attrs, "request", p)
+			attachPayload(attrs, "response", resp)
+			jw.Emit(journal.Event{
+				Name:      journal.EventPlanMalformed,
+				Severity:  journal.SeverityWarn,
+				SessionID: p.SessionID,
+				Attrs:     attrs,
 			})
+			httpError(w, http.StatusBadRequest, resp)
 			return
 		}
 		if violations := lint.Validate(&p); len(violations) > 0 {
@@ -302,7 +350,7 @@ func handleLockInPlan(lint *linter.Linter, ttl time.Duration, conflicts *conflic
 				})
 				log.Printf("POLICY_CONFLICT %s: violation set %v rejected %d times (session %s) — escalation recorded in %s",
 					cid, ids, rejections, p.SessionID, escalationLog)
-				httpError(w, http.StatusConflict, map[string]any{
+				resp := map[string]any{
 					"status":         "POLICY_CONFLICT",
 					"conflict_id":    cid,
 					"violations":     violations,
@@ -318,14 +366,46 @@ func handleLockInPlan(lint *linter.Linter, ttl time.Duration, conflicts *conflic
 						"recorded; a human inspects it with `ppg escalations list` / `ppg escalations show " + cid + "`, fixes " +
 						"the corpus, then runs `ppg escalations resolve " + cid + "` and reloads the server (SIGHUP). Until " +
 						"then the validation server keeps answering POLICY_CONFLICT for this violation set, from every session.",
+				}
+				attrs := map[string]any{
+					"conflict_id": cid,
+					"policy_ids":  ids,
+					"rejections":  rejections,
+					"intent":      p.Intent,
+					"skill_id":    p.SkillID,
+				}
+				attachPayload(attrs, "request", p)
+				attachPayload(attrs, "response", resp)
+				jw.Emit(journal.Event{
+					Name:      journal.EventPlanConflict,
+					Severity:  journal.SeverityWarn,
+					SessionID: p.SessionID,
+					Attrs:     attrs,
 				})
+				httpError(w, http.StatusConflict, resp)
 				return
 			}
-			httpError(w, http.StatusUnprocessableEntity, map[string]any{
+			resp := map[string]any{
 				"status":     "PLAN_REJECTED",
 				"violations": violations,
 				"guidance":   "Fix the violations above and resubmit the plan.",
+			}
+			attrs := map[string]any{
+				"policy_ids":      ids,
+				"violation_count": len(violations),
+				"rejection_count": rejections,
+				"intent":          p.Intent,
+				"skill_id":        p.SkillID,
+			}
+			attachPayload(attrs, "request", p)
+			attachPayload(attrs, "response", resp)
+			jw.Emit(journal.Event{
+				Name:      journal.EventPlanRejected,
+				Severity:  journal.SeverityWarn,
+				SessionID: p.SessionID,
+				Attrs:     attrs,
 			})
+			httpError(w, http.StatusUnprocessableEntity, resp)
 			return
 		}
 		conflicts.observeSuccess(p.SessionID)
@@ -339,6 +419,30 @@ func handleLockInPlan(lint *linter.Linter, ttl time.Duration, conflicts *conflic
 			httpError(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 			return
 		}
+		targets := 0
+		for _, s := range p.Steps {
+			targets += len(s.Targets)
+		}
+		attrs := map[string]any{
+			"plan_hash":    planHash,
+			"step_count":   len(p.Steps),
+			"target_count": targets,
+			"intent":       p.Intent,
+			"skill_id":     p.SkillID,
+			"ticket_ttl_s": int(ttl.Seconds()),
+		}
+		attachPayload(attrs, "request", p)
+		// The journaled response deliberately excludes the execution ticket:
+		// a bearer credential never belongs in telemetry.
+		attachPayload(attrs, "response", map[string]any{
+			"status":    "PLAN_LOCKED",
+			"plan_hash": planHash,
+		})
+		jw.Emit(journal.Event{
+			Name:      journal.EventPlanLocked,
+			SessionID: p.SessionID,
+			Attrs:     attrs,
+		})
 		writeJSON(w, http.StatusOK, map[string]any{
 			"status":           "PLAN_LOCKED",
 			"plan_hash":        planHash,
@@ -350,7 +454,7 @@ func handleLockInPlan(lint *linter.Linter, ttl time.Duration, conflicts *conflic
 // handleVerifyArtifact evaluates the policy corpus (artifact view) against one
 // edited file's actual content — the in-loop check the guards and Smart Tools
 // call. It verifies the ticket and path scope first, then the content policy.
-func handleVerifyArtifact(lint *linter.Linter) http.HandlerFunc {
+func handleVerifyArtifact(lint *linter.Linter, jw *journal.Writer) http.HandlerFunc {
 	type request struct {
 		Ticket  string `json:"ticket"`
 		Path    string `json:"path"`
@@ -369,16 +473,33 @@ func handleVerifyArtifact(lint *linter.Linter) http.HandlerFunc {
 		}
 		claims, err := smarttools.GuardTargets(req.Ticket, []string{req.Path})
 		if err != nil {
-			writeGuardError(w, err)
+			writeGuardError(w, err, jw, "")
 			return
 		}
 		violations := lint.EvaluateArtifact(claims.SessionID, claims.SkillID, linter.Artifact{Path: req.Path, Content: req.Content, Op: req.Op})
 		if len(violations) > 0 {
-			httpError(w, http.StatusUnprocessableEntity, map[string]any{
+			// Only rejections are journaled: an ARTIFACT_OK is already visible
+			// as the guard's ppg.guard.allow, and would double per-edit volume.
+			// The request payload is path+op only — the edited CONTENT never
+			// enters the journal (privacy contract).
+			resp := map[string]any{
 				"status":     "ARTIFACT_REJECTED",
 				"violations": violations,
 				"guidance":   "The edited content violates an architectural invariant. Fix the content per the messages above; the file scope itself is allowed.",
+			}
+			attrs := map[string]any{
+				"path":       req.Path,
+				"op":         req.Op,
+				"policy_ids": violationPolicyIDs(violations),
+			}
+			attachPayload(attrs, "response", resp)
+			jw.Emit(journal.Event{
+				Name:      journal.EventArtifactRejected,
+				Severity:  journal.SeverityWarn,
+				SessionID: claims.SessionID,
+				Attrs:     attrs,
 			})
+			httpError(w, http.StatusUnprocessableEntity, resp)
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"status": "ARTIFACT_OK"})
@@ -389,7 +510,7 @@ func handleVerifyArtifact(lint *linter.Linter) http.HandlerFunc {
 // diff — the apply-time backstop. It verifies the ticket, that every changed
 // path is in scope, and (when the caller supplies plan_hash) that the plan being
 // executed still matches the one the ticket was issued for.
-func handleVerifyChangeset(lint *linter.Linter) http.HandlerFunc {
+func handleVerifyChangeset(lint *linter.Linter, jw *journal.Writer) http.HandlerFunc {
 	type request struct {
 		Ticket   string            `json:"ticket"`
 		Files    []linter.Artifact `json:"files"`
@@ -407,65 +528,111 @@ func handleVerifyChangeset(lint *linter.Linter) http.HandlerFunc {
 		}
 		claims, err := smarttools.GuardTargets(req.Ticket, paths)
 		if err != nil {
-			writeGuardError(w, err)
+			writeGuardError(w, err, jw, "")
 			return
 		}
 		if req.PlanHash != "" && req.PlanHash != claims.PlanHash {
-			httpError(w, http.StatusConflict, map[string]any{
+			resp := map[string]any{
 				"status":   "PLAN_SUBSTITUTION",
 				"expected": claims.PlanHash,
 				"got":      req.PlanHash,
 				"guidance": "The plan being executed does not match the one this ticket was issued for. Re-plan through lock_in_plan.",
+			}
+			attrs := map[string]any{
+				"expected_hash": claims.PlanHash,
+				"got_hash":      req.PlanHash,
+			}
+			attachPayload(attrs, "response", resp)
+			jw.Emit(journal.Event{
+				Name:      journal.EventPlanSubstitution,
+				Severity:  journal.SeverityWarn,
+				SessionID: claims.SessionID,
+				Attrs:     attrs,
 			})
+			httpError(w, http.StatusConflict, resp)
 			return
 		}
 		violations := lint.EvaluateChangeset(claims.SessionID, claims.SkillID, linter.Changeset{Files: req.Files, PlanHash: req.PlanHash})
 		if len(violations) > 0 {
-			httpError(w, http.StatusUnprocessableEntity, map[string]any{
+			// Request payload = the changed paths, never their contents.
+			resp := map[string]any{
 				"status":     "CHANGESET_REJECTED",
 				"violations": violations,
 				"guidance":   "The changeset violates an architectural invariant. Fix the content per the messages above and re-verify.",
+			}
+			attrs := map[string]any{
+				"file_count": len(req.Files),
+				"policy_ids": violationPolicyIDs(violations),
+			}
+			attachPayload(attrs, "request", map[string]any{"paths": paths, "plan_hash": req.PlanHash})
+			attachPayload(attrs, "response", resp)
+			jw.Emit(journal.Event{
+				Name:      journal.EventChangesetRejected,
+				Severity:  journal.SeverityWarn,
+				SessionID: claims.SessionID,
+				Attrs:     attrs,
 			})
+			httpError(w, http.StatusUnprocessableEntity, resp)
 			return
 		}
+		jw.Emit(journal.Event{
+			Name:      journal.EventChangesetOK,
+			SessionID: claims.SessionID,
+			Attrs:     map[string]any{"file_count": len(req.Files)},
+		})
 		writeJSON(w, http.StatusOK, map[string]any{"status": "CHANGESET_OK"})
 	}
 }
 
 // writeGuardError renders a smarttools guard failure: a scope refusal as 403
-// REFUSED, any other (invalid/expired ticket) as 401.
-func writeGuardError(w http.ResponseWriter, err error) {
+// REFUSED, any other (invalid/expired ticket) as 401. sessionID may be empty
+// when the ticket itself could not be verified.
+func writeGuardError(w http.ResponseWriter, err error, jw *journal.Writer, sessionID string) {
 	var oos *smarttools.OutOfScopeError
 	if errors.As(err, &oos) {
-		httpError(w, http.StatusForbidden, map[string]any{
+		resp := map[string]any{
 			"status":    "REFUSED",
 			"code":      oos.Code,
 			"attempted": oos.Attempted,
 			"allowed":   oos.Allowed,
 			"guidance":  "This target is not part of the locked plan's scope. Re-plan through lock_in_plan if it is genuinely needed.",
+		}
+		attrs := map[string]any{
+			"code":      oos.Code,
+			"attempted": oos.Attempted,
+		}
+		attachPayload(attrs, "response", resp)
+		jw.Emit(journal.Event{
+			Name:      journal.EventScopeRefused,
+			Severity:  journal.SeverityWarn,
+			SessionID: sessionID,
+			Attrs:     attrs,
 		})
+		httpError(w, http.StatusForbidden, resp)
 		return
 	}
 	httpError(w, http.StatusUnauthorized, map[string]any{"error": err.Error()})
 }
 
-func handleTool(w http.ResponseWriter, r *http.Request) {
+func handleTool(jw *journal.Writer) http.HandlerFunc {
 	type request struct {
 		Ticket  string         `json:"ticket"`
 		Targets []string       `json:"targets"`
 		Payload map[string]any `json:"payload"`
 	}
-	var req request
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		httpError(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
-		return
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req request
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			httpError(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+			return
+		}
+		result, err := smarttools.Run(req.Ticket, r.PathValue("name"), req.Targets, req.Payload)
+		if err != nil {
+			writeGuardError(w, err, jw, "")
+			return
+		}
+		writeJSON(w, http.StatusOK, result)
 	}
-	result, err := smarttools.Run(req.Ticket, r.PathValue("name"), req.Targets, req.Payload)
-	if err != nil {
-		writeGuardError(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, result)
 }
 
 // handleRegisterSkill compiles a client-uploaded SKILL.rego and stores it in
@@ -474,7 +641,7 @@ func handleTool(w http.ResponseWriter, r *http.Request) {
 // not share the client's filesystem: the MCP server POSTs it here before
 // forwarding lock_in_plan. Idempotent — re-uploading identical content is
 // a no-op (the linter simply overwrites the same key with the same evaluator).
-func handleRegisterSkill(lint *linter.Linter) http.HandlerFunc {
+func handleRegisterSkill(lint *linter.Linter, jw *journal.Writer) http.HandlerFunc {
 	type request struct {
 		SessionID string `json:"session_id"`
 		Name      string `json:"name"`
@@ -496,6 +663,12 @@ func handleRegisterSkill(lint *linter.Linter) http.HandlerFunc {
 			return
 		}
 		if err := lint.RegisterSessionSkill(req.SessionID, req.Name, req.SkillRego); err != nil {
+			jw.Emit(journal.Event{
+				Name:      journal.EventSkillRejected,
+				Severity:  journal.SeverityWarn,
+				SessionID: req.SessionID,
+				Attrs:     map[string]any{"skill": req.Name},
+			})
 			httpError(w, http.StatusUnprocessableEntity, map[string]any{
 				"status":   "SKILL_COMPILE_ERROR",
 				"error":    err.Error(),
@@ -503,6 +676,11 @@ func handleRegisterSkill(lint *linter.Linter) http.HandlerFunc {
 			})
 			return
 		}
+		jw.Emit(journal.Event{
+			Name:      journal.EventSkillRegistered,
+			SessionID: req.SessionID,
+			Attrs:     map[string]any{"skill": req.Name, "has_rego": req.SkillRego != ""},
+		})
 		writeJSON(w, http.StatusOK, map[string]any{
 			"status":     "SKILL_REGISTERED",
 			"session_id": req.SessionID,
@@ -560,10 +738,11 @@ type discoveredService struct {
 // candidates for a capability (or intent), ranks them with the policy-as-code
 // ranker, and returns the recommended service (with endpoint + API usage) plus
 // the alternatives and why each was or was not chosen.
-func handleDiscoverService(catStore *catalog.Store, ranker *catalog.Ranker) http.HandlerFunc {
+func handleDiscoverService(catStore *catalog.Store, ranker *catalog.Ranker, jw *journal.Writer) http.HandlerFunc {
 	type request struct {
 		Capability        string         `json:"capability"`
 		Intent            string         `json:"intent"`
+		SessionID         string         `json:"session_id"`
 		RepositoryContext map[string]any `json:"repository_context"`
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -634,6 +813,21 @@ func handleDiscoverService(catStore *catalog.Store, ranker *catalog.Ranker) http
 		if recommended == nil {
 			status = "NO_SERVICE_FOR_CAPABILITY"
 		}
+		ev := journal.Event{
+			Name:      journal.EventServiceDiscovered,
+			SessionID: req.SessionID,
+			Attrs: map[string]any{
+				"capability":         capability,
+				"status":             status,
+				"alternatives_count": len(alternatives),
+			},
+		}
+		if recommended != nil {
+			ev.Attrs["service_id"] = recommended.ServiceID
+		} else {
+			ev.Severity = journal.SeverityWarn
+		}
+		jw.Emit(ev)
 		writeJSON(w, http.StatusOK, map[string]any{
 			"status":       status,
 			"capability":   capability,
@@ -669,6 +863,29 @@ func handleGetService(catStore *catalog.Store) http.HandlerFunc {
 			"status": "SERVICE_NOT_FOUND", "service_id": id,
 		})
 	}
+}
+
+// payloadCap bounds one captured request/response payload inside an event.
+const payloadCap = 32 << 10 // 32 KiB
+
+// attachPayload adds a bounded JSON payload attribute to a decision event's
+// Attrs, honoring the PPG_TELEMETRY_PAYLOADS kill switch (see the journal
+// privacy contract). Oversized payloads are replaced by a size note so an
+// event stays a cheap wide row; the execution ticket and file contents are
+// never passed here by construction.
+func attachPayload(attrs map[string]any, key string, v any) {
+	if journal.PayloadsDisabled() {
+		return
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		return
+	}
+	if len(b) > payloadCap {
+		attrs[key+"_omitted"] = fmt.Sprintf("%d bytes > %d cap", len(b), payloadCap)
+		return
+	}
+	attrs[key] = json.RawMessage(b)
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

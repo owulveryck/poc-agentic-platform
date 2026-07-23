@@ -177,7 +177,7 @@ import rego.v1
 	cache := &skillRegistrationCache{seen: map[string][32]byte{}}
 	body := []byte(`{"session_id":"sess-1","skill_id":"demo","intent":"x","steps":[]}`)
 
-	raw, status, err := lockWithRegistrationRetry(context.Background(), "sess-1", []string{skillsDir}, cache, body)
+	raw, status, err := lockWithRegistrationRetry(context.Background(), "sess-1", []string{skillsDir}, cache, body, nil)
 	if err != nil {
 		t.Fatalf("lockWithRegistrationRetry: %v", err)
 	}
@@ -226,7 +226,7 @@ import rego.v1
 
 	cache := &skillRegistrationCache{seen: map[string][32]byte{}}
 	body := []byte(`{"session_id":"sess-1"}`)
-	if _, _, err := lockWithRegistrationRetry(context.Background(), "sess-1", []string{skillsDir}, cache, body); err != nil {
+	if _, _, err := lockWithRegistrationRetry(context.Background(), "sess-1", []string{skillsDir}, cache, body, nil); err != nil {
 		t.Fatal(err)
 	}
 	if got := atomic.LoadInt32(&lockCalls); got != 1 {
@@ -264,7 +264,7 @@ func TestLockWithRegistrationRetry_StopsAfterOneRetry(t *testing.T) {
 import rego.v1
 `)
 	cache := &skillRegistrationCache{seen: map[string][32]byte{}}
-	raw, status, err := lockWithRegistrationRetry(context.Background(), "sess-1", []string{skillsDir}, cache, []byte(`{"session_id":"sess-1"}`))
+	raw, status, err := lockWithRegistrationRetry(context.Background(), "sess-1", []string{skillsDir}, cache, []byte(`{"session_id":"sess-1"}`), nil)
 	if err != nil {
 		t.Fatal(err)
 	}

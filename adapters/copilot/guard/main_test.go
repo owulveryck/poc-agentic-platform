@@ -50,14 +50,14 @@ func vscodeEditFilesPayload(filePath string) []byte {
 }
 
 func TestInScopeEditPasses(t *testing.T) {
-	block, msg := decide(editPayload("/work/checkout-service/internal/payment/router.go"), lockedTicket(t), nil)
+	block, _, msg := decide(editPayload("/work/checkout-service/internal/payment/router.go"), lockedTicket(t), nil)
 	if block {
 		t.Fatalf("expected the edit to pass, got block with %q", msg)
 	}
 }
 
 func TestOutOfScopeEditIsBlockedWithSemanticMessage(t *testing.T) {
-	block, msg := decide(editPayload("/work/checkout-service/internal/auth/login.go"), lockedTicket(t), nil)
+	block, _, msg := decide(editPayload("/work/checkout-service/internal/auth/login.go"), lockedTicket(t), nil)
 	if !block {
 		t.Fatal("expected an out-of-scope edit to be blocked")
 	}
@@ -70,7 +70,7 @@ func TestOutOfScopeEditIsBlockedWithSemanticMessage(t *testing.T) {
 }
 
 func TestMissingTicketBlocksWithGuidance(t *testing.T) {
-	block, msg := decide(editPayload("/work/checkout-service/internal/payment/router.go"), "", nil)
+	block, _, msg := decide(editPayload("/work/checkout-service/internal/payment/router.go"), "", nil)
 	if !block {
 		t.Fatal("expected a missing ticket to block")
 	}
@@ -85,19 +85,19 @@ func TestPlanFileIsExempt(t *testing.T) {
 	planFile := filepath.Join(home, ".claude", "plans", "some-plan.md")
 
 	// Exempt with a valid ticket: a plan file is never a product edit.
-	if block, msg := decide(editPayload(planFile), lockedTicket(t), nil); block {
+	if block, _, msg := decide(editPayload(planFile), lockedTicket(t), nil); block {
 		t.Fatalf("plan file write should be exempt with a ticket, got block with %q", msg)
 	}
 	// Exempt even with no ticket: the exemption must precede the
 	// missing-ticket branch so plan-mode writes are never blocked.
-	if block, msg := decide(editPayload(planFile), "", nil); block {
+	if block, _, msg := decide(editPayload(planFile), "", nil); block {
 		t.Fatalf("plan file write should be exempt without a ticket, got block with %q", msg)
 	}
 }
 
 func TestReadToolIsIgnored(t *testing.T) {
 	// Copilot's Read/Glob/Bash tools are outside this guard's scope.
-	block, _ := decide([]byte(`{"hook_event_name":"PreToolUse","tool_name":"Read","cwd":"/work","tool_input":{"path":"/work/x.go"}}`), "", nil)
+	block, _, _ := decide([]byte(`{"hook_event_name":"PreToolUse","tool_name":"Read","cwd":"/work","tool_input":{"path":"/work/x.go"}}`), "", nil)
 	if block {
 		t.Fatal("a Read tool call must not be blocked by the edit guard")
 	}
@@ -106,7 +106,7 @@ func TestReadToolIsIgnored(t *testing.T) {
 func TestEditWithoutPathFailsClosed(t *testing.T) {
 	// A file-mutating tool with no discernible target path is suspicious: the
 	// hardened guard denies it (fail-closed) rather than letting it through.
-	block, msg := decide([]byte(`{"hook_event_name":"PreToolUse","tool_name":"Edit","cwd":"/work","tool_input":{}}`), "", nil)
+	block, _, msg := decide([]byte(`{"hook_event_name":"PreToolUse","tool_name":"Edit","cwd":"/work","tool_input":{}}`), "", nil)
 	if !block {
 		t.Fatal("an Edit call without a path must fail closed")
 	}
@@ -118,7 +118,7 @@ func TestEditWithoutPathFailsClosed(t *testing.T) {
 func TestContentViolationBlocks(t *testing.T) {
 	payload := []byte(`{"hook_event_name":"PreToolUse","tool_name":"Write","cwd":"/work/checkout-service","tool_input":{"path":"/work/checkout-service/internal/payment/router.go","new_str":"raw"}}`)
 	verify := func(ticket, path, content string) ([]string, error) { return []string{"raw color forbidden"}, nil }
-	block, msg := decide(payload, lockedTicket(t), verify)
+	block, _, msg := decide(payload, lockedTicket(t), verify)
 	if !block {
 		t.Fatal("expected a content-policy violation to block")
 	}
@@ -130,7 +130,7 @@ func TestContentViolationBlocks(t *testing.T) {
 func TestContentVerifierErrorFailsClosed(t *testing.T) {
 	payload := []byte(`{"hook_event_name":"PreToolUse","tool_name":"Write","cwd":"/work/checkout-service","tool_input":{"path":"/work/checkout-service/internal/payment/router.go","new_str":"x"}}`)
 	verify := func(ticket, path, content string) ([]string, error) { return nil, errors.New("gateway unreachable") }
-	block, msg := decide(payload, lockedTicket(t), verify)
+	block, _, msg := decide(payload, lockedTicket(t), verify)
 	if !block {
 		t.Fatal("expected a verifier error to fail closed")
 	}
@@ -140,7 +140,7 @@ func TestContentVerifierErrorFailsClosed(t *testing.T) {
 }
 
 func TestVSCodeEditFilesPayloadShapeIsHandled(t *testing.T) {
-	block, msg := decide(vscodeEditFilesPayload("/work/checkout-service/internal/payment/router.go"), lockedTicket(t), nil)
+	block, _, msg := decide(vscodeEditFilesPayload("/work/checkout-service/internal/payment/router.go"), lockedTicket(t), nil)
 	if block {
 		t.Fatalf("expected the editFiles/file_path shape to pass in scope, got block with %q", msg)
 	}
@@ -149,7 +149,7 @@ func TestVSCodeEditFilesPayloadShapeIsHandled(t *testing.T) {
 func TestMatchingSessionPasses(t *testing.T) {
 	payload := editPayloadWithSession("/work/checkout-service/internal/payment/router.go",
 		"11111111-1111-1111-1111-111111111111")
-	block, msg := decide(payload, lockedTicket(t), nil)
+	block, _, msg := decide(payload, lockedTicket(t), nil)
 	if block {
 		t.Fatalf("expected the matching session to pass, got block with %q", msg)
 	}
@@ -158,7 +158,7 @@ func TestMatchingSessionPasses(t *testing.T) {
 func TestSessionMismatchIsBlocked(t *testing.T) {
 	payload := editPayloadWithSession("/work/checkout-service/internal/payment/router.go",
 		"22222222-2222-2222-2222-222222222222")
-	block, msg := decide(payload, lockedTicket(t), nil)
+	block, _, msg := decide(payload, lockedTicket(t), nil)
 	if !block {
 		t.Fatal("expected a ticket from another session to be blocked")
 	}
@@ -168,7 +168,7 @@ func TestSessionMismatchIsBlocked(t *testing.T) {
 }
 
 func TestPayloadWithoutSessionSkipsTheCheck(t *testing.T) {
-	block, msg := decide(editPayload("/work/checkout-service/internal/payment/router.go"), lockedTicket(t), nil)
+	block, _, msg := decide(editPayload("/work/checkout-service/internal/payment/router.go"), lockedTicket(t), nil)
 	if block {
 		t.Fatalf("expected the check to be skipped without a payload session id, got %q", msg)
 	}

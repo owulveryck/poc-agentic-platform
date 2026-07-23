@@ -1,0 +1,995 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PPG — the governed loop, per session</title>
+<style id="design-tokens">
+/*DESIGN_TOKENS*/
+</style>
+<style>
+  /* Visual values are reached exclusively through the design tokens above
+     (var(--color-*), injected from design/tokens.css at serve time) per the
+     design-system invariant: no raw color values in this file. The light
+     theme is DERIVED from the same tokens via color-mix — the canonical
+     palette itself is immutable in-session. */
+  * { box-sizing: border-box; }
+  body {
+    --ui-bg: var(--color-bg);
+    --ui-surface: var(--color-surface);
+    --ui-ink: var(--color-text);
+    --ui-line: var(--color-muted);
+    --ui-muted: var(--color-muted);
+    --ui-warntext: var(--color-warning);
+    margin: 0; padding: 1rem 1.25rem;
+    background: var(--ui-bg); color: var(--ui-ink);
+    font: 15px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  body.theme-light {
+    --ui-bg: color-mix(in srgb, var(--color-text) 91%, var(--color-bg) 9%);
+    --ui-surface: color-mix(in srgb, var(--color-text) 98%, var(--color-bg) 2%);
+    --ui-ink: var(--color-bg);
+    --ui-line: color-mix(in srgb, var(--color-muted) 45%, var(--color-text) 55%);
+    --ui-muted: color-mix(in srgb, var(--color-muted) 75%, var(--color-bg) 25%);
+    --ui-warntext: color-mix(in srgb, var(--color-warning) 50%, var(--color-bg) 50%);
+  }
+  header.top { display: flex; align-items: baseline; gap: 1rem; flex-wrap: wrap; }
+  h1 { font-size: 1.1rem; margin: 0; }
+  h1 em { color: var(--color-accent); font-style: normal; }
+  .nav a { color: var(--color-primary); text-decoration: none; font-size: .85rem; }
+  .nav a:hover { text-decoration: underline; }
+  .status { color: var(--ui-muted); font-size: .8rem; margin: .3rem 0 .5rem; }
+  .status .live { color: var(--color-success); font-weight: 600; }
+  .status .down { color: var(--color-danger); }
+
+  .wrap { display: flex; gap: 1rem; align-items: flex-start; }
+  .stage { flex: 1.6; min-width: 0; }
+  svg.loop { width: 100%; height: auto; display: block; }
+
+  aside {
+    flex: 1; min-width: 21rem; max-width: 32rem;
+    display: flex; flex-direction: column; gap: .75rem;
+  }
+  .panel {
+    background: var(--ui-surface); border: 1px solid var(--ui-line);
+    border-radius: 8px; padding: .6rem .8rem;
+  }
+  .panel h2 {
+    margin: 0 0 .4rem; font-size: .75rem; text-transform: uppercase;
+    letter-spacing: .08em; color: var(--ui-muted);
+  }
+  .controls { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
+  select {
+    background: var(--ui-bg); color: var(--ui-ink);
+    border: 1px solid var(--ui-line); border-radius: 6px;
+    font: inherit; padding: .25rem .4rem; max-width: 14rem;
+  }
+  .nums { font-size: .9rem; color: var(--ui-muted); line-height: 2; }
+  .nums b { color: var(--ui-ink); font-size: 1.05rem; }
+  .nums .turns b { color: var(--color-accent); font-size: 1.5rem; }
+  .flags { color: var(--color-danger); font-size: .85rem; font-weight: 600; }
+
+  ol.narration {
+    list-style: none; margin: 0; padding: 0;
+    max-height: 52vh; overflow: auto; font-size: .85rem;
+  }
+  ol.narration li {
+    display: flex; gap: .45rem; align-items: baseline;
+    padding: .32rem .4rem; border-bottom: 1px solid var(--ui-bg);
+    color: var(--ui-ink); cursor: pointer;
+  }
+  ol.narration li:hover, ol.narration li.match { background: var(--ui-bg); border-radius: 6px; }
+  ol.narration li .seq {
+    flex: none; min-width: 2.6rem; text-align: center;
+    border-radius: 999px; font-size: .72rem; font-weight: 700;
+    padding: .05rem .3rem;
+    background: var(--ui-bg); color: var(--ui-muted);
+    border: 1px solid var(--ui-line);
+  }
+  ol.narration li.warn .seq { color: var(--ui-warntext); border-color: var(--ui-warntext); }
+  ol.narration li.error .seq { color: var(--color-danger); border-color: var(--color-danger); }
+  ol.narration li .zicon { flex: none; }
+  ol.narration li .t { color: var(--color-primary); margin-right: .2rem; font-size: .75rem; }
+  ol.narration li .replayed { color: var(--ui-muted); }
+  .hint { color: var(--ui-muted); font-size: .75rem; margin-top: .35rem; }
+
+  /* ---- diagram ---- */
+  svg.loop text { font-family: inherit; fill: var(--ui-ink); }
+  svg.loop .small { fill: var(--ui-muted); }
+  .ring { fill: var(--ui-surface); fill-opacity: .45; stroke: var(--color-primary); stroke-width: 2.5; }
+  .ring.pulse { animation: ringpulse 1.4s ease-in-out; }
+  @keyframes ringpulse { 50% { stroke-width: 7; } }
+  .chev { fill: var(--color-primary); }
+  .zone { cursor: pointer; }
+  .stepbox rect.body { fill: var(--ui-surface); stroke: var(--color-primary); stroke-width: 2; }
+  .compbox rect.body { fill: var(--ui-surface); stroke: var(--ui-line); stroke-width: 2; }
+  .result rect.body { fill: var(--ui-bg); stroke: var(--color-success); stroke-width: 2; }
+  .hl {
+    fill: none; stroke: var(--color-accent); stroke-width: 4;
+    opacity: 0; transition: opacity .3s ease;
+  }
+  .lit .hl, .hover-lit .hl { opacity: 1; }
+  .lit-ok .hl { opacity: 1; stroke: var(--color-success); }
+  .lit-bad .hl { opacity: 1; stroke: var(--color-danger); }
+  .conn { stroke: var(--ui-line); stroke-width: 1.2; stroke-dasharray: 4 3; fill: none; opacity: .55; }
+  .trace { fill: none; stroke: var(--color-primary); stroke-linecap: round; opacity: 0; }
+  .trace.bad-last { stroke: var(--color-danger); }
+  .corr { stroke: var(--color-danger); stroke-width: 2.5; stroke-dasharray: 10 5; fill: none; }
+  .corr-arrow { fill: var(--color-danger); }
+  /* svg.loop prefix: outrank the generic `svg.loop text` fill rule */
+  svg.loop .corr-label { fill: var(--color-danger); font-style: italic; }
+  #loop-correction.pulse .corr { animation: dashmove 1.2s linear infinite; }
+  @keyframes dashmove { to { stroke-dashoffset: -45; } }
+  .exit-arrow { stroke: var(--color-success); stroke-width: 2.5; fill: none; }
+  .exit-head { fill: var(--color-success); }
+  .platform-top { fill: var(--ui-surface); stroke: var(--ui-line); stroke-width: 1.5; }
+  .platform-front { fill: var(--ui-bg); stroke: var(--ui-line); stroke-width: 1.5; }
+  .cyl rect { fill: var(--ui-surface); stroke: var(--ui-line); stroke-width: 1.4; }
+  .cyl ellipse { fill: var(--ui-surface); stroke: var(--ui-line); stroke-width: 1.4; }
+  .cyl ellipse.lid { fill: var(--ui-bg); }
+  .cyl rect.hl { fill: none; }
+  .nbadge circle { fill: var(--ui-bg); stroke: var(--color-danger); stroke-width: 1.5; }
+  svg.loop .nbadge text { fill: var(--color-danger); font-weight: 700; }
+  .vbadge rect { fill: var(--ui-ink); opacity: .9; }
+  svg.loop .vbadge text { fill: var(--ui-bg); font-weight: 700; }
+  .vbadge rect.bad { fill: var(--color-danger); opacity: 1; }
+  svg.loop .vbadge text.badt { fill: var(--color-text); }
+  .dot { opacity: 0; fill: var(--color-accent); stroke: var(--ui-bg); stroke-width: 2; }
+  .dot.ok { fill: var(--color-success); }
+  .dot.bad { fill: var(--color-danger); }
+
+  ol.narration li .playchip {
+    flex: none; cursor: pointer; color: var(--color-accent);
+    font-size: .8rem; padding: 0 .15rem;
+  }
+  ol.narration li .playchip:hover { color: var(--color-primary); }
+  ol.narration li .doc { flex: none; font-size: .8rem; }
+
+  /* Detail modal (same dialog as the table view: request & reply) */
+  .backdrop { position: fixed; inset: 0; background: var(--ui-ink); opacity: .45; }
+  .modal-layer { position: fixed; inset: 0; display: none; z-index: 20; }
+  .modal-layer.open { display: block; }
+  .modal {
+    position: relative; margin: 4vh auto; width: min(64rem, 92vw);
+    max-height: 88vh; overflow: auto;
+    background: var(--ui-surface); border: 1px solid var(--ui-line);
+    border-radius: 10px; padding: 1rem 1.25rem;
+  }
+  .modal header { display: flex; align-items: baseline; gap: .75rem; flex-wrap: wrap; margin-bottom: .5rem; }
+  .modal header .name { font-size: 1rem; font-weight: 700; color: var(--color-primary); }
+  .modal .sev-INFO { color: var(--color-success); }
+  .modal .sev-WARN { color: var(--ui-warntext); }
+  .modal .sev-ERROR { color: var(--color-danger); }
+  .modal header .when { color: var(--ui-muted); font-size: .85rem; }
+  .modal .close { position: absolute; top: .75rem; right: .75rem; }
+  .modal h2 {
+    font-size: .8rem; text-transform: uppercase; letter-spacing: .08em;
+    color: var(--ui-muted); margin: 1rem 0 .35rem;
+  }
+  .modal .meta { color: var(--ui-muted); font-size: .85rem; }
+  .modal .meta b { color: var(--ui-ink); }
+  .kv { width: 100%; border-collapse: collapse; }
+  .kv td { padding: .2rem .4rem; vertical-align: top; word-break: break-word; }
+  .kv td:first-child { color: var(--color-primary); white-space: nowrap; width: 12rem; }
+  .modal pre {
+    margin: 0; padding: .6rem .75rem; overflow: auto; max-height: 40vh;
+    background: var(--ui-bg); border: 1px solid var(--ui-line);
+    border-radius: 6px; font-size: .82rem; white-space: pre-wrap;
+  }
+  .modal .empty { color: var(--ui-muted); font-style: italic; }
+
+  .tooltip {
+    position: fixed; z-index: 10; display: none; max-width: 30rem;
+    background: var(--ui-surface); color: var(--ui-ink);
+    border: 1px solid var(--ui-line); border-radius: 8px;
+    padding: .5rem .65rem; font-size: .78rem; pointer-events: none;
+    box-shadow: 0 4px 14px color-mix(in srgb, var(--color-bg) 35%, transparent);
+  }
+  .tooltip .tt-title { font-weight: 700; margin-bottom: .25rem; }
+  .tooltip .tt-line { color: var(--ui-muted); }
+  .tooltip .tt-line.bad { color: var(--color-danger); }
+</style>
+</head>
+<body class="theme-light">
+<header class="top">
+  <h1><em>ppg</em> — the governed loop, per session</h1>
+  <nav class="nav"><a href="/events">→ table view</a></nav>
+  <button id="themebtn">dark theme</button>
+</header>
+<div class="status">stream: <span id="conn" class="down">connecting…</span> <span id="mode"></span></div>
+
+<div class="wrap">
+<div class="stage">
+<svg class="loop" viewBox="0 0 920 680" aria-label="PPG governed agentic loop">
+  <!-- agentic circle -->
+  <circle id="agent-ring" class="ring" cx="440" cy="250" r="160"/>
+  <!-- chevrons oriented along the Capture→Plan→Act→Observe flow (tangents
+       of the circle at the four diagonals) -->
+  <g class="chev">
+    <polygon points="-8,-5 8,0 -8,5" transform="translate(327,137) rotate(135)"/>
+    <polygon points="-8,-5 8,0 -8,5" transform="translate(327,363) rotate(45)"/>
+    <polygon points="-8,-5 8,0 -8,5" transform="translate(553,363) rotate(-45)"/>
+    <polygon points="-8,-5 8,0 -8,5" transform="translate(553,137) rotate(225)"/>
+  </g>
+  <text x="440" y="24" text-anchor="middle" font-size="14" font-weight="bold">🤖 Agentic system — one session of the governed loop</text>
+  <text x="440" y="218" text-anchor="middle" font-size="13" font-style="italic" class="small">Self-correcting</text>
+
+  <!-- static dashed guides + traces of travelled paths: BOTH are generated
+       by script from the same motion-path definitions, so guides, heat
+       traces, and the travelling dot share the exact same geometry -->
+  <g id="guides"></g>
+  <g id="traces"></g>
+  <!-- the travelling dot renders UNDER the boxes (the source SVG used a
+       mask for the same effect): it emerges from a box edge instead of
+       sliding over the labels -->
+  <circle id="dot" class="dot" r="8"/>
+
+  <!-- loop step boxes -->
+  <g id="b-capture" class="stepbox zone">
+    <rect class="body" x="355" y="68" width="170" height="44" rx="8"/>
+    <text x="440" y="87" text-anchor="middle" font-size="12" font-weight="bold">👁 Capture the intent</text>
+    <text x="440" y="101" text-anchor="middle" font-size="8.5" class="small">get_platform_guidelines_for_intent</text>
+    <rect class="hl" x="352" y="65" width="176" height="50" rx="11"/>
+  </g>
+  <g id="b-plan" class="stepbox zone">
+    <rect class="body" x="205" y="228" width="150" height="44" rx="8"/>
+    <text x="280" y="247" text-anchor="middle" font-size="12" font-weight="bold">📋 Plan the steps</text>
+    <text x="280" y="261" text-anchor="middle" font-size="8.5" class="small">lock_in_plan → capability ticket</text>
+    <rect class="hl" x="202" y="225" width="156" height="50" rx="11"/>
+  </g>
+  <g id="b-act" class="stepbox zone">
+    <rect class="body" x="375" y="392" width="130" height="40" rx="8"/>
+    <text x="440" y="409" text-anchor="middle" font-size="12" font-weight="bold">🔨 Act</text>
+    <text x="440" y="423" text-anchor="middle" font-size="8.5" class="small">write tools, guarded</text>
+    <rect class="hl" x="372" y="389" width="136" height="46" rx="11"/>
+  </g>
+  <g id="b-observe" class="stepbox zone">
+    <rect class="body" x="525" y="228" width="150" height="44" rx="8"/>
+    <text x="600" y="247" text-anchor="middle" font-size="12" font-weight="bold">🔍 Observe</text>
+    <text x="600" y="261" text-anchor="middle" font-size="8.5" class="small">ppg-verify (CLI) · verify_changeset</text>
+    <rect class="hl" x="522" y="225" width="156" height="50" rx="11"/>
+  </g>
+
+  <!-- self-correction loop (danger tokens) -->
+  <g id="loop-correction">
+    <path class="corr" d="M 565,282 Q 440,360 315,282"/>
+    <polygon class="corr-arrow" points="-8,-5 8,0 -8,5" transform="translate(315,282) rotate(210)"/>
+    <text x="440" y="345" text-anchor="middle" font-size="9.5" class="corr-label">Unsatisfactory result → re-plan</text>
+  </g>
+  <g class="nbadge">
+    <circle cx="478" cy="318" r="14"/>
+    <text id="nbadge-text" x="478" y="322" text-anchor="middle" font-size="10">(0)</text>
+    <text id="nbadge-total" x="516" y="322" text-anchor="start" font-size="8" class="corr-label"></text>
+  </g>
+
+  <!-- termination exit -->
+  <path class="exit-arrow" d="M 612,228 Q 660,120 730,92"/>
+  <polygon class="exit-head" points="-8,-5 8,0 -8,5" transform="translate(730,92) rotate(-18)"/>
+  <text x="688" y="152" text-anchor="middle" font-size="9.5" class="small">termination</text>
+  <text x="688" y="164" text-anchor="middle" font-size="9.5" class="small">condition ✓</text>
+  <g id="b-result" class="result zone">
+    <rect class="body" x="735" y="60" width="130" height="44" rx="8"/>
+    <text x="800" y="79" text-anchor="middle" font-size="12" font-weight="bold">↻ Result</text>
+    <text x="800" y="93" text-anchor="middle" font-size="8.5" class="small">verified changeset</text>
+    <rect class="hl" x="732" y="57" width="136" height="50" rx="11"/>
+  </g>
+
+  <!-- PPG components -->
+  <g id="c-mcp" class="compbox zone">
+    <rect class="body" x="95" y="400" width="170" height="52" rx="8"/>
+    <text x="180" y="421" text-anchor="middle" font-size="12" font-weight="bold">🔌 ppg-mcp-server</text>
+    <text x="180" y="436" text-anchor="middle" font-size="8.5" class="small">guidelines · lock_in_plan · ticket</text>
+    <rect class="hl" x="92" y="397" width="176" height="58" rx="11"/>
+  </g>
+  <g id="c-guard" class="compbox zone">
+    <rect class="body" x="640" y="400" width="170" height="52" rx="8"/>
+    <text x="725" y="421" text-anchor="middle" font-size="12" font-weight="bold">🛡 ppg-guard</text>
+    <text x="725" y="436" text-anchor="middle" font-size="8.5" class="small">PreToolUse hook → verify_artifact</text>
+    <rect class="hl" x="637" y="397" width="176" height="58" rx="11"/>
+  </g>
+
+  <!-- platform -->
+  <polygon class="platform-top" points="110,520 890,520 850,560 70,560"/>
+  <rect class="platform-front" x="70" y="560" width="780" height="80"/>
+  <text x="90" y="585" font-size="13" font-weight="bold">ppg — validation server <tspan class="small" font-size="9">(platform)</tspan></text>
+  <text x="90" y="603" font-size="10.5" font-style="italic" class="small">Guarantees consistency, reliability and trust</text>
+  <text x="90" y="623" font-size="8.5" class="small">enrich · lock_in_plan · verify_artifact · verify_changeset · escalations</text>
+
+  <g id="c-corpus" class="cyl zone">
+    <rect x="245" y="470" width="110" height="60"/>
+    <ellipse cx="300" cy="530" rx="55" ry="13"/>
+    <ellipse class="lid" cx="300" cy="470" rx="55" ry="13"/>
+    <text x="300" y="497" text-anchor="middle" font-size="9.5" font-weight="bold">Policy corpus</text>
+    <text x="300" y="510" text-anchor="middle" font-size="8" class="small">ADR · skills (Rego)</text>
+    <rect class="hl" x="240" y="452" width="120" height="96" rx="14"/>
+  </g>
+  <g id="c-store" class="cyl zone">
+    <rect x="515" y="475" width="90" height="55"/>
+    <ellipse cx="560" cy="530" rx="45" ry="11"/>
+    <ellipse class="lid" cx="560" cy="475" rx="45" ry="11"/>
+    <text x="560" y="500" text-anchor="middle" font-size="9.5" font-weight="bold">Ticket store</text>
+    <text x="560" y="512" text-anchor="middle" font-size="8" class="small">session-bound JWT</text>
+    <rect class="hl" x="510" y="459" width="100" height="90" rx="14"/>
+  </g>
+
+  <!-- edge semantics: who really goes through what -->
+  <text x="152" y="322" text-anchor="middle" font-size="8.5" class="small" font-style="italic">MCP tools</text>
+  <text x="152" y="334" text-anchor="middle" font-size="7.5" class="small">guidelines · lock_in_plan</text>
+  <text x="572" y="446" text-anchor="middle" font-size="8.5" class="small" font-style="italic">native write tools</text>
+  <text x="572" y="458" text-anchor="middle" font-size="7.5" class="small">PreToolUse hook · not MCP</text>
+  <text x="460" y="668" text-anchor="middle" font-size="8.5" class="small">MCP = intent &amp; plan tools · hook = edit interception · CLI = apply-time backstop</text>
+
+  <!-- visit badges, populated by script -->
+  <g id="badges"></g>
+</svg>
+</div>
+
+<aside>
+  <div class="panel">
+    <h2>session</h2>
+    <div class="controls">
+      <select id="sesspick"><option value="">(auto: latest)</option></select>
+      <button id="replaybtn">Replay this session</button>
+    </div>
+    <div class="hint">The diagram shows ONE session: badges ×N count where the loop already passed (!N in danger = refusals), travelled paths thicken, events are numbered.</div>
+  </div>
+  <div class="panel">
+    <h2>loop counters</h2>
+    <div class="nums" id="counters"></div>
+  </div>
+  <div class="panel">
+    <h2>what happened, step by step</h2>
+    <ol class="narration" id="narration"></ol>
+    <div class="hint">Hover a line to light its zone on the diagram (and the reverse). Click a line for the full record (request &amp; reply); ▶ replays its animation.</div>
+  </div>
+</aside>
+</div>
+
+<div class="modal-layer" id="modal-layer" role="dialog" aria-modal="true">
+  <div class="backdrop" id="backdrop"></div>
+  <div class="modal">
+    <button id="modal-close">close</button>
+    <header>
+      <span class="name" id="m-name"></span>
+      <span id="m-sev"></span>
+      <span class="when" id="m-when"></span>
+    </header>
+    <div class="meta" id="m-meta"></div>
+    <h2>attributes</h2>
+    <table class="kv"><tbody id="m-attrs"></tbody></table>
+    <h2 id="h-request">request</h2>
+    <pre id="m-request"></pre>
+    <h2 id="h-reply">reply</h2>
+    <pre id="m-reply"></pre>
+    <h2>raw event</h2>
+    <pre id="m-raw"></pre>
+  </div>
+</div>
+
+<div class="tooltip" id="tooltip"></div>
+
+<script>
+  "use strict";
+  const el = (id) => document.getElementById(id);
+  const svgNS = "http://www.w3.org/2000/svg";
+
+  // ---- theme ----------------------------------------------------------------
+  const THEME_KEY = "ppg-loop-theme";
+  function applyTheme(t) {
+    document.body.className = t === "dark" ? "" : "theme-light";
+    el("themebtn").textContent = t === "dark" ? "light theme" : "dark theme";
+  }
+  applyTheme(localStorage.getItem(THEME_KEY) || "light");
+  el("themebtn").addEventListener("click", () => {
+    const next = document.body.classList.contains("theme-light") ? "dark" : "light";
+    localStorage.setItem(THEME_KEY, next);
+    applyTheme(next);
+  });
+
+  // ---- motion paths (same offset-path technique as the source SVG) ----------
+  const P = {
+    intake:      "M 440,112 Q 170,140 180,396",
+    enrich:      "M 185,452 Q 215,492 250,512",
+    enrichBack:  "M 250,512 Q 215,492 185,452",
+    planSubmit:  "M 275,274 Q 208,332 183,396",
+    rejectBack:  "M 255,510 Q 200,480 183,450 Q 210,330 278,272",
+    ticket:      "M 358,505 L 512,500",
+    // MCP → Ticket store: stays above the platform face, lands on the lid.
+    ticketSave:  "M 265,435 Q 410,462 546,470",
+    // Ring arcs: endpoints EXACTLY on the agentic circle (center 440,250
+    // r=160, Plan at 180°, Act at 90°, Observe at 0°) so guide, trace and
+    // dot hug the drawn ring instead of bulging off it.
+    planToAct:   "M 280,250 A 160,160 0 0 0 440,410",
+    actToGuard:  "M 506,412 L 638,424",
+    guardVerify: "M 720,452 Q 700,500 610,515 Q 480,540 362,520",
+    blockReplan: "M 690,398 Q 440,330 318,278",
+    actToObserve:"M 440,410 A 160,160 0 0 0 600,250",
+    exit:        "M 612,228 Q 660,120 730,92",
+    correction:  "M 565,282 Q 440,360 315,282",
+  };
+
+  // Visible "trace" twins: travelled paths thicken with passage count.
+  const tracesG = el("traces");
+  const traceEls = {};
+  for (const [key, d] of Object.entries(P)) {
+    const p = document.createElementNS(svgNS, "path");
+    p.setAttribute("d", d);
+    p.setAttribute("class", "trace");
+    tracesG.appendChild(p);
+    traceEls[key] = p;
+  }
+
+  // Static dashed guides for the structural edges — generated from the SAME
+  // definitions as the traces and the dot trajectories, so all three overlap
+  // exactly. Event-only return paths (rejectBack, blockReplan, correction)
+  // have no permanent guide; the styled correction/exit arcs cover them.
+  const GUIDE_KEYS = ["intake", "planSubmit", "enrich", "ticket", "ticketSave",
+    "planToAct", "actToGuard", "guardVerify", "actToObserve"];
+  const guidesG = el("guides");
+  for (const key of GUIDE_KEYS) {
+    const p = document.createElementNS(svgNS, "path");
+    p.setAttribute("d", P[key]);
+    p.setAttribute("class", "conn");
+    guidesG.appendChild(p);
+  }
+
+  // Zones: badge anchor + icon (for the narration chips and tooltips).
+  const ZONES = {
+    "b-capture": { x: 528, y: 62, icon: "👁", label: "Capture the intent" },
+    "b-plan":    { x: 358, y: 222, icon: "📋", label: "Plan the steps" },
+    "b-act":     { x: 508, y: 386, icon: "🔨", label: "Act" },
+    "b-observe": { x: 678, y: 222, icon: "🔍", label: "Observe" },
+    "b-result":  { x: 868, y: 54, icon: "↻", label: "Result" },
+    "c-mcp":     { x: 268, y: 394, icon: "🔌", label: "ppg-mcp-server" },
+    "c-guard":   { x: 813, y: 394, icon: "🛡", label: "ppg-guard" },
+    "c-corpus":  { x: 358, y: 452, icon: "📜", label: "Policy corpus" },
+    "c-store":   { x: 608, y: 456, icon: "🎫", label: "Ticket store" },
+  };
+  const badgesG = el("badges");
+  const badgeEls = {};
+  for (const [id, z] of Object.entries(ZONES)) {
+    const g = document.createElementNS(svgNS, "g");
+    g.setAttribute("class", "vbadge");
+    g.setAttribute("transform", "translate(" + z.x + "," + z.y + ")");
+    g.innerHTML =
+      '<rect class="okr" x="-19" y="-11" width="38" height="18" rx="9" visibility="hidden"/>' +
+      '<text class="okt" x="0" y="2" text-anchor="middle" font-size="10" visibility="hidden"></text>' +
+      '<rect class="bad" x="-15" y="9" width="30" height="16" rx="8" visibility="hidden"/>' +
+      '<text class="badt" x="0" y="21" text-anchor="middle" font-size="9" visibility="hidden"></text>';
+    badgesG.appendChild(g);
+    badgeEls[id] = g;
+  }
+
+  // ---- animation primitives --------------------------------------------------
+  const dot = el("dot");
+
+  function light(id, cls, ms) {
+    const g = el(id);
+    if (!g) return;
+    g.classList.remove("lit", "lit-ok", "lit-bad");
+    g.classList.add(cls);
+    setTimeout(() => g.classList.remove(cls), ms);
+  }
+
+  function pulseLoop(ms) {
+    el("loop-correction").classList.add("pulse");
+    setTimeout(() => el("loop-correction").classList.remove("pulse"), ms);
+  }
+
+  function pulseRing() {
+    el("agent-ring").classList.add("pulse");
+    setTimeout(() => el("agent-ring").classList.remove("pulse"), 1400);
+  }
+
+  // travel moves the dot along a trace path element via rAF and
+  // getPointAtLength — deterministic on every browser, always exactly on the
+  // path shared with the dashed guide and the heat trace.
+  function travel(pathKey, cls, dur) {
+    const p = traceEls[pathKey];
+    if (!p) return Promise.resolve();
+    const total = p.getTotalLength();
+    dot.setAttribute("class", "dot" + (cls ? " " + cls : ""));
+    dot.style.opacity = "1";
+    return new Promise((resolve) => {
+      const t0 = performance.now();
+      const frame = (t) => {
+        const u = Math.min((t - t0) / dur, 1);
+        const eased = u < 0.5 ? 2 * u * u : 1 - ((-2 * u + 2) ** 2) / 2;
+        const pt = p.getPointAtLength(eased * total);
+        dot.setAttribute("cx", pt.x);
+        dot.setAttribute("cy", pt.y);
+        if (u < 1) {
+          requestAnimationFrame(frame);
+        } else {
+          dot.style.opacity = "0";
+          resolve();
+        }
+      };
+      requestAnimationFrame(frame);
+    });
+  }
+
+  async function play(item, dur) {
+    for (const s of item.steps) {
+      for (const [id, cls] of (s.lights || [])) light(id, cls, dur + 600);
+      if (s.loopPulse) pulseLoop(dur + 800);
+      if (s.ringPulse) pulseRing();
+      if (s.pathKey) await travel(s.pathKey, s.cls, dur);
+    }
+  }
+
+  // ---- event → steps + narration ---------------------------------------------
+  const A = (e) => e.attributes || {};
+  const short = (s, n) => { s = String(s || ""); return s.length > n ? s.slice(0, n) + "…" : s; };
+  const ids = (e) => (A(e).policy_ids || []).join(", ");
+
+  const MAP = {
+    "ppg.session.start": (e) => ({
+      steps: [{ ringPulse: true }],
+      text: "Session " + short(e.session_id, 8) + " started (" + (A(e).agent || "?") + ") — previous tickets purged",
+    }),
+    "ppg.intent.declared": (e) => ({
+      steps: [{ pathKey: "intake", lights: [["b-capture", "lit"], ["c-mcp", "lit"]] }],
+      text: "The agent declares its intent: “" + short(A(e).intent, 70) + "”",
+    }),
+    "ppg.enrich.served": (e) => ({
+      steps: [
+        { pathKey: "enrich", lights: [["c-mcp", "lit"], ["c-corpus", "lit"]] },
+        { pathKey: "enrichBack", lights: [["b-capture", "lit"]] }],
+      text: "The platform returns the architectural invariants for “" + short(A(e).intent, 50) + "” (" + (A(e).invariant_count ?? 0) + " invariant(s))",
+    }),
+    "ppg.plan.rejected": (e) => ({
+      steps: [
+        { pathKey: "planSubmit", lights: [["b-plan", "lit"], ["c-mcp", "lit"]] },
+        { pathKey: "enrich", lights: [["c-corpus", "lit"]] },
+        { pathKey: "rejectBack", cls: "bad", lights: [["b-plan", "lit-bad"]], loopPulse: true }],
+      text: "Plan REJECTED (attempt " + (A(e).rejection_count ?? "?") + "): " + ids(e) + " — fix and resubmit",
+    }),
+    "ppg.plan.conflict": (e) => ({
+      steps: [
+        { pathKey: "planSubmit", lights: [["b-plan", "lit"]] },
+        { pathKey: "rejectBack", cls: "bad", lights: [["b-plan", "lit-bad"], ["c-corpus", "lit-bad"]], loopPulse: true }],
+      text: "POLICY_CONFLICT " + (A(e).conflict_id || "") + " — escalated to the humans who own the rules; resubmitting is pointless",
+    }),
+    "ppg.plan.locked": (e) => ({
+      steps: [
+        { pathKey: "planSubmit", lights: [["b-plan", "lit"], ["c-mcp", "lit"]] },
+        { pathKey: "ticket", cls: "ok", lights: [["c-corpus", "lit-ok"], ["c-store", "lit-ok"], ["b-plan", "lit-ok"]] }],
+      text: "Plan LOCKED: " + (A(e).step_count ?? "?") + " steps, " + (A(e).target_count ?? "?") + " targets — capability ticket issued",
+    }),
+    "ppg.ticket.saved": (e) => ({
+      steps: [{ pathKey: "ticketSave", cls: "ok", lights: [["c-mcp", "lit"], ["c-store", "lit-ok"]] }],
+      text: "Execution ticket persisted — the guard will honor it for this session",
+    }),
+    "ppg.lock.retry": (e) => ({
+      steps: [{ lights: [["c-mcp", "lit"]] }],
+      text: "MCP self-heals: re-uploading " + (A(e).unknown_skill_count ?? "?") + " skill(s), retrying the lock",
+    }),
+    "ppg.guard.allow": (e) => ({
+      steps: [
+        { pathKey: "planToAct", lights: [["b-act", "lit"]] },
+        { pathKey: "actToGuard", lights: [["c-guard", "lit-ok"]] }],
+      text: short(A(e).tool, 20) + " on " + short(A(e).path, 50) + " — in scope, content clean: allowed",
+    }),
+    "ppg.guard.block": (e) => ({
+      steps: [
+        { pathKey: "actToGuard", lights: [["b-act", "lit"], ["c-guard", "lit-bad"]] },
+        { pathKey: "blockReplan", cls: "bad", lights: [["b-plan", "lit-bad"]], loopPulse: true }],
+      text: short(A(e).tool, 20) + " on " + short(A(e).path, 44) + " BLOCKED (" + (A(e).reason_code || "?") + ")",
+    }),
+    "ppg.artifact.rejected": (e) => ({
+      steps: [{ pathKey: "guardVerify", cls: "bad", lights: [["c-guard", "lit"], ["c-corpus", "lit-bad"]] }],
+      text: "Content check refused " + short(A(e).path, 44) + ": " + ids(e),
+    }),
+    "ppg.scope.refused": (e) => ({
+      steps: [{ lights: [["c-corpus", "lit-bad"]] }],
+      text: "Scope refused (" + (A(e).code || "?") + "): " + short(A(e).attempted, 50),
+    }),
+    "ppg.plan.substitution": (e) => ({
+      steps: [{ lights: [["c-corpus", "lit-bad"], ["c-store", "lit-bad"]] }],
+      text: "PLAN SUBSTITUTION detected — the executed plan does not match the ticket",
+    }),
+    "ppg.changeset.ok": (e) => ({
+      steps: [
+        { pathKey: "actToObserve", lights: [["b-observe", "lit"]] },
+        { pathKey: "exit", cls: "ok", lights: [["b-result", "lit-ok"]] }],
+      text: "Changeset verified (" + (A(e).file_count ?? "?") + " file(s)) — termination condition met, the loop exits",
+    }),
+    "ppg.changeset.rejected": (e) => ({
+      steps: [
+        { pathKey: "actToObserve", lights: [["b-observe", "lit"]] },
+        { pathKey: "correction", cls: "bad", lights: [["b-plan", "lit-bad"]], loopPulse: true }],
+      text: "Changeset REJECTED (" + ids(e) + ") — back to plan",
+    }),
+    "ppg.verify.run": (e) => {
+      const o = A(e).outcome;
+      if (o === "ok") return MAP["ppg.changeset.ok"](e);
+      if (o === "rejected") return {
+        steps: [
+          { pathKey: "actToObserve", lights: [["b-observe", "lit"]] },
+          { pathKey: "correction", cls: "bad", lights: [["b-plan", "lit-bad"]], loopPulse: true }],
+        text: "Apply-time verification REJECTED (" + (A(e).status || "") + ") — back to plan",
+      };
+      return {
+        steps: [{ lights: [["b-observe", "lit-bad"], ["c-corpus", "lit-bad"]] }],
+        text: "Apply-time verification could NOT run (" + (A(e).status || "") + ") — unverified window",
+      };
+    },
+    "ppg.skill.registered": (e) => ({
+      steps: [{ lights: [["c-corpus", "lit"]] }],
+      text: "Skill “" + (A(e).skill || "?") + "” registered with the platform",
+    }),
+    "ppg.skill.rejected": (e) => ({
+      steps: [{ lights: [["c-corpus", "lit-bad"]] }],
+      text: "Skill “" + (A(e).skill || "?") + "” refused (Rego compile error)",
+    }),
+    "ppg.client.error": (e) => ({
+      steps: [{ lights: [["c-mcp", "lit-bad"]] }],
+      text: "MCP could not reach the platform (" + (A(e).route || "") + ") — transport error",
+    }),
+  };
+
+  // zonesOf lists [zoneId, isBad] pairs touched by an item.
+  function zonesOf(item) {
+    const seen = new Map();
+    for (const s of item.steps) {
+      for (const [id, cls] of (s.lights || [])) {
+        seen.set(id, seen.get(id) || cls === "lit-bad");
+      }
+    }
+    return [...seen.entries()];
+  }
+
+  // ---- per-session state -------------------------------------------------------
+  // sessEvents: every event of every session, in arrival order, with its
+  // precomputed animation item and sequence number.
+  const sessEvents = new Map(); // sid -> [{seq, e, item}]
+  const sessions = new Map();   // sid -> counters
+  let latestSid = null;
+  let live = false;
+  let replaying = false;
+
+  // Trace state of the DISPLAYED session, rebuilt on selection change.
+  let trace = null;
+  function freshTrace() {
+    return { zoneN: new Map(), zoneBad: new Map(), zoneEvents: new Map(),
+             pathN: new Map(), corrTotal: 0 };
+  }
+
+  const sidOf = (e) => e.session_id || "(no session)";
+
+  function counters(sid) {
+    if (!sessions.has(sid)) {
+      sessions.set(sid, { turns: 0, intents: 0, rejections: 0, blocks: 0,
+                          allows: 0, verifies: 0, rejectRun: 0, flags: new Set() });
+      const opt = document.createElement("option");
+      opt.value = sid; opt.textContent = sid.slice(0, 12);
+      el("sesspick").appendChild(opt);
+    }
+    return sessions.get(sid);
+  }
+
+  function track(e) {
+    const c = counters(sidOf(e));
+    if (e.session_id) latestSid = e.session_id;
+    switch (e.name) {
+      case "ppg.session.start": c.rejectRun = 0; break;
+      case "ppg.intent.declared": c.intents++; break;
+      case "ppg.plan.locked":
+        c.turns++; c.rejectRun = 0;
+        if (c.turns > 1) c.flags.add("re-locked");
+        break;
+      case "ppg.plan.rejected":
+        c.rejections++; c.rejectRun++;
+        if (c.rejectRun >= 2) c.flags.add("asked-twice");
+        break;
+      case "ppg.plan.conflict": c.flags.add("conflict"); break;
+      case "ppg.plan.substitution": c.flags.add("substitution"); break;
+      case "ppg.guard.allow": c.allows++; break;
+      case "ppg.guard.block": {
+        c.blocks++;
+        const rc = A(e).reason_code;
+        if (rc === "session_mismatch" || rc === "ticket_rejected") c.flags.add("bypass?");
+        break;
+      }
+      case "ppg.changeset.ok": case "ppg.changeset.rejected": case "ppg.verify.run":
+        c.verifies++;
+        if (e.name === "ppg.verify.run" && A(e).outcome === "error") c.flags.add("unverified-window");
+        break;
+    }
+  }
+
+  function displayedSid() {
+    return el("sesspick").value || latestSid || "(no session)";
+  }
+
+  // applyTrace folds one event into the displayed session's trace and
+  // refreshes badges + path thickness. Pure bookkeeping — no animation.
+  function applyTrace(rec) {
+    const bad = rec.e.severity === "WARN" || rec.e.severity === "ERROR";
+    for (const [zone, zoneBad] of zonesOf(rec.item)) {
+      trace.zoneN.set(zone, (trace.zoneN.get(zone) || 0) + 1);
+      if (zoneBad) trace.zoneBad.set(zone, (trace.zoneBad.get(zone) || 0) + 1);
+      const list = trace.zoneEvents.get(zone) || [];
+      list.push({ seq: rec.seq, time: (rec.e.time || "").slice(11, 19), text: rec.item.text, bad });
+      if (list.length > 8) list.shift();
+      trace.zoneEvents.set(zone, list);
+    }
+    for (const s of rec.item.steps) {
+      if (!s.pathKey) continue;
+      trace.pathN.set(s.pathKey, (trace.pathN.get(s.pathKey) || 0) + 1);
+      if (s.pathKey === "rejectBack" || s.pathKey === "correction" || s.pathKey === "blockReplan") {
+        trace.corrTotal++;
+      }
+    }
+  }
+
+  function renderTrace() {
+    for (const [id, g] of Object.entries(badgeEls)) {
+      const n = trace.zoneN.get(id) || 0;
+      const bad = trace.zoneBad.get(id) || 0;
+      const vis = (sel, on, txt) => {
+        const node = g.querySelector(sel);
+        node.setAttribute("visibility", on ? "visible" : "hidden");
+        if (txt !== undefined) node.textContent = txt;
+      };
+      vis("rect.okr", n > 0);
+      vis("text.okt", n > 0, "×" + n);
+      vis("rect.bad", bad > 0);
+      vis("text.badt", bad > 0, "!" + bad);
+    }
+    for (const [key, p] of Object.entries(traceEls)) {
+      const n = trace.pathN.get(key) || 0;
+      if (n === 0) { p.style.opacity = "0"; continue; }
+      p.style.opacity = String(Math.min(0.16 + n * 0.07, 0.55));
+      p.style.strokeWidth = String(Math.min(2 + n * 1.2, 9));
+      p.classList.toggle("bad-last",
+        key === "rejectBack" || key === "correction" || key === "blockReplan");
+    }
+    el("nbadge-total").textContent = trace.corrTotal > 0 ? "total ×" + trace.corrTotal : "";
+  }
+
+  function renderCounters() {
+    const sid = displayedSid();
+    const c = sessions.get(sid) ||
+      { turns: 0, intents: 0, rejections: 0, blocks: 0, allows: 0, verifies: 0, rejectRun: 0, flags: new Set() };
+    el("counters").innerHTML =
+      "session <b>" + esc(sid.slice(0, 12)) + "</b><br>" +
+      '<span class="turns">turns <b>' + c.turns + "</b></span> · intents <b>" + c.intents +
+      "</b> · rejected <b>" + c.rejections + "</b> · blocks <b>" + c.blocks +
+      "</b> · allows <b>" + c.allows + "</b> · verify <b>" + c.verifies + "</b>" +
+      '<div class="flags">' + esc([...c.flags].join(" ")) + "</div>";
+    el("nbadge-text").textContent = "(" + c.rejectRun + ")";
+  }
+
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, ch => "&" + "#" + ch.charCodeAt(0) + ";");
+  }
+
+  // ---- narration (numbered, cross-linked with the diagram) ---------------------
+  function narrationLi(rec, replayed) {
+    const li = document.createElement("li");
+    if (rec.e.severity === "WARN") li.className = "warn";
+    if (rec.e.severity === "ERROR") li.className = "error";
+    const zones = zonesOf(rec.item).map(([id]) => id);
+    li.dataset.zones = zones.join(",");
+    li.dataset.seq = String(rec.seq);
+    const icon = zones.length ? (ZONES[zones[0]] || {}).icon || "" : "";
+    li.innerHTML =
+      '<span class="seq">' + "#" + rec.seq + "</span>" +
+      '<span class="playchip" title="replay this event on the diagram">▶</span>' +
+      (hasDialog(rec.e) ? '<span class="doc" title="request/reply captured — click for the dialog">📄</span>' : "") +
+      '<span class="zicon">' + icon + "</span>" +
+      "<span>" + '<span class="t">' + esc((rec.e.time || "").slice(11, 19)) + "</span>" +
+      (replayed ? '<span class="replayed">[replay] </span>' : "") + esc(rec.item.text) + "</span>";
+    li.addEventListener("mouseenter", () => {
+      for (const z of zones) el(z) && el(z).classList.add("hover-lit");
+    });
+    li.addEventListener("mouseleave", () => {
+      for (const z of zones) el(z) && el(z).classList.remove("hover-lit");
+    });
+    // Click anywhere on the line: open the full-record dialog (request &
+    // reply, same modal as the table view). The ▶ chip replays the animation.
+    li.querySelector(".playchip").addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      if (!replaying) play(rec.item, 1300);
+    });
+    li.addEventListener("click", () => openModal(rec.e));
+    return li;
+  }
+
+  // ---- full-record modal (request & reply) ----------------------------------
+  const REQUEST_KEYS = ["request", "request_omitted"];
+  const REPLY_KEYS = ["response", "response_omitted", "reply"];
+  const PAYLOAD_KEYS = REQUEST_KEYS.concat(REPLY_KEYS);
+  const layer = el("modal-layer");
+
+  function pretty(v) {
+    if (v === undefined || v === null) return null;
+    if (typeof v === "string") return v;
+    return JSON.stringify(v, null, 2);
+  }
+
+  // fillPane fills one request/reply pane, or hides it (with its title)
+  // when the event carries no such payload — most event types don't, by
+  // design (only decision verdicts are captured).
+  function fillPane(paneId, titleId, attrs, keys) {
+    const pane = el(paneId), title = el(titleId);
+    for (const k of keys) {
+      const body = pretty((attrs || {})[k]);
+      if (body !== null) {
+        pane.textContent = body;
+        pane.style.display = "";
+        title.style.display = "";
+        return;
+      }
+    }
+    pane.style.display = "none";
+    title.style.display = "none";
+  }
+
+  // hasDialog reports whether an event carries a request/reply payload —
+  // the 📄 indicator on narration lines.
+  const hasDialog = (e) => PAYLOAD_KEYS.some((k) => (e.attributes || {})[k] !== undefined);
+
+  function openModal(e) {
+    el("m-name").textContent = e.name || "";
+    const sev = el("m-sev");
+    sev.textContent = e.severity || "INFO";
+    sev.className = "sev-" + (e.severity || "INFO");
+    el("m-when").textContent = (e.time || "").replace("T", " ");
+    el("m-meta").innerHTML =
+      "component <b>" + esc(e.component || "") + "</b> · session <b>" +
+      esc(e.session_id || "(none)") + "</b>" +
+      (e.project ? " · project <b>" + esc(e.project) + "</b>" : "");
+    const rows = Object.entries(e.attributes || {})
+      .filter(([k]) => !PAYLOAD_KEYS.includes(k))
+      .map(([k, v]) => {
+        const tr = document.createElement("tr");
+        const val = typeof v === "object" ? JSON.stringify(v) : String(v);
+        tr.innerHTML = "<td>" + esc(k) + "</td><td>" + esc(val) + "</td>";
+        return tr;
+      });
+    el("m-attrs").replaceChildren(...rows);
+    if (!rows.length) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = '<td class="empty" colspan="2">(none)</td>';
+      el("m-attrs").replaceChildren(tr);
+    }
+    fillPane("m-request", "h-request", e.attributes, REQUEST_KEYS);
+    fillPane("m-reply", "h-reply", e.attributes, REPLY_KEYS);
+    el("m-raw").textContent = JSON.stringify(e, null, 2);
+    layer.classList.add("open");
+  }
+
+  function closeModal() { layer.classList.remove("open"); }
+  el("modal-close").addEventListener("click", closeModal);
+  el("backdrop").addEventListener("click", closeModal);
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape") closeModal();
+  });
+
+  function narratePrepend(rec, replayed) {
+    const log = el("narration");
+    log.prepend(narrationLi(rec, replayed));
+    while (log.children.length > 300) log.removeChild(log.lastChild);
+  }
+
+  // ---- zone hover: highlight matching narration lines + tooltip -----------------
+  const tooltip = el("tooltip");
+  for (const id of Object.keys(ZONES)) {
+    const g = el(id);
+    g.addEventListener("mouseenter", () => {
+      for (const li of el("narration").children) {
+        if ((li.dataset.zones || "").split(",").includes(id)) li.classList.add("match");
+      }
+      const evts = (trace && trace.zoneEvents.get(id)) || [];
+      const z = ZONES[id];
+      tooltip.innerHTML =
+        '<div class="tt-title">' + z.icon + " " + esc(z.label) + " — ×" +
+        ((trace && trace.zoneN.get(id)) || 0) + " visit(s)</div>" +
+        (evts.length
+          ? evts.slice().reverse().map((v) =>
+              '<div class="tt-line' + (v.bad ? " bad" : "") + '">' +
+              "#" + v.seq + " " + esc(v.time) + " " + esc(short(v.text, 80)) + "</div>").join("")
+          : '<div class="tt-line">no event yet in this session</div>');
+      tooltip.style.display = "block";
+    });
+    g.addEventListener("mousemove", (ev) => {
+      tooltip.style.left = Math.min(ev.clientX + 14, window.innerWidth - 340) + "px";
+      tooltip.style.top = (ev.clientY + 14) + "px";
+    });
+    g.addEventListener("mouseleave", () => {
+      for (const li of el("narration").children) li.classList.remove("match");
+      tooltip.style.display = "none";
+    });
+  }
+
+  // ---- session switching: rebuild the whole trace instantly ---------------------
+  let displayed = null;
+  function rebuild() {
+    displayed = displayedSid();
+    trace = freshTrace();
+    el("narration").replaceChildren();
+    const arr = sessEvents.get(displayed) || [];
+    for (const rec of arr) {
+      applyTrace(rec);
+      narratePrepend(rec, false);
+    }
+    renderTrace();
+    renderCounters();
+  }
+  el("sesspick").addEventListener("change", rebuild);
+
+  // ---- animation queue -----------------------------------------------------------
+  const queue = [];
+  let running = false;
+
+  async function pump() {
+    if (running) return;
+    running = true;
+    while (queue.length > 0) {
+      const rec = queue.shift();
+      const dur = queue.length > 10 ? 350 : 1200;
+      await play(rec.item, dur);
+    }
+    running = false;
+  }
+
+  // ---- replay ---------------------------------------------------------------------
+  el("replaybtn").addEventListener("click", async () => {
+    if (replaying) { replaying = false; return; }
+    const arr = sessEvents.get(displayedSid()) || [];
+    if (!arr.length) return;
+    replaying = true;
+    el("replaybtn").textContent = "Stop replay";
+    el("mode").textContent = "— replaying " + arr.length + " event(s)";
+    for (const rec of arr) {
+      if (!replaying) break;
+      narratePrepend(rec, true);
+      await play(rec.item, 1400);
+    }
+    replaying = false;
+    el("replaybtn").textContent = "Replay this session";
+    el("mode").textContent = "";
+  });
+
+  // ---- stream ------------------------------------------------------------------
+  const conn = el("conn");
+  const src = new EventSource("/events/stream?replay=1000");
+  src.onopen = () => {
+    conn.textContent = "live"; conn.className = "live";
+    // The initial ?replay burst seeds the per-session history silently;
+    // animation starts for events arriving after this window.
+    setTimeout(() => { live = true; rebuild(); }, 900);
+  };
+  src.onerror = () => { conn.textContent = "reconnecting…"; conn.className = "down"; };
+  src.onmessage = (msg) => {
+    let e;
+    try { e = JSON.parse(msg.data); } catch { return; }
+    const make = MAP[e.name];
+    if (!make) { track(e); return; }
+    const sid = sidOf(e);
+    const arr = sessEvents.get(sid) || [];
+    const rec = { seq: arr.length + 1, e, item: make(e) };
+    arr.push(rec);
+    if (arr.length > 1500) arr.shift();
+    sessEvents.set(sid, arr);
+    const hadSession = displayed;
+    track(e);
+    if (!live) return;
+    // Auto mode follows the latest active session.
+    if (displayedSid() !== displayed) { rebuild(); }
+    if (sid === displayed || displayedSid() === sid) {
+      if (hadSession === displayedSid()) {
+        applyTrace(rec);
+        narratePrepend(rec, false);
+        renderTrace();
+      }
+      renderCounters();
+      if (!replaying) { queue.push(rec); pump(); }
+    }
+  };
+</script>
+</body>
+</html>

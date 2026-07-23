@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/owulveryck/poc-agentic-platform/internal/journal"
 	"github.com/owulveryck/poc-agentic-platform/internal/plan"
 	"github.com/owulveryck/poc-agentic-platform/internal/store"
 	"github.com/owulveryck/poc-agentic-platform/internal/ticket"
@@ -40,14 +41,14 @@ func hookPayloadWithSession(filePath, sessionID string) []byte {
 }
 
 func TestInScopeEditPasses(t *testing.T) {
-	block, msg := decide(hookPayload("/work/checkout-service/internal/payment/router.go"), lockedTicket(t), nil)
+	block, _, msg := decide(hookPayload("/work/checkout-service/internal/payment/router.go"), lockedTicket(t), nil)
 	if block {
 		t.Fatalf("expected the edit to pass, got block with %q", msg)
 	}
 }
 
 func TestOutOfScopeEditIsBlockedWithSemanticMessage(t *testing.T) {
-	block, msg := decide(hookPayload("/work/checkout-service/internal/auth/login.go"), lockedTicket(t), nil)
+	block, _, msg := decide(hookPayload("/work/checkout-service/internal/auth/login.go"), lockedTicket(t), nil)
 	if !block {
 		t.Fatal("expected an out-of-scope edit to be blocked")
 	}
@@ -60,7 +61,7 @@ func TestOutOfScopeEditIsBlockedWithSemanticMessage(t *testing.T) {
 }
 
 func TestMissingTicketBlocksWithGuidance(t *testing.T) {
-	block, msg := decide(hookPayload("/work/checkout-service/internal/payment/router.go"), "", nil)
+	block, _, msg := decide(hookPayload("/work/checkout-service/internal/payment/router.go"), "", nil)
 	if !block {
 		t.Fatal("expected a missing ticket to block")
 	}
@@ -75,18 +76,18 @@ func TestPlanFileIsExempt(t *testing.T) {
 	planFile := filepath.Join(home, ".claude", "plans", "some-plan.md")
 
 	// Exempt with a valid ticket: a plan file is never a product edit.
-	if block, msg := decide(hookPayload(planFile), lockedTicket(t), nil); block {
+	if block, _, msg := decide(hookPayload(planFile), lockedTicket(t), nil); block {
 		t.Fatalf("plan file write should be exempt with a ticket, got block with %q", msg)
 	}
 	// Exempt even with no ticket: plan mode writes its plan before any plan
 	// is locked, so the exemption must precede the missing-ticket branch.
-	if block, msg := decide(hookPayload(planFile), "", nil); block {
+	if block, _, msg := decide(hookPayload(planFile), "", nil); block {
 		t.Fatalf("plan file write should be exempt without a ticket, got block with %q", msg)
 	}
 }
 
 func TestNonFileToolIsIgnored(t *testing.T) {
-	block, _ := decide([]byte(`{"tool_name":"Bash","cwd":"/work","tool_input":{"command":"ls"}}`), "", nil)
+	block, _, _ := decide([]byte(`{"tool_name":"Bash","cwd":"/work","tool_input":{"command":"ls"}}`), "", nil)
 	if block {
 		t.Fatal("a tool call without file_path must not be blocked by the guard")
 	}
@@ -95,7 +96,7 @@ func TestNonFileToolIsIgnored(t *testing.T) {
 func TestMatchingSessionPasses(t *testing.T) {
 	payload := hookPayloadWithSession("/work/checkout-service/internal/payment/router.go",
 		"11111111-1111-1111-1111-111111111111")
-	block, msg := decide(payload, lockedTicket(t), nil)
+	block, _, msg := decide(payload, lockedTicket(t), nil)
 	if block {
 		t.Fatalf("expected the matching session to pass, got block with %q", msg)
 	}
@@ -104,7 +105,7 @@ func TestMatchingSessionPasses(t *testing.T) {
 func TestSessionMismatchIsBlocked(t *testing.T) {
 	payload := hookPayloadWithSession("/work/checkout-service/internal/payment/router.go",
 		"22222222-2222-2222-2222-222222222222")
-	block, msg := decide(payload, lockedTicket(t), nil)
+	block, _, msg := decide(payload, lockedTicket(t), nil)
 	if !block {
 		t.Fatal("expected a ticket from another session to be blocked")
 	}
@@ -116,7 +117,7 @@ func TestSessionMismatchIsBlocked(t *testing.T) {
 func TestPayloadWithoutSessionSkipsTheCheck(t *testing.T) {
 	// Older harnesses may not send session_id: the guard stays permissive on
 	// that dimension and still enforces signature, TTL, and scope.
-	block, msg := decide(hookPayload("/work/checkout-service/internal/payment/router.go"), lockedTicket(t), nil)
+	block, _, msg := decide(hookPayload("/work/checkout-service/internal/payment/router.go"), lockedTicket(t), nil)
 	if block {
 		t.Fatalf("expected the check to be skipped without a payload session id, got %q", msg)
 	}
@@ -129,7 +130,7 @@ func notebookPayload(notebookPath string) []byte {
 func TestNotebookEditIsGuardedViaNotebookPath(t *testing.T) {
 	// Regression: NotebookEdit carries its path in notebook_path, not file_path.
 	// An out-of-scope notebook write must be blocked, not silently allowed.
-	block, msg := decide(notebookPayload("/work/checkout-service/internal/auth/secrets.ipynb"), lockedTicket(t), nil)
+	block, _, msg := decide(notebookPayload("/work/checkout-service/internal/auth/secrets.ipynb"), lockedTicket(t), nil)
 	if !block {
 		t.Fatal("expected an out-of-scope NotebookEdit to be blocked")
 	}
@@ -143,7 +144,7 @@ func TestContentViolationBlocks(t *testing.T) {
 	verify := func(ticket, path, content string) ([]string, error) {
 		return []string{"raw color forbidden"}, nil
 	}
-	block, msg := decide(payload, lockedTicket(t), verify)
+	block, _, msg := decide(payload, lockedTicket(t), verify)
 	if !block {
 		t.Fatal("expected a content-policy violation to block")
 	}
@@ -157,7 +158,7 @@ func TestContentVerifierErrorFailsClosed(t *testing.T) {
 	verify := func(ticket, path, content string) ([]string, error) {
 		return nil, errors.New("gateway unreachable")
 	}
-	block, msg := decide(payload, lockedTicket(t), verify)
+	block, _, msg := decide(payload, lockedTicket(t), verify)
 	if !block {
 		t.Fatal("expected a verifier error to fail closed (block)")
 	}
@@ -169,7 +170,7 @@ func TestContentVerifierErrorFailsClosed(t *testing.T) {
 func TestCleanContentPasses(t *testing.T) {
 	payload := []byte(`{"tool_name":"Write","cwd":"/work/checkout-service","tool_input":{"file_path":"/work/checkout-service/internal/payment/router.go","content":"ok"}}`)
 	verify := func(ticket, path, content string) ([]string, error) { return nil, nil }
-	if block, msg := decide(payload, lockedTicket(t), verify); block {
+	if block, _, msg := decide(payload, lockedTicket(t), verify); block {
 		t.Fatalf("expected clean in-scope content to pass, got %q", msg)
 	}
 }
@@ -236,5 +237,41 @@ func TestReadTicketReturnsEmptyWhenNoTicket(t *testing.T) {
 	st := store.NewMemory()
 	if got := readTicket(hookInput{SessionID: "nobody"}, st, st); got != "" {
 		t.Errorf("readTicket without stored ticket = %q, want empty", got)
+	}
+}
+
+// TestDecideVerdictCodes asserts the machine-readable verdict code of every
+// decide branch — the reason_code attribute the journal's ppg.guard.block
+// events (and ppg report) are built on.
+func TestDecideVerdictCodes(t *testing.T) {
+	inScope := "/work/checkout-service/internal/payment/router.go"
+	failingVerify := func(_, _, _ string) ([]string, error) { return nil, errors.New("server down") }
+	violatingVerify := func(_, _, _ string) ([]string, error) { return []string{"raw hex color"}, nil }
+
+	cases := []struct {
+		name      string
+		payload   []byte
+		ticket    string
+		verify    artifactVerifier
+		wantBlock bool
+		wantCode  string
+	}{
+		{"non-write tool", []byte(`{"tool_name":"Bash","tool_input":{"command":"ls"}}`), "", nil, false, verdictNone},
+		{"write passes all gates", hookPayload(inScope), lockedTicket(t), nil, false, verdictAllow},
+		{"no ticket", hookPayload(inScope), "", nil, true, journal.ReasonNoTicket},
+		{"out of plan scope", hookPayload("/work/checkout-service/internal/auth/login.go"), lockedTicket(t), nil, true, journal.ReasonOutOfPlanScope},
+		{"ticket rejected", hookPayload(inScope), "not-a-jwt", nil, true, journal.ReasonTicketRejected},
+		{"session mismatch", hookPayloadWithSession(inScope, "22222222-2222-2222-2222-222222222222"), lockedTicket(t), nil, true, journal.ReasonSessionMismatch},
+		{"invariant violation", hookPayload(inScope), lockedTicket(t), violatingVerify, true, journal.ReasonInvariantViolation},
+		{"verify unreachable", hookPayload(inScope), lockedTicket(t), failingVerify, true, journal.ReasonGuardError},
+		{"missing target path", []byte(`{"tool_name":"Edit","tool_input":{}}`), lockedTicket(t), nil, true, journal.ReasonGuardError},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			block, code, _ := decide(tc.payload, tc.ticket, tc.verify)
+			if block != tc.wantBlock || code != tc.wantCode {
+				t.Fatalf("decide = (block=%v, code=%q), want (block=%v, code=%q)", block, code, tc.wantBlock, tc.wantCode)
+			}
+		})
 	}
 }

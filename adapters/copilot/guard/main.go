@@ -39,6 +39,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/owulveryck/poc-agentic-platform/internal/journal"
 	"github.com/owulveryck/poc-agentic-platform/internal/smarttools"
 	"github.com/owulveryck/poc-agentic-platform/internal/store"
 	"github.com/owulveryck/poc-agentic-platform/internal/ticket"
@@ -151,9 +152,20 @@ func main() {
 		failInfra(isPreTool, "cannot open store: "+err.Error())
 	}
 
+	// Short-lived process: one journal open per invocation (flock-serialized
+	// appends). Journal failures go to stderr only — stdout stays reserved
+	// for the JSON decision.
+	jw := journal.Open(root, "ppg-copilot-guard", projectDir)
+
 	if in.HookEventName == "SessionStart" {
 		if err := recordSession(in, st, st); err != nil {
 			fmt.Fprintf(os.Stderr, "ppg-copilot-guard: cannot record session: %v\n", err)
+		} else {
+			jw.Emit(journal.Event{
+				Name:      journal.EventSessionStart,
+				SessionID: in.SessionID,
+				Attrs:     map[string]any{"agent": "copilot"},
+			})
 		}
 		emitAllow()
 		return
@@ -162,12 +174,53 @@ func main() {
 	verify := func(ticket, path, content string) ([]string, error) {
 		return verifyArtifactRemote(gatewayURL(), ticket, path, content)
 	}
-	block, msg := decide(payload, readTicket(in, st, st), verify)
+	block, code, msg := decide(payload, readTicket(in, st, st), verify)
+	emitVerdict(jw, in, st, block, code, msg)
 	if block {
 		emitDeny(msg)
 		return
 	}
 	emitAllow()
+}
+
+// emitVerdict journals the guard's decision: one ppg.guard.allow per gated
+// write tool that passed (code verdictAllow), one ppg.guard.block per denial.
+// Blocks carry the machine reason_code and — unless payload capture is off —
+// the model-facing message as "reply"; a fail-closed infra block is ERROR, a
+// policy denial WARN. Ungated calls emit nothing. The tool_input content
+// never enters the journal.
+func emitVerdict(jw *journal.Writer, in hookInput, ss store.SessionStore, block bool, code, msg string) {
+	if !block && code != verdictAllow {
+		return
+	}
+	sid := in.SessionID
+	if sid == "" {
+		if active, err := ss.GetActive(); err == nil {
+			sid = active
+		}
+	}
+	ev := journal.Event{
+		SessionID: sid,
+		Attrs: map[string]any{
+			"tool": in.ToolName,
+			"path": relativeTarget(in.targetPath(), in.CWD),
+		},
+	}
+	if !block {
+		ev.Name = journal.EventGuardAllow
+		jw.Emit(ev)
+		return
+	}
+	ev.Name = journal.EventGuardBlock
+	ev.Severity = journal.SeverityWarn
+	if code == journal.ReasonGuardError {
+		ev.Severity = journal.SeverityError
+	}
+	ev.Attrs["reason_code"] = code
+	if !journal.PayloadsDisabled() {
+		ev.Attrs["reply"] = msg
+	}
+	jw.Emit(ev)
 }
 
 // failInfra denies (fail-closed) when the guard cannot evaluate a PreToolUse
@@ -233,29 +286,39 @@ func readTicket(in hookInput, ts store.TokenStore, ss store.SessionStore) string
 	return tok
 }
 
+// Verdict codes returned by decide alongside the block decision. Blocks carry
+// a journal.Reason* constant; allows distinguish "this write tool passed every
+// gate" (verdictAllow, journaled) from "nothing to guard" (verdictNone).
+const (
+	verdictNone  = ""
+	verdictAllow = "ok"
+)
+
 // decide is the decision function shared in spirit with the Claude guard: it
 // gates on the tool name, checks path scope and session binding locally, then
 // verifies the edited content against the artifact-view policy through verify.
-// A nil verifier skips the content step (used by offline tests).
-func decide(payload []byte, rawTicket string, verify artifactVerifier) (bool, string) {
+// It returns whether to block, a machine-readable verdict code (a
+// journal.Reason* constant on block, verdictAllow/verdictNone on allow), and
+// the semantic message. A nil verifier skips the content step (offline tests).
+func decide(payload []byte, rawTicket string, verify artifactVerifier) (bool, string, string) {
 	var in hookInput
 	if err := json.Unmarshal(payload, &in); err != nil {
-		return true, "PPG_GUARD_ERROR: unreadable hook payload; denying (fail-closed)."
+		return true, journal.ReasonGuardError, "PPG_GUARD_ERROR: unreadable hook payload; denying (fail-closed)."
 	}
 	if !isWriteTool(in.ToolName) {
-		return false, "" // read/search/etc. tools are not gated by this guard
+		return false, verdictNone, "" // read/search/etc. tools are not gated by this guard
 	}
 	target := in.targetPath()
 	if target == "" {
-		return true, "PPG_GUARD_ERROR: " + in.ToolName +
+		return true, journal.ReasonGuardError, "PPG_GUARD_ERROR: " + in.ToolName +
 			" is a file-mutating tool but no target path was found in tool_input; denying (fail-closed)."
 	}
 	if smarttools.IsHarnessMetadata(target) {
-		return false, "" // harness plan-file bookkeeping, never in ticket scope
+		return false, verdictNone, "" // harness plan-file bookkeeping, never in ticket scope
 	}
 
 	if rawTicket == "" {
-		return true, "No capability ticket for this session. " +
+		return true, journal.ReasonNoTicket, "No capability ticket for this session. " +
 			"Lock a plan first: call the lock_in_plan tool (or POST /lock_in_plan on the " +
 			"validation server) — the returned execution_ticket is persisted for you."
 	}
@@ -265,16 +328,16 @@ func decide(payload []byte, rawTicket string, verify artifactVerifier) (bool, st
 	if err != nil {
 		var oos *smarttools.OutOfScopeError
 		if errors.As(err, &oos) {
-			return true, fmt.Sprintf(
+			return true, journal.ReasonOutOfPlanScope, fmt.Sprintf(
 				"OUT_OF_PLAN_SCOPE: %q is not part of the locked plan (allowed: %s). "+
 					"Nothing was modified. If this change is genuinely needed, re-plan through lock_in_plan.",
 				oos.Attempted, strings.Join(oos.Allowed, ", "))
 		}
-		return true, "Capability ticket rejected: " + err.Error() +
+		return true, journal.ReasonTicketRejected, "Capability ticket rejected: " + err.Error() +
 			". Re-lock your plan through lock_in_plan."
 	}
 	if in.SessionID != "" && claims.SessionID != in.SessionID {
-		return true, fmt.Sprintf(
+		return true, journal.ReasonSessionMismatch, fmt.Sprintf(
 			"SESSION_MISMATCH: the capability ticket was issued for session %q, not for this session (%q). "+
 				"A ticket dies with the session that locked it. Nothing was modified: re-plan through lock_in_plan.",
 			claims.SessionID, in.SessionID)
@@ -286,15 +349,15 @@ func decide(payload []byte, rawTicket string, verify artifactVerifier) (bool, st
 	if verify != nil {
 		violations, err := verify(rawTicket, rel, in.editedContent())
 		if err != nil {
-			return true, "PPG_GUARD_ERROR: cannot verify content against policy: " + err.Error() +
+			return true, journal.ReasonGuardError, "PPG_GUARD_ERROR: cannot verify content against policy: " + err.Error() +
 				" — denying (fail-closed). Nothing was modified."
 		}
 		if len(violations) > 0 {
-			return true, "ARCHITECTURAL_INVARIANT_VIOLATION: " + strings.Join(violations, " | ") +
+			return true, journal.ReasonInvariantViolation, "ARCHITECTURAL_INVARIANT_VIOLATION: " + strings.Join(violations, " | ") +
 				" Nothing was modified; fix the content to satisfy the invariant and resubmit."
 		}
 	}
-	return false, ""
+	return false, verdictAllow, ""
 }
 
 // relativeTarget converts the absolute file path Copilot passes into the

@@ -15,6 +15,7 @@ import (
 
 	"github.com/owulveryck/poc-agentic-platform/internal/adr"
 	"github.com/owulveryck/poc-agentic-platform/internal/catalog"
+	"github.com/owulveryck/poc-agentic-platform/internal/journal"
 	"github.com/owulveryck/poc-agentic-platform/internal/linter"
 	"github.com/owulveryck/poc-agentic-platform/internal/skill"
 	"github.com/owulveryck/poc-agentic-platform/internal/smarttools"
@@ -57,7 +58,7 @@ func testServer(t *testing.T) (*httptest.Server, string) {
 		t.Fatalf("catalog.NewRanker: %v", err)
 	}
 
-	srv := httptest.NewServer(buildMux(store, lint, skillLint, catStore, ranker, time.Hour, newConflictDetector(""), filepath.Join(t.TempDir(), "escalations.jsonl")))
+	srv := httptest.NewServer(buildMux(store, lint, skillLint, catStore, ranker, time.Hour, newConflictDetector(""), filepath.Join(t.TempDir(), "escalations.jsonl"), nil))
 	t.Cleanup(srv.Close)
 
 	planJSON := `{"session_id":"11111111-1111-1111-1111-111111111111","intent":"build a landing page","repository_context":{"name":"web","tech_stack":["Go"]},"steps":[{"id":"s1","action":"read design tokens","tool":"Read","targets":["design/tokens.css"]},{"id":"s2","action":"write styles","tool":"Write","targets":["index.css"]},{"id":"s3","action":"go test","tool":"go-test","targets":["x_test.go"]}]}`
@@ -164,7 +165,7 @@ func TestVerifyArtifactRejectsSkillCompanionViolation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("catalog.NewRanker: %v", err)
 	}
-	srv := httptest.NewServer(buildMux(store, lint, skillLint, catStore, ranker, time.Hour, newConflictDetector(""), filepath.Join(t.TempDir(), "escalations.jsonl")))
+	srv := httptest.NewServer(buildMux(store, lint, skillLint, catStore, ranker, time.Hour, newConflictDetector(""), filepath.Join(t.TempDir(), "escalations.jsonl"), nil))
 	t.Cleanup(srv.Close)
 
 	// Plan reads design/tokens.css (ADR-090 plan rule) and writes a .tsx
@@ -239,7 +240,7 @@ func TestRegisterSkillThenVerifyArtifact(t *testing.T) {
 	if err != nil {
 		t.Fatalf("catalog.NewRanker: %v", err)
 	}
-	srv := httptest.NewServer(buildMux(store, lint, skillLint, catStore, ranker, time.Hour, newConflictDetector(""), filepath.Join(t.TempDir(), "escalations.jsonl")))
+	srv := httptest.NewServer(buildMux(store, lint, skillLint, catStore, ranker, time.Hour, newConflictDetector(""), filepath.Join(t.TempDir(), "escalations.jsonl"), nil))
 	t.Cleanup(srv.Close)
 
 	const session = "33333333-3333-3333-3333-333333333333"
@@ -425,7 +426,7 @@ func TestPolicyConflictLivelockEscalation(t *testing.T) {
 		t.Fatalf("skill.NewLinter: %v", err)
 	}
 	escLog := filepath.Join(t.TempDir(), "escalations.jsonl")
-	srv := httptest.NewServer(buildMux(store, lint, skillLint, nil, nil, time.Hour, newConflictDetector(""), escLog))
+	srv := httptest.NewServer(buildMux(store, lint, skillLint, nil, nil, time.Hour, newConflictDetector(""), escLog, nil))
 	t.Cleanup(srv.Close)
 
 	// A Go plan with no test step: rejected by ADR-060 (go_tests_present),
@@ -516,7 +517,7 @@ func TestPolicyConflictAlternatingSets(t *testing.T) {
 		t.Fatalf("skill.NewLinter: %v", err)
 	}
 	escLog := filepath.Join(t.TempDir(), "escalations.jsonl")
-	srv := httptest.NewServer(buildMux(store, lint, skillLint, nil, nil, time.Hour, newConflictDetector(""), escLog))
+	srv := httptest.NewServer(buildMux(store, lint, skillLint, nil, nil, time.Hour, newConflictDetector(""), escLog, nil))
 	t.Cleanup(srv.Close)
 
 	// Set A: Go plan with no test step (go_tests_present).
@@ -601,5 +602,156 @@ func TestConflictDetectorPersistence(t *testing.T) {
 	d4.syncFromDisk()
 	if count, _, blocked := d4.observeRejection("sess-2", ids, "2026-07-21T00:08:00Z"); blocked {
 		t.Fatalf("after CLI resolve + SIGHUP sync the set must not be blocked, got count=%d", count)
+	}
+}
+
+// TestLockInPlanEmitsJournalEvents drives a rejected then a locked plan
+// through /lock_in_plan with a real journal writer and asserts the decision
+// events land in events.jsonl with the agreed names, severities, and
+// correlation attributes — the contract ppg report and the dashboard read.
+func TestLockInPlanEmitsJournalEvents(t *testing.T) {
+	store, err := adr.Load("../../examples/adr")
+	if err != nil {
+		t.Fatalf("adr.Load: %v", err)
+	}
+	lint, err := linter.New(store, "../../examples/adr")
+	if err != nil {
+		t.Fatalf("linter.New: %v", err)
+	}
+	skillLint, err := skill.NewLinter("../../skill-governance")
+	if err != nil {
+		t.Fatalf("skill.NewLinter: %v", err)
+	}
+	stateRoot := t.TempDir()
+	jw := journal.Open(stateRoot, "ppg", "")
+	srv := httptest.NewServer(buildMux(store, lint, skillLint, nil, nil, time.Hour, newConflictDetector(""), filepath.Join(stateRoot, "escalations.jsonl"), jw))
+	t.Cleanup(srv.Close)
+
+	// No test step → go_tests_present rejection (the "asked twice" signal).
+	badPlan := `{"session_id":"33333333-3333-3333-3333-333333333333","intent":"telemetry test","repository_context":{"name":"web","tech_stack":["Go"]},"steps":[{"id":"s1","action":"write code","tool":"Write","targets":["main.go"]}]}`
+	if status, body := post(t, srv.URL+"/lock_in_plan", badPlan); status != http.StatusUnprocessableEntity {
+		t.Fatalf("bad plan: want 422, got %d %s", status, body)
+	}
+	goodPlan := `{"session_id":"33333333-3333-3333-3333-333333333333","intent":"telemetry test","repository_context":{"name":"web","tech_stack":["Go"]},"steps":[{"id":"s1","action":"write code","tool":"Write","targets":["main.go"]},{"id":"s2","action":"run go test","tool":"go-test","targets":["./..."]}]}`
+	if status, body := post(t, srv.URL+"/lock_in_plan", goodPlan); status != http.StatusOK {
+		t.Fatalf("good plan: want 200, got %d %s", status, body)
+	}
+
+	raw, err := os.ReadFile(filepath.Join(stateRoot, journal.FileName))
+	if err != nil {
+		t.Fatalf("reading journal: %v", err)
+	}
+	var events []journal.Event
+	for _, line := range strings.Split(strings.TrimSpace(string(raw)), "\n") {
+		var e journal.Event
+		if err := json.Unmarshal([]byte(line), &e); err != nil {
+			t.Fatalf("unreadable journal line %q: %v", line, err)
+		}
+		events = append(events, e)
+	}
+	if len(events) != 2 {
+		t.Fatalf("want 2 events (rejected, locked), got %d: %+v", len(events), events)
+	}
+
+	rejected, locked := events[0], events[1]
+	if rejected.Name != journal.EventPlanRejected || rejected.Severity != journal.SeverityWarn {
+		t.Fatalf("first event: want %s/WARN, got %s/%s", journal.EventPlanRejected, rejected.Name, rejected.Severity)
+	}
+	if rejected.SessionID != "33333333-3333-3333-3333-333333333333" || rejected.Component != "ppg" {
+		t.Fatalf("rejected event correlation fields wrong: %+v", rejected)
+	}
+	ids, _ := rejected.Attrs["policy_ids"].([]any)
+	if len(ids) == 0 {
+		t.Fatalf("rejected event must carry policy_ids, got %+v", rejected.Attrs)
+	}
+	if locked.Name != journal.EventPlanLocked || locked.Severity != journal.SeverityInfo {
+		t.Fatalf("second event: want %s/INFO, got %s/%s", journal.EventPlanLocked, locked.Name, locked.Severity)
+	}
+	if locked.Attrs["plan_hash"] == "" || locked.Attrs["step_count"] != float64(2) {
+		t.Fatalf("locked event attrs wrong: %+v", locked.Attrs)
+	}
+
+	// Payload capture (default on): the rejected event carries the submitted
+	// plan and the verdict the model received — what the dashboard modal shows.
+	req, _ := rejected.Attrs["request"].(map[string]any)
+	if req["intent"] != "telemetry test" {
+		t.Fatalf("rejected event request payload wrong: %+v", rejected.Attrs["request"])
+	}
+	resp, _ := rejected.Attrs["response"].(map[string]any)
+	if resp["status"] != "PLAN_REJECTED" {
+		t.Fatalf("rejected event response payload wrong: %+v", rejected.Attrs["response"])
+	}
+	// The locked event's journaled response NEVER contains the ticket.
+	lockedResp, _ := locked.Attrs["response"].(map[string]any)
+	if lockedResp["status"] != "PLAN_LOCKED" {
+		t.Fatalf("locked event response payload wrong: %+v", locked.Attrs["response"])
+	}
+	if _, leaked := lockedResp["execution_ticket"]; leaked {
+		t.Fatal("the execution ticket must never enter the journal")
+	}
+}
+
+// TestPayloadCaptureKillSwitch proves PPG_TELEMETRY_PAYLOADS=off keeps the
+// decision events but strips the request/response payloads.
+func TestPayloadCaptureKillSwitch(t *testing.T) {
+	t.Setenv(journal.EnvPayloads, "off")
+	attrs := map[string]any{"policy_ids": []string{"x"}}
+	attachPayload(attrs, "request", map[string]any{"intent": "i"})
+	if _, ok := attrs["request"]; ok {
+		t.Fatal("payloads must not be captured when the kill switch is off")
+	}
+	if len(attrs) != 1 {
+		t.Fatalf("other attrs must survive: %+v", attrs)
+	}
+}
+
+// TestPayloadCapOmitsOversizedPayloads keeps events cheap: an oversized
+// payload becomes a size note, not a multi-megabyte journal line.
+func TestPayloadCapOmitsOversizedPayloads(t *testing.T) {
+	attrs := map[string]any{}
+	attachPayload(attrs, "request", strings.Repeat("x", payloadCap+1))
+	if _, ok := attrs["request"]; ok {
+		t.Fatal("oversized payload must be omitted")
+	}
+	if _, ok := attrs["request_omitted"]; !ok {
+		t.Fatalf("expected a request_omitted note, got %+v", attrs)
+	}
+}
+
+// TestEnrichEventCarriesCallerSession proves that /enrich attributes its
+// journal event to the session id the caller (the MCP server) provides —
+// what makes the per-session loop view show the MCP→platform exchange.
+func TestEnrichEventCarriesCallerSession(t *testing.T) {
+	store, err := adr.Load("../../examples/adr")
+	if err != nil {
+		t.Fatalf("adr.Load: %v", err)
+	}
+	lint, err := linter.New(store, "../../examples/adr")
+	if err != nil {
+		t.Fatalf("linter.New: %v", err)
+	}
+	skillLint, err := skill.NewLinter("../../skill-governance")
+	if err != nil {
+		t.Fatalf("skill.NewLinter: %v", err)
+	}
+	stateRoot := t.TempDir()
+	jw := journal.Open(stateRoot, "ppg", "")
+	srv := httptest.NewServer(buildMux(store, lint, skillLint, nil, nil, time.Hour, newConflictDetector(""), filepath.Join(stateRoot, "escalations.jsonl"), jw))
+	t.Cleanup(srv.Close)
+
+	if status, body := post(t, srv.URL+"/enrich",
+		`{"intent":"add a payment provider","session_id":"sess-enrich-1","repository_context":{"name":"web","tech_stack":["Go"]}}`); status != http.StatusOK {
+		t.Fatalf("enrich: want 200, got %d %s", status, body)
+	}
+	raw, err := os.ReadFile(filepath.Join(stateRoot, journal.FileName))
+	if err != nil {
+		t.Fatalf("reading journal: %v", err)
+	}
+	var e journal.Event
+	if err := json.Unmarshal([]byte(strings.TrimSpace(string(raw))), &e); err != nil {
+		t.Fatalf("unreadable journal line: %v", err)
+	}
+	if e.Name != journal.EventEnrichServed || e.SessionID != "sess-enrich-1" {
+		t.Fatalf("want %s attributed to sess-enrich-1, got %s/%q", journal.EventEnrichServed, e.Name, e.SessionID)
 	}
 }

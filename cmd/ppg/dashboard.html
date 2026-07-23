@@ -1,0 +1,406 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PPG — live decision events</title>
+<style id="design-tokens">
+/*DESIGN_TOKENS*/
+</style>
+<style>
+  /* Visual values are reached exclusively through the design tokens above
+     (var(--color-*), injected from design/tokens.css at serve time) per the
+     design-system invariant: no raw color values in this file. */
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 1.25rem;
+    background: var(--color-bg); color: var(--color-text);
+    font: 14px/1.45 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  h1 { font-size: 1.05rem; margin: 0 0 .25rem; }
+  h1 em { color: var(--color-accent); font-style: normal; }
+  .viewlink { color: var(--color-primary); text-decoration: none; font-size: .8rem; font-weight: 400; margin-left: .75rem; }
+  .viewlink:hover { text-decoration: underline; }
+  .sub { color: var(--color-muted); margin: 0 0 1rem; font-size: .85rem; }
+  .sessions { display: flex; flex-wrap: wrap; gap: .6rem; margin-bottom: 1rem; }
+  .card {
+    background: var(--color-surface); border: 1px solid var(--color-muted);
+    border-radius: 8px; padding: .5rem .75rem; min-width: 15rem;
+    cursor: pointer;
+  }
+  .card:hover { border-color: var(--color-primary); }
+  .card.active { border-color: var(--color-accent); }
+  .card.active .sid::after { content: " ● filtered"; color: var(--color-accent); font-size: .75rem; }
+  .card .sid { color: var(--color-primary); font-weight: 600; }
+  .card .nums { color: var(--color-muted); font-size: .8rem; margin-top: .2rem; }
+  .card .nums b { color: var(--color-text); font-weight: 600; }
+  .card .flag { color: var(--color-danger); font-size: .8rem; }
+  .filterbar { color: var(--color-muted); font-size: .8rem; margin-bottom: .5rem; min-height: 1.2rem; }
+  .filterbar b { color: var(--color-accent); }
+
+  .table-wrap { overflow-x: auto; }
+  table.feed {
+    width: 100%; min-width: 76rem;
+    border-collapse: collapse; table-layout: fixed;
+  }
+  th, td {
+    text-align: left; padding: .45rem .65rem;
+    border-bottom: 1px solid var(--color-surface);
+    vertical-align: top; overflow-wrap: break-word;
+  }
+  th {
+    color: var(--color-muted); font-weight: 600;
+    position: sticky; top: 0; background: var(--color-bg);
+  }
+  th { position: relative; }
+  th .resizer {
+    position: absolute; top: 0; right: 0; bottom: 0; width: 7px;
+    cursor: col-resize; user-select: none;
+  }
+  th .resizer:hover, th .resizer.dragging { background: var(--color-muted); }
+  tbody tr { cursor: pointer; }
+  tbody tr:hover { background: var(--color-surface); }
+  td.time { color: var(--color-muted); white-space: nowrap; }
+  tr.sev-INFO td.sev { color: var(--color-success); }
+  tr.sev-WARN td.sev { color: var(--color-warning); font-weight: 600; }
+  tr.sev-ERROR td.sev { color: var(--color-danger); font-weight: 700; }
+  tr.sev-WARN td:first-child { border-left: 2px solid var(--color-warning); }
+  tr.sev-ERROR td:first-child { border-left: 2px solid var(--color-danger); }
+  td.attrs { color: var(--color-muted); font-size: .82rem; }
+  .status { color: var(--color-muted); font-size: .8rem; margin-bottom: .75rem; }
+  .status .live { color: var(--color-success); }
+  .status .down { color: var(--color-danger); }
+
+  /* Detail modal */
+  .backdrop {
+    position: fixed; inset: 0;
+    background: var(--color-bg); opacity: .75;
+  }
+  .modal-layer { position: fixed; inset: 0; display: none; }
+  .modal-layer.open { display: block; }
+  .modal {
+    position: relative; margin: 4vh auto; width: min(64rem, 92vw);
+    max-height: 88vh; overflow: auto;
+    background: var(--color-surface); border: 1px solid var(--color-muted);
+    border-radius: 10px; padding: 1rem 1.25rem;
+  }
+  .modal header {
+    display: flex; align-items: baseline; gap: .75rem; flex-wrap: wrap;
+    margin-bottom: .5rem;
+  }
+  .modal header .name { font-size: 1rem; font-weight: 700; color: var(--color-primary); }
+  .modal header .sev-INFO { color: var(--color-success); }
+  .modal header .sev-WARN { color: var(--color-warning); }
+  .modal header .sev-ERROR { color: var(--color-danger); }
+  .modal header .when { color: var(--color-muted); font-size: .85rem; }
+  .modal .close { position: absolute; top: .75rem; right: .75rem; }
+  .modal h2 {
+    font-size: .8rem; text-transform: uppercase; letter-spacing: .08em;
+    color: var(--color-muted); margin: 1rem 0 .35rem;
+  }
+  .modal .meta { color: var(--color-muted); font-size: .85rem; }
+  .modal .meta b { color: var(--color-text); }
+  .kv { width: 100%; }
+  .kv td:first-child { color: var(--color-accent); white-space: nowrap; width: 12rem; }
+  pre {
+    margin: 0; padding: .6rem .75rem; overflow: auto; max-height: 40vh;
+    background: var(--color-bg); border: 1px solid var(--color-muted);
+    border-radius: 6px; font-size: .82rem; white-space: pre-wrap;
+  }
+  .empty { color: var(--color-muted); font-size: .85rem; font-style: italic; }
+</style>
+</head>
+<body>
+<h1><em>ppg</em> — live decision events <a class="viewlink" href="/events/loop">→ loop view</a></h1>
+<p class="sub">Wide events from <code>events.jsonl</code> (server, guards, MCP, verify). INFO = allowed, WARN = a guardrail denied, ERROR = fail-closed. Click an event for the full record; click a session card to filter on that session; drag a column edge to resize it.</p>
+<div class="status">stream: <span id="conn" class="down">connecting…</span></div>
+<div class="sessions" id="sessions"></div>
+<div class="filterbar" id="filterbar"></div>
+<div class="table-wrap">
+<table class="feed">
+  <colgroup>
+    <col style="width:12rem">
+    <col style="width:5rem">
+    <col style="width:10rem">
+    <col style="width:7rem">
+    <col style="width:16rem">
+    <col>
+  </colgroup>
+  <thead><tr>
+    <th>time<span class="resizer"></span></th>
+    <th>sev<span class="resizer"></span></th>
+    <th>component<span class="resizer"></span></th>
+    <th>session<span class="resizer"></span></th>
+    <th>event<span class="resizer"></span></th>
+    <th>attributes</th>
+  </tr></thead>
+  <tbody id="feed"></tbody>
+</table>
+</div>
+
+<div class="modal-layer" id="modal-layer" role="dialog" aria-modal="true">
+  <div class="backdrop" id="backdrop"></div>
+  <div class="modal">
+    <button id="modal-close">close</button>
+    <header>
+      <span class="name" id="m-name"></span>
+      <span id="m-sev"></span>
+      <span class="when" id="m-when"></span>
+    </header>
+    <div class="meta" id="m-meta"></div>
+    <h2>attributes</h2>
+    <table class="kv"><tbody id="m-attrs"></tbody></table>
+    <h2>request</h2>
+    <pre id="m-request"></pre>
+    <h2>reply</h2>
+    <pre id="m-reply"></pre>
+    <h2>raw event</h2>
+    <pre id="m-raw"></pre>
+  </div>
+</div>
+
+<script>
+  "use strict";
+  const MAX_ROWS = 500;   // rendered rows
+  const MAX_KEPT = 2000;  // events retained for the modal and refiltering
+  const el = (id) => document.getElementById(id);
+  const feed = el("feed"), conn = el("conn"), sessionsEl = el("sessions");
+  const filterbar = el("filterbar");
+  const layer = el("modal-layer");
+
+  // Ring of received events; each row points into it via data-i.
+  const kept = [];
+  let dropped = 0; // how many old events were evicted from the ring
+
+  // Active session filter (full session id string), or null for all.
+  let sessionFilter = null;
+
+  // Per-session loop counters, computed client-side from the stream.
+  // turns = number of plan.locked events (one turn of the governed loop).
+  const sessions = new Map();
+
+  const sidOf = (e) => e.session_id || "(no session)";
+
+  function counters(sid) {
+    if (!sessions.has(sid)) {
+      sessions.set(sid, { intents: 0, turns: 0, rejections: 0, conflicts: 0,
+                          blocks: 0, allows: 0, verifies: 0, flags: new Set() });
+    }
+    return sessions.get(sid);
+  }
+
+  function track(e) {
+    const c = counters(sidOf(e));
+    switch (e.name) {
+      case "ppg.intent.declared": c.intents++; break;
+      case "ppg.plan.locked":
+        c.turns++;
+        if (c.turns > 1) c.flags.add("re-locked");
+        break;
+      case "ppg.plan.rejected":
+        c.rejections++;
+        if ((e.attributes || {}).rejection_count >= 2) c.flags.add("asked-twice");
+        break;
+      case "ppg.plan.conflict": c.conflicts++; c.flags.add("conflict"); break;
+      case "ppg.plan.substitution": c.flags.add("substitution"); break;
+      case "ppg.guard.allow": c.allows++; break;
+      case "ppg.guard.block": {
+        c.blocks++;
+        const rc = (e.attributes || {}).reason_code;
+        if (rc === "session_mismatch" || rc === "ticket_rejected") c.flags.add("bypass?");
+        break;
+      }
+      case "ppg.changeset.ok": case "ppg.changeset.rejected": case "ppg.verify.run":
+        c.verifies++;
+        if (e.name === "ppg.verify.run" && (e.attributes || {}).outcome === "error") c.flags.add("unverified-window");
+        break;
+    }
+  }
+
+  function renderSessions() {
+    sessionsEl.replaceChildren(...[...sessions.entries()].map(([sid, c]) => {
+      const card = document.createElement("div");
+      card.className = "card" + (sid === sessionFilter ? " active" : "");
+      card.dataset.sid = sid;
+      card.title = sid === sessionFilter
+        ? "click to show every session again"
+        : "click to show only session " + sid;
+      const flags = [...c.flags].join(" ");
+      card.innerHTML =
+        '<div class="sid">' + esc(sid.slice(0, 8)) + '</div>' +
+        '<div class="nums">turns <b>' + c.turns + '</b> · intents <b>' + c.intents +
+        '</b> · rejected <b>' + c.rejections + '</b> · blocks <b>' + c.blocks +
+        '</b> · allows <b>' + c.allows + '</b> · verify <b>' + c.verifies + '</b></div>' +
+        (flags ? '<div class="flag">' + esc(flags) + '</div>' : '');
+      return card;
+    }));
+    filterbar.innerHTML = sessionFilter
+      ? "showing only session <b>" + esc(sessionFilter) + "</b> — click its card again to clear"
+      : "";
+  }
+
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, ch => "&#" + ch.charCodeAt(0) + ";");
+  }
+
+  // Payload attribute keys rendered as dedicated request/reply panes.
+  const REQUEST_KEYS = ["request", "request_omitted"];
+  const REPLY_KEYS = ["response", "response_omitted", "reply"];
+  const PAYLOAD_KEYS = REQUEST_KEYS.concat(REPLY_KEYS);
+
+  function fmtAttrs(a) {
+    if (!a) return "";
+    return Object.entries(a)
+      .filter(([k]) => !PAYLOAD_KEYS.includes(k))
+      .map(([k, v]) => k + "=" + (Array.isArray(v) ? v.join(",") : String(v)))
+      .join(" ");
+  }
+
+  function rowFor(e, absoluteIndex) {
+    const tr = document.createElement("tr");
+    tr.className = "sev-" + (e.severity || "INFO");
+    tr.dataset.i = String(absoluteIndex);
+    const t = (e.time || "").replace("T", " ").slice(0, 19);
+    tr.innerHTML =
+      '<td class="time">' + esc(t) + "</td>" +
+      '<td class="sev">' + esc(e.severity || "INFO") + "</td>" +
+      "<td>" + esc(e.component || "") + "</td>" +
+      "<td>" + esc((e.session_id || "").slice(0, 8)) + "</td>" +
+      "<td>" + esc(e.name || "") + "</td>" +
+      '<td class="attrs">' + esc(fmtAttrs(e.attributes)) + "</td>";
+    return tr;
+  }
+
+  const matchesFilter = (e) => !sessionFilter || sidOf(e) === sessionFilter;
+
+  function addEvent(e) {
+    kept.push(e);
+    while (kept.length > MAX_KEPT) { kept.shift(); dropped++; }
+    if (!matchesFilter(e)) return;
+    feed.prepend(rowFor(e, dropped + kept.length - 1));
+    while (feed.rows.length > MAX_ROWS) feed.deleteRow(-1);
+  }
+
+  // renderFeed rebuilds the whole table from the kept ring — used when the
+  // session filter changes. Newest first, capped at MAX_ROWS.
+  function renderFeed() {
+    const rows = [];
+    for (let i = kept.length - 1; i >= 0 && rows.length < MAX_ROWS; i--) {
+      if (matchesFilter(kept[i])) rows.push(rowFor(kept[i], dropped + i));
+    }
+    feed.replaceChildren(...rows);
+  }
+
+  sessionsEl.addEventListener("click", (ev) => {
+    const card = ev.target.closest(".card");
+    if (!card) return;
+    sessionFilter = (sessionFilter === card.dataset.sid) ? null : card.dataset.sid;
+    renderSessions();
+    renderFeed();
+  });
+
+  // ---- column resizing -----------------------------------------------------
+
+  const cols = document.querySelectorAll("table.feed col");
+  document.querySelectorAll("table.feed th .resizer").forEach((rz, i) => {
+    rz.addEventListener("mousedown", (ev) => {
+      ev.preventDefault();
+      rz.classList.add("dragging");
+      const startX = ev.clientX;
+      const startW = cols[i].getBoundingClientRect().width;
+      const move = (m) => {
+        cols[i].style.width = Math.max(48, startW + m.clientX - startX) + "px";
+      };
+      const up = () => {
+        rz.classList.remove("dragging");
+        document.removeEventListener("mousemove", move);
+        document.removeEventListener("mouseup", up);
+      };
+      document.addEventListener("mousemove", move);
+      document.addEventListener("mouseup", up);
+    });
+  });
+
+  // ---- modal ---------------------------------------------------------------
+
+  function pretty(v) {
+    if (v === undefined || v === null) return null;
+    if (typeof v === "string") return v;
+    return JSON.stringify(v, null, 2);
+  }
+
+  function fillPane(id, attrs, keys) {
+    const pane = el(id);
+    for (const k of keys) {
+      const body = pretty((attrs || {})[k]);
+      if (body !== null) {
+        pane.textContent = body;
+        pane.classList.remove("empty");
+        return;
+      }
+    }
+    pane.textContent = "(not captured for this event)";
+    pane.classList.add("empty");
+  }
+
+  function openModal(e) {
+    el("m-name").textContent = e.name || "";
+    const sev = el("m-sev");
+    sev.textContent = e.severity || "INFO";
+    sev.className = "sev-" + (e.severity || "INFO");
+    el("m-when").textContent = (e.time || "").replace("T", " ");
+    el("m-meta").innerHTML =
+      "component <b>" + esc(e.component || "") + "</b> · session <b>" +
+      esc(e.session_id || "(none)") + "</b>" +
+      (e.project ? " · project <b>" + esc(e.project) + "</b>" : "");
+
+    const rows = Object.entries(e.attributes || {})
+      .filter(([k]) => !PAYLOAD_KEYS.includes(k))
+      .map(([k, v]) => {
+        const tr = document.createElement("tr");
+        const val = typeof v === "object" ? JSON.stringify(v) : String(v);
+        tr.innerHTML = "<td>" + esc(k) + "</td><td>" + esc(val) + "</td>";
+        return tr;
+      });
+    el("m-attrs").replaceChildren(...rows);
+    if (!rows.length) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = '<td class="empty" colspan="2">(none)</td>';
+      el("m-attrs").replaceChildren(tr);
+    }
+
+    fillPane("m-request", e.attributes, REQUEST_KEYS);
+    fillPane("m-reply", e.attributes, REPLY_KEYS);
+    el("m-raw").textContent = JSON.stringify(e, null, 2);
+    layer.classList.add("open");
+  }
+
+  function closeModal() { layer.classList.remove("open"); }
+
+  feed.addEventListener("click", (ev) => {
+    const tr = ev.target.closest("tr");
+    if (!tr || tr.dataset.i === undefined) return;
+    const e = kept[Number(tr.dataset.i) - dropped];
+    if (e) openModal(e);
+  });
+  el("modal-close").addEventListener("click", closeModal);
+  el("backdrop").addEventListener("click", closeModal);
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape") closeModal();
+  });
+
+  // ---- stream ----------------------------------------------------------------
+
+  const src = new EventSource("/events/stream?replay=200");
+  src.onopen = () => { conn.textContent = "live"; conn.className = "live"; };
+  src.onerror = () => { conn.textContent = "reconnecting…"; conn.className = "down"; };
+  src.onmessage = (msg) => {
+    let e;
+    try { e = JSON.parse(msg.data); } catch { return; }
+    track(e);
+    addEvent(e);
+    renderSessions();
+  };
+</script>
+</body>
+</html>

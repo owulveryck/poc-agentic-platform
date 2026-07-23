@@ -96,5 +96,13 @@ atomic-rename writes, so concurrent sessions cannot corrupt or half-purge state
   asymmetric ticket keys. See the
   [/register_skill reference](../reference/http-api.md#post-register_skill)
   for the concrete lifetime & auth paragraphs.
-- No persistence or telemetry yet: that is the third pillar (*observation*),
-  intentionally out of scope here.
+- The third pillar (*observation*) is present as local decision-event
+  telemetry: every component appends one wide JSONL event per governance
+  decision to `<state-root>/events.jsonl` (`internal/journal`), the server
+  re-serves it live at `GET /events` (SSE dashboard), and `ppg report`
+  aggregates it a-posteriori (loop turns, asked-twice plans, guard blocks by
+  reason, top violated invariants, bypass indicators). The event shape mirrors
+  the OpenTelemetry Logs data model, so OTLP export to a collector is a future
+  pure field-for-field adapter — deliberately NOT bundled in this PoC (no OTel
+  SDK dependency). See [Observe the platform](../how-to/observe-the-platform.md)
+  and the [telemetry event reference](../reference/telemetry-events.md).
