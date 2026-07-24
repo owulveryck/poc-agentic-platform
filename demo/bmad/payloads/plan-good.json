@@ -1,0 +1,19 @@
+{
+  "session_id": "00000000-0000-0000-0000-0000000002a1",
+  "intent": "Implement story 1.2: add Stripe as a checkout payment method",
+  "repository_context": { "name": "checkout-service", "tech_stack": ["Python"] },
+  "steps": [
+    {
+      "id": "s1",
+      "action": "read the story before touching code",
+      "tool": "Read",
+      "targets": ["_bmad-output/implementation-artifacts/1-2-stripe-checkout.md"]
+    },
+    {
+      "id": "s2",
+      "action": "implement the charge service against the story",
+      "tool": "Write",
+      "targets": ["src/checkout/service.py"]
+    }
+  ]
+}

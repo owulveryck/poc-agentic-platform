@@ -1,0 +1,13 @@
+{
+  "session_id": "00000000-0000-0000-0000-0000000002b1",
+  "intent": "Implement the Stripe checkout feature",
+  "repository_context": { "name": "checkout-service", "tech_stack": ["Python"] },
+  "steps": [
+    {
+      "id": "s1",
+      "action": "implement the charge service straight away",
+      "tool": "Write",
+      "targets": ["src/checkout/service.py"]
+    }
+  ]
+}

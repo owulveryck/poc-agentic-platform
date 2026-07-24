@@ -1,0 +1,7 @@
+{
+  "intent": "Create a BMAD story and implement it for the checkout service",
+  "repository_context": {
+    "name": "checkout-service",
+    "tech_stack": ["Python"]
+  }
+}
