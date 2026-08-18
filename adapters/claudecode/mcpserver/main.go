@@ -305,10 +305,14 @@ func forwardOnce(ctx context.Context, route string, body []byte) ([]byte, int, e
 }
 
 // wrapResult renders a validation server response as an MCP tool result.
+// 409 POLICY_CONFLICT is flagged as an error alongside 5xx: it is the
+// anti-thrash escalation (cmd/ppg's conflictDetector) telling the agent to
+// stop resubmitting, not an ordinary fixable 422 violation — the agent needs
+// a machine-readable stop signal here, not just the guidance prose.
 func wrapResult(raw []byte, status int) *mcp.CallToolResult {
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{&mcp.TextContent{Text: string(raw)}},
-		IsError: status >= 500,
+		IsError: status >= 500 || status == http.StatusConflict,
 	}
 }
 

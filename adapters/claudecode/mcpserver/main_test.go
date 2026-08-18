@@ -133,6 +133,27 @@ func TestUnknownSkillsIn(t *testing.T) {
 	}
 }
 
+func TestWrapResult_IsErrorByStatus(t *testing.T) {
+	cases := []struct {
+		name      string
+		status    int
+		wantIsErr bool
+	}{
+		{"200 OK", http.StatusOK, false},
+		{"422 PLAN_REJECTED", http.StatusUnprocessableEntity, false},
+		{"409 POLICY_CONFLICT", http.StatusConflict, true},
+		{"500 internal error", http.StatusInternalServerError, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := wrapResult([]byte(`{}`), c.status)
+			if got.IsError != c.wantIsErr {
+				t.Errorf("status %d: IsError = %v, want %v", c.status, got.IsError, c.wantIsErr)
+			}
+		})
+	}
+}
+
 // TestLockWithRegistrationRetry_ReuploadsOnUnknownSkill drives the full
 // self-heal path with a fake gateway that: registers a skill, then simulates
 // a restart by responding unknown_skill on the first lock, then accepts the
