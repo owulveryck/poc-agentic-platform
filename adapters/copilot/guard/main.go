@@ -4,9 +4,13 @@
 // Two events are served through the same binary:
 //
 //   - SessionStart: records the real session id in the SessionStore and
-//     purges any leftover tickets in the TokenStore, so a capability
-//     never survives the session that locked it.
-//   - PreToolUse: verifies every file-mutating tool call against the
+//     purges any leftover ticket of that session id. Tickets of other
+//     sessions are kept: the Copilot app opens several sessions on the same
+//     project (windows, sub-agents), and purging them all left the first
+//     session without a ticket right after its lock_in_plan. A ticket stays
+//     bound to its session (session_mismatch) and expires with its TTL.
+//   - PreToolUse: re-asserts the calling session as the active one (the
+//     session ppg-mcp-server stamps its next lock with), then verifies every file-mutating tool call against the
 //     capability ticket locked through the validation server —
 //     signature, TTL, path scope, session binding — AND the actual edited
 //     content against the artifact-view policy corpus (via POST
@@ -171,6 +175,10 @@ func main() {
 		return
 	}
 
+	if err := claimSession(in, st); err != nil {
+		fmt.Fprintf(os.Stderr, "ppg-copilot-guard: cannot claim session: %v\n", err)
+	}
+
 	verify := func(ticket, path, content string) ([]string, error) {
 		return verifyArtifactRemote(gatewayURL(), ticket, path, content)
 	}
@@ -258,8 +266,22 @@ func recordSession(in hookInput, ts store.TokenStore, ss store.SessionStore) err
 	if in.SessionID == "" {
 		return nil
 	}
-	if err := ts.Reset(); err != nil {
+	if err := ts.Delete(in.SessionID); err != nil {
 		return err
+	}
+	return ss.PutActive(in.SessionID)
+}
+
+// claimSession makes the session behind a tool call the active one, so that
+// a lock_in_plan issued by this session is stamped with its id even when
+// another session started on the same project in the meantime. No-op when
+// the payload carries no session id or the session is already active.
+func claimSession(in hookInput, ss store.SessionStore) error {
+	if in.SessionID == "" {
+		return nil
+	}
+	if active, err := ss.GetActive(); err == nil && active == in.SessionID {
+		return nil
 	}
 	return ss.PutActive(in.SessionID)
 }

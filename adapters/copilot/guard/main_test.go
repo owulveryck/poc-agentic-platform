@@ -174,9 +174,12 @@ func TestPayloadWithoutSessionSkipsTheCheck(t *testing.T) {
 	}
 }
 
-func TestRecordSessionRecordsAndPurgesStaleTickets(t *testing.T) {
+func TestRecordSessionRecordsAndPurgesItsOwnTicket(t *testing.T) {
 	st := store.NewMemory()
-	if err := st.Put("previous-session", "stale-jwt"); err != nil {
+	if err := st.Put("sess-9", "stale-jwt"); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Put("other-session", "live-jwt"); err != nil {
 		t.Fatal(err)
 	}
 	in := hookInput{HookEventName: "SessionStart", SessionID: "sess-9"}
@@ -190,8 +193,30 @@ func TestRecordSessionRecordsAndPurgesStaleTickets(t *testing.T) {
 	if got != "sess-9" {
 		t.Errorf("active session = %q, want sess-9", got)
 	}
-	if _, err := st.Get("previous-session"); !errors.Is(err, store.ErrNotFound) {
-		t.Error("a leftover ticket from a previous session must be purged at session start")
+	if _, err := st.Get("sess-9"); !errors.Is(err, store.ErrNotFound) {
+		t.Error("a leftover ticket of the starting session must be purged")
+	}
+	if _, err := st.Get("other-session"); err != nil {
+		t.Error("the ticket of another live session must survive a new session start")
+	}
+}
+
+// Session A locks after session B started on the same project: A's tool call
+// must make A active again, so ppg-mcp-server stamps A's ticket with A.
+func TestClaimSessionReassertsTheCallingSession(t *testing.T) {
+	st := store.NewMemory()
+	_ = st.PutActive("sess-b")
+	if err := claimSession(hookInput{HookEventName: "PreToolUse", SessionID: "sess-a"}, st); err != nil {
+		t.Fatalf("claimSession: %v", err)
+	}
+	if got, _ := st.GetActive(); got != "sess-a" {
+		t.Errorf("active session = %q, want sess-a", got)
+	}
+	if err := claimSession(hookInput{HookEventName: "PreToolUse"}, st); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := st.GetActive(); got != "sess-a" {
+		t.Errorf("a payload without session id must not change the active session, got %q", got)
 	}
 }
 

@@ -65,7 +65,13 @@ right. Two mechanisms bind it to the session that locked the plan:
 1. At `SessionStart`, the `ppg-guard` hook calls `SessionStore.PutActive`
    with the real Claude Code session id and `TokenStore.Reset` — every
    ticket for this project is purged, so a leftover capability never
-   survives the session that locked it.
+   survives the session that locked it. `ppg-copilot-guard` purges only
+   the ticket of the starting session id: the Copilot app runs several
+   sessions on one project (windows, sub-agents), and a global purge left
+   the first session without a ticket. It also re-asserts the calling
+   session as active at every `PreToolUse`, so a lock is stamped with the
+   session that issued it. Other sessions' tickets stay bound to their
+   session (point 2) and expire with their TTL.
 2. At lock time, the MCP server reads `SessionStore.GetActive` and
    overrides the plan's `session_id` with it before signing. At every
    `Edit`/`Write`, the guard compares the ticket's `session_id` claim to

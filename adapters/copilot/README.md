@@ -54,9 +54,10 @@ its scope.
    ```
 
    The same binary serves both events: at `SessionStart` it records the
-   real session id via the SessionStore and purges any leftover tickets
-   from the TokenStore; at `PreToolUse` it verifies each `Edit`/`Write`
-   against the ticket.
+   real session id via the SessionStore and purges any leftover ticket
+   of that session (other sessions on the project keep theirs); at
+   `PreToolUse` it re-asserts the calling session as active, then
+   verifies each `Edit`/`Write` against the ticket.
 
 4. **(Optional) Amplify with invariants** — run the pre-flight to seed
    `.github/copilot-instructions.md` for the current intent:
