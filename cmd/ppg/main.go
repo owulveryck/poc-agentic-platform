@@ -74,6 +74,8 @@ func main() {
 		"capability ticket lifetime (0 = $PPG_TICKET_TTL, else the built-in default); the session still bounds it")
 	allowWideScope := flag.Bool("allow-wide-scope", false,
 		"accept plan targets like \".\" or \"*\" whose derived ticket would be allow-all (pre-1.0 behavior)")
+	watchInterval := flag.Duration("watch", 2*time.Second,
+		"poll the -adr, -skills and -skill-governance directories at this interval and hot-reload the corpus when they change, like SIGHUP (0 = SIGHUP only)")
 	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
 
@@ -163,28 +165,41 @@ func main() {
 	}
 	install(c)
 
-	// Hot reload: SIGHUP rebuilds the whole corpus from disk — capitalizing
-	// a new or extended policy no longer requires a restart. Fail-safe: a
-	// reload error keeps the previous corpus serving. Session-scoped skill
-	// registrations survive the swap (AdoptSessions).
+	// Hot reload: SIGHUP — or a change on disk under the corpus directories
+	// (-watch) — rebuilds the whole corpus from disk: capitalizing a new or
+	// extended policy, or regenerating a data policy, no longer requires a
+	// restart nor knowing the server's pid. Fail-safe: a reload error keeps
+	// the previous corpus serving. Session-scoped skill registrations survive
+	// the swap (AdoptSessions). One goroutine serves both triggers, so
+	// reloads never race.
 	go func() {
 		hup := make(chan os.Signal, 1)
 		signal.Notify(hup, syscall.SIGHUP)
-		for range hup {
+		changed := make(chan struct{}, 1)
+		if *watchInterval > 0 {
+			go watchCorpus(*watchInterval, changed, cfg.adrDir, cfg.skillsDir, cfg.skillGovDir)
+		}
+		for {
+			trigger := "SIGHUP"
+			select {
+			case <-hup:
+			case <-changed:
+				trigger = "corpus change on disk"
+			}
 			nc, err := loadCorpus(cfg)
 			if err != nil {
-				log.Printf("SIGHUP reload failed — keeping the previous corpus: %v", err)
+				log.Printf("%s: reload failed — keeping the previous corpus: %v", trigger, err)
 				continue
 			}
 			nc.lint.AdoptSessions(c.lint)
 			c = nc
 			install(nc)
 			// Adopt conflict resolutions recorded by `ppg escalations
-			// resolve` — resolving a conflict rides the same SIGHUP ritual
+			// resolve` — resolving a conflict rides the same reload ritual
 			// as capitalizing the corpus fix. Live rejection counters are
 			// kept.
 			conflicts.syncFromDisk()
-			log.Printf("SIGHUP: corpus reloaded")
+			log.Printf("%s: corpus reloaded", trigger)
 		}
 	}()
 

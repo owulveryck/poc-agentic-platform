@@ -25,9 +25,11 @@ by default; override with `BINDIR`).
 | `-service-policy` | *(none)* | Path to the service-catalog ranking Rego policy directory. Requires `-services`; a policy that fails to load is a startup error |
 | `-ticket-ttl` | `0` | Capability ticket wall-clock lifetime (a Go duration, e.g. `8h`, `30m`). `0` means use `$PPG_TICKET_TTL`, else the built-in default `8h`. The session still bounds the ticket regardless. |
 | `-allow-wide-scope` | `false` | Accept plan targets like `.` or `*` whose derived ticket would be allow-all. Off by default: the built-in `scope_breadth_cap` rejects them at lock time |
+| `-watch` | `2s` | Poll the `-adr`, `-skills` and `-skill-governance` directories at this interval and hot-reload the corpus when they change, like SIGHUP. `0` disables it (SIGHUP only) |
 | `-version` | `false` | Print the version and exit (all seven binaries accept it) |
 
-**Hot reload**: `kill -HUP <pid>` rebuilds the whole corpus (ADRs, plan
+**Hot reload**: a change under the corpus directories (`-watch`, once the
+files have held still for one poll interval) or `kill -HUP <pid>` rebuilds the whole corpus (ADRs, plan
 policies, operator skills, skill-governance policies, service catalog)
 from disk and swaps it atomically — capitalizing a new or extended policy
 does not require a restart. Fail-safe: if the reload fails (e.g. a
@@ -65,7 +67,8 @@ ppg escalations resolve <conflict_id> -note "fixed ADR-060 wording"
 
 `resolve` removes the conflict from the livelock state and appends a
 `type: "resolution"` record (with the note) to the escalation log. The
-running server adopts the resolution on its next SIGHUP reload — resolving
+running server adopts the resolution on its next reload (SIGHUP, or a
+corpus change picked up by `-watch`) — resolving
 a conflict rides the same ritual as capitalizing the corpus fix itself.
 All three subcommands accept `-store-root DIR`. See the how-to
 [Resolve a policy conflict](../how-to/resolve-a-policy-conflict.md).
